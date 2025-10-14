@@ -39,9 +39,11 @@ class NavidromeService:
             if response.status_code == 200:
                 data = response.json()
                 self.token = data.get("token")
+                print(f"✅ Autenticación exitosa con Navidrome")
                 return True
             else:
-                print(f"Error de autenticación: {response.status_code}")
+                print(f"❌ Error de autenticación Navidrome: {response.status_code}")
+                print(f"   Response: {response.text}")
                 return False
                 
         except Exception as e:
@@ -180,12 +182,14 @@ class NavidromeService:
     async def search(self, query: str, limit: int = 20) -> Dict[str, List]:
         """Buscar en la biblioteca"""
         try:
+            print(f"🔍 Buscando '{query}' en Navidrome...")
             params = {
                 "q": query,
                 "limit": limit
             }
             
             data = await self._make_request("search3", params)
+            print(f"📊 Resultados de búsqueda: {len(data.get('song', []))} canciones, {len(data.get('album', []))} álbumes, {len(data.get('artist', []))} artistas")
             
             results = {
                 "tracks": [],
