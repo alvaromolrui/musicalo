@@ -162,6 +162,7 @@ class MusicRecommendationService:
             
             print(f"🔍 Generando recomendaciones de Last.fm para {len(selected_artists)} artistas (seleccionados aleatoriamente)")
             
+            # Para asegurar diversidad, tomar 1 recomendación por artista
             # Obtener artistas similares basados en los artistas seleccionados
             for top_artist in selected_artists:
                 if len(recommendations) >= limit:
@@ -176,61 +177,64 @@ class MusicRecommendationService:
                 if similar_artists:
                     random.shuffle(similar_artists)
                 
-                for similar_artist in similar_artists:
-                    if len(recommendations) >= limit:
+                # IMPORTANTE: Solo tomar 1 artista similar por cada top_artist para diversidad
+                similar_artist = None
+                for candidate in similar_artists:
+                    if candidate.name not in processed_artists:
+                        similar_artist = candidate
                         break
+                
+                if not similar_artist:
+                    continue
                     
-                    if similar_artist.name in processed_artists:
-                        continue
-                    
-                    processed_artists.add(similar_artist.name)
-                    
-                    # Aplicar filtro de género si existe (usando IA para verificar si coincide)
-                    if genre_filter:
-                        # Simplificación: verificar si el género está en el nombre del artista o usar tags
-                        # En una implementación más completa, se podría consultar info adicional del artista
-                        pass  # Por ahora, incluir todos los artistas similares
-                    
-                    # Crear recomendación del artista similar
-                    print(f"   ➕ Agregando recomendación: {similar_artist.name}")
-                    
-                    # Personalizar el título según el tipo de recomendación
-                    if recommendation_type == "artist":
-                        title = similar_artist.name
-                        reason = f"🌟 Similar a {top_artist.name}"
-                    elif recommendation_type == "album":
-                        title = f"Álbumes de {similar_artist.name}"
-                        reason = f"📀 Discografía similar a {top_artist.name}"
-                    elif recommendation_type == "track":
-                        title = f"Canciones de {similar_artist.name}"
-                        reason = f"🎵 Música similar a {top_artist.name}"
-                    else:
-                        title = f"Descubre {similar_artist.name}"
-                        reason = f"🌟 Artista similar a {top_artist.name} que te puede gustar"
-                    
-                    # Crear el objeto Track primero
-                    track = Track(
-                        id=f"lastfm_{recommendation_type}_{similar_artist.name.replace(' ', '_')}",
-                        title=title,
-                        artist=similar_artist.name,
-                        album="",
-                        duration=None,
-                        year=None,
-                        genre=genre_filter if genre_filter else "",
-                        play_count=None,
-                        path="",
-                        cover_url=None
-                    )
-                    
-                    # Crear la recomendación
-                    recommendation = Recommendation(
-                        track=track,
-                        reason=reason,
-                        confidence=0.85,  # Score alto para música nueva
-                        source="Last.fm",
-                        tags=[genre_filter] if genre_filter else []
-                    )
-                    recommendations.append(recommendation)
+                processed_artists.add(similar_artist.name)
+                
+                # Aplicar filtro de género si existe
+                if genre_filter:
+                    # Por ahora, incluir todos los artistas similares
+                    # En una implementación futura se podría consultar tags del artista
+                    pass
+                
+                # Crear recomendación del artista similar
+                print(f"   ➕ Agregando recomendación: {similar_artist.name}")
+                
+                # Personalizar el título según el tipo de recomendación
+                if recommendation_type == "artist":
+                    title = similar_artist.name
+                    reason = f"🌟 Similar a {top_artist.name}"
+                elif recommendation_type == "album":
+                    title = f"Álbumes de {similar_artist.name}"
+                    reason = f"📀 Discografía similar a {top_artist.name}"
+                elif recommendation_type == "track":
+                    title = f"Canciones de {similar_artist.name}"
+                    reason = f"🎵 Música similar a {top_artist.name}"
+                else:
+                    title = f"Descubre {similar_artist.name}"
+                    reason = f"🌟 Artista similar a {top_artist.name} que te puede gustar"
+                
+                # Crear el objeto Track primero
+                track = Track(
+                    id=f"lastfm_{recommendation_type}_{similar_artist.name.replace(' ', '_')}",
+                    title=title,
+                    artist=similar_artist.name,
+                    album="",
+                    duration=None,
+                    year=None,
+                    genre=genre_filter if genre_filter else "",
+                    play_count=None,
+                    path="",
+                    cover_url=None
+                )
+                
+                # Crear la recomendación
+                recommendation = Recommendation(
+                    track=track,
+                    reason=reason,
+                    confidence=0.85,  # Score alto para música nueva
+                    source="Last.fm",
+                    tags=[genre_filter] if genre_filter else []
+                )
+                recommendations.append(recommendation)
             
             print(f"✅ Total de recomendaciones de Last.fm: {len(recommendations)}")
             return recommendations

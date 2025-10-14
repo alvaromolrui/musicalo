@@ -78,6 +78,11 @@ Analizo tu actividad en ListenBrainz y tu biblioteca de Navidrome para sugerirte
 • `/recommend artist metal` - Artistas de metal
 • `/recommend track pop` - Canciones pop
 
+**Recomendaciones similares:**
+• `/recommend similar albertucho` - Artistas similares
+• `/recommend like extremoduro` - Música parecida
+• `/recommend como marea` - Alternativa en español
+
 **Búsqueda:**
 • `/search queen` - Buscar Queen
 • `/search bohemian rhapsody` - Buscar canción
@@ -112,27 +117,35 @@ Analizo tu actividad en ListenBrainz y tu biblioteca de Navidrome para sugerirte
         # Parsear argumentos
         rec_type = "general"  # general, album, artist, track
         genre_filter = None
+        similar_to = None  # Para búsquedas "similar a..."
         
         if context.args:
             args = [arg.lower() for arg in context.args]
             
-            # Detectar tipo de recomendación
-            if any(word in args for word in ["album", "disco", "cd", "álbum"]):
-                rec_type = "album"
-                args = [a for a in args if a not in ["album", "disco", "cd", "álbum"]]
-            elif any(word in args for word in ["artist", "artista", "banda", "grupo"]):
-                rec_type = "artist"
-                args = [a for a in args if a not in ["artist", "artista", "banda", "grupo"]]
-            elif any(word in args for word in ["track", "song", "cancion", "canción", "tema"]):
-                rec_type = "track"
-                args = [a for a in args if a not in ["track", "song", "cancion", "canción", "tema"]]
-            
-            # El resto son géneros/estilos
-            if args:
-                genre_filter = " ".join(args)
+            # Detectar búsquedas "similar a..." o "como..."
+            if args and args[0] in ["similar", "like", "como", "parecido"]:
+                similar_to = " ".join(args[1:])
+                print(f"🔍 Búsqueda de similares a: {similar_to}")
+            else:
+                # Detectar tipo de recomendación
+                if any(word in args for word in ["album", "disco", "cd", "álbum"]):
+                    rec_type = "album"
+                    args = [a for a in args if a not in ["album", "disco", "cd", "álbum"]]
+                elif any(word in args for word in ["artist", "artista", "banda", "grupo"]):
+                    rec_type = "artist"
+                    args = [a for a in args if a not in ["artist", "artista", "banda", "grupo"]]
+                elif any(word in args for word in ["track", "song", "cancion", "canción", "tema"]):
+                    rec_type = "track"
+                    args = [a for a in args if a not in ["track", "song", "cancion", "canción", "tema"]]
+                
+                # El resto son géneros/estilos
+                if args:
+                    genre_filter = " ".join(args)
         
         # Mensaje personalizado según el tipo
-        if rec_type == "album":
+        if similar_to:
+            await update.message.reply_text(f"🔍 Buscando música similar a '{similar_to}'...")
+        elif rec_type == "album":
             await update.message.reply_text(f"📀 Analizando álbumes{f' de {genre_filter}' if genre_filter else ''}...")
         elif rec_type == "artist":
             await update.message.reply_text(f"🎤 Buscando artistas{f' de {genre_filter}' if genre_filter else ''}...")
@@ -142,44 +155,87 @@ Analizo tu actividad en ListenBrainz y tu biblioteca de Navidrome para sugerirte
             await update.message.reply_text("🎵 Analizando tus gustos musicales...")
         
         try:
-            # Verificar que haya servicio de scrobbling configurado
-            if not self.music_service:
-                await update.message.reply_text(
-                    "⚠️ No hay servicio de scrobbling configurado.\n\n"
-                    "Por favor configura Last.fm o ListenBrainz para recibir recomendaciones personalizadas."
+            recommendations = []
+            
+            # Si es una búsqueda "similar a...", usar Last.fm directamente
+            if similar_to:
+                if self.lastfm:
+                    print(f"🔍 Buscando similares a '{similar_to}' en Last.fm...")
+                    similar_artists = await self.lastfm.get_similar_artists(similar_to, limit=10)
+                    
+                    if similar_artists:
+                        # Crear recomendaciones de los artistas similares
+                        for similar_artist in similar_artists[:5]:
+                            from models.schemas import Track
+                            track = Track(
+                                id=f"lastfm_similar_{similar_artist.name.replace(' ', '_')}",
+                                title=similar_artist.name if rec_type == "artist" else f"Descubre {similar_artist.name}",
+                                artist=similar_artist.name,
+                                album="",
+                                duration=None,
+                                year=None,
+                                genre="",
+                                play_count=None,
+                                path="",
+                                cover_url=None
+                            )
+                            
+                            from models.schemas import Recommendation
+                            recommendation = Recommendation(
+                                track=track,
+                                reason=f"🎯 Similar a {similar_to}",
+                                confidence=0.9,
+                                source="Last.fm",
+                                tags=[]
+                            )
+                            recommendations.append(recommendation)
+                    else:
+                        await update.message.reply_text(f"😔 No encontré artistas similares a '{similar_to}'")
+                        return
+                else:
+                    await update.message.reply_text("⚠️ Necesitas configurar Last.fm para buscar similares.")
+                    return
+            
+            else:
+                # Búsqueda normal basada en tu perfil
+                # Verificar que haya servicio de scrobbling configurado
+                if not self.music_service:
+                    await update.message.reply_text(
+                        "⚠️ No hay servicio de scrobbling configurado.\n\n"
+                        "Por favor configura Last.fm o ListenBrainz para recibir recomendaciones personalizadas."
+                    )
+                    return
+                
+                # Obtener datos del usuario
+                recent_tracks = await self.music_service.get_recent_tracks(limit=20)
+                top_artists = await self.music_service.get_top_artists(limit=10)
+                
+                if not recent_tracks:
+                    await update.message.reply_text(
+                        f"⚠️ No se encontraron escuchas recientes en {self.music_service_name}.\n\n"
+                        "Asegúrate de tener escuchas registradas para recibir recomendaciones personalizadas."
+                    )
+                    return
+                
+                # Crear perfil de usuario
+                from models.schemas import UserProfile
+                user_profile = UserProfile(
+                    recent_tracks=recent_tracks,
+                    top_artists=top_artists,
+                    favorite_genres=[],
+                    mood_preference="",
+                    activity_context=""
                 )
-                return
-            
-            # Obtener datos del usuario
-            recent_tracks = await self.music_service.get_recent_tracks(limit=20)
-            top_artists = await self.music_service.get_top_artists(limit=10)
-            
-            if not recent_tracks:
-                await update.message.reply_text(
-                    f"⚠️ No se encontraron escuchas recientes en {self.music_service_name}.\n\n"
-                    "Asegúrate de tener escuchas registradas para recibir recomendaciones personalizadas."
+                
+                # Generar recomendaciones
+                print(f"🎯 Generando recomendaciones (tipo: {rec_type}, género: {genre_filter}) para {len(recent_tracks)} tracks y {len(top_artists)} artistas...")
+                recommendations = await self.ai.generate_recommendations(
+                    user_profile, 
+                    limit=5,
+                    recommendation_type=rec_type,
+                    genre_filter=genre_filter
                 )
-                return
-            
-            # Crear perfil de usuario
-            from models.schemas import UserProfile
-            user_profile = UserProfile(
-                recent_tracks=recent_tracks,
-                top_artists=top_artists,
-                favorite_genres=[],
-                mood_preference="",
-                activity_context=""
-            )
-            
-            # Generar recomendaciones
-            print(f"🎯 Generando recomendaciones (tipo: {rec_type}, género: {genre_filter}) para {len(recent_tracks)} tracks y {len(top_artists)} artistas...")
-            recommendations = await self.ai.generate_recommendations(
-                user_profile, 
-                limit=5,
-                recommendation_type=rec_type,
-                genre_filter=genre_filter
-            )
-            print(f"✅ Recomendaciones generadas: {len(recommendations)}")
+                print(f"✅ Recomendaciones generadas: {len(recommendations)}")
             
             if not recommendations:
                 print("❌ No se generaron recomendaciones")
@@ -192,7 +248,9 @@ Analizo tu actividad en ListenBrainz y tu biblioteca de Navidrome para sugerirte
             print(f"📝 Primera recomendación: {recommendations[0].track.artist} - {recommendations[0].track.title}")
             
             # Mostrar recomendaciones con título personalizado
-            if rec_type == "album":
+            if similar_to:
+                text = f"🎯 **Música similar a '{similar_to}':**\n\n"
+            elif rec_type == "album":
                 text = f"📀 **Álbumes recomendados{f' de {genre_filter}' if genre_filter else ''}:**\n\n"
             elif rec_type == "artist":
                 text = f"🎤 **Artistas recomendados{f' de {genre_filter}' if genre_filter else ''}:**\n\n"
