@@ -45,7 +45,7 @@ if [ ! -z "$NAVIDROME_URL" ]; then
     attempt=1
     
     while [ $attempt -le $max_attempts ]; do
-        if curl -s -f "$NAVIDROME_URL/api/ping" > /dev/null 2>&1; then
+        if curl -s -f "$NAVIDROME_URL/app/" > /dev/null 2>&1; then
             log "✅ Navidrome está disponible"
             break
         else
