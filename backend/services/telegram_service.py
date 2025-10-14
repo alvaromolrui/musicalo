@@ -139,7 +139,7 @@ Analizo tu actividad en ListenBrainz y tu biblioteca de Navidrome para sugerirte
         elif rec_type == "track":
             await update.message.reply_text(f"🎵 Buscando canciones{f' de {genre_filter}' if genre_filter else ''}...")
         else:
-        await update.message.reply_text("🎵 Analizando tus gustos musicales...")
+            await update.message.reply_text("🎵 Analizando tus gustos musicales...")
         
         try:
             # Verificar que haya servicio de scrobbling configurado
