@@ -1,7 +1,9 @@
 import httpx
 import os
 from typing import List, Optional, Dict, Any
-import base64
+import hashlib
+import random
+import string
 from models.schemas import Track, Album, Artist
 
 class NavidromeService:
@@ -9,79 +11,76 @@ class NavidromeService:
         self.base_url = os.getenv("NAVIDROME_URL", "http://localhost:4533")
         self.username = os.getenv("NAVIDROME_USERNAME", "admin")
         self.password = os.getenv("NAVIDROME_PASSWORD", "password")
-        self.token = None
         self.client = httpx.AsyncClient(timeout=30.0)
+        self.client_name = "musicalo"
+        self.api_version = "1.16.1"
     
-    async def authenticate(self):
-        """Autenticar con Navidrome y obtener token"""
+    def _get_auth_params(self):
+        """Generar parámetros de autenticación para Subsonic API"""
+        # Generar salt aleatorio
+        salt = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
+        
+        # Crear token: md5(password + salt)
+        token = hashlib.md5((self.password + salt).encode()).hexdigest()
+        
+        return {
+            "u": self.username,
+            "t": token,
+            "s": salt,
+            "v": self.api_version,
+            "c": self.client_name,
+            "f": "json"
+        }
+    
+    async def test_connection(self):
+        """Probar conexión con Navidrome"""
         try:
-            # Crear credenciales básicas
-            credentials = f"{self.username}:{self.password}"
-            encoded_credentials = base64.b64encode(credentials.encode()).decode()
-            
-            headers = {
-                "Authorization": f"Basic {encoded_credentials}",
-                "Content-Type": "application/x-www-form-urlencoded"
-            }
-            
-            # Login para obtener token
-            login_data = {
-                "username": self.username,
-                "password": self.password
-            }
-            
-            response = await self.client.post(
-                f"{self.base_url}/api/login",
-                data=login_data,
-                headers=headers
+            params = self._get_auth_params()
+            response = await self.client.get(
+                f"{self.base_url}/rest/ping.view",
+                params=params
             )
             
             if response.status_code == 200:
                 data = response.json()
-                self.token = data.get("token")
-                print(f"✅ Autenticación exitosa con Navidrome")
-                return True
-            else:
-                print(f"❌ Error de autenticación Navidrome: {response.status_code}")
-                print(f"   Response: {response.text}")
-                return False
+                subsonic_response = data.get("subsonic-response", {})
+                if subsonic_response.get("status") == "ok":
+                    print(f"✅ Conexión exitosa con Navidrome")
+                    return True
+            
+            print(f"❌ Error de conexión Navidrome: {response.status_code}")
+            return False
                 
         except Exception as e:
-            print(f"Error en autenticación Navidrome: {e}")
+            print(f"❌ Error probando conexión Navidrome: {e}")
             return False
     
-    async def _make_request(self, endpoint: str, params: Optional[Dict] = None):
-        """Realizar petición autenticada a Navidrome"""
-        if not self.token:
-            await self.authenticate()
-        
-        headers = {
-            "Authorization": f"Bearer {self.token}",
-            "Content-Type": "application/json"
-        }
-        
+    async def _make_request(self, endpoint: str, extra_params: Optional[Dict] = None):
+        """Realizar petición autenticada a Navidrome usando Subsonic API"""
         try:
+            # Combinar parámetros de autenticación con parámetros adicionales
+            params = self._get_auth_params()
+            if extra_params:
+                params.update(extra_params)
+            
             response = await self.client.get(
-                f"{self.base_url}/api/{endpoint}",
-                headers=headers,
-                params=params or {}
+                f"{self.base_url}/rest/{endpoint}.view",
+                params=params
             )
             
-            if response.status_code == 401:
-                # Token expirado, reautenticar
-                await self.authenticate()
-                headers["Authorization"] = f"Bearer {self.token}"
-                response = await self.client.get(
-                    f"{self.base_url}/api/{endpoint}",
-                    headers=headers,
-                    params=params or {}
-                )
-            
             response.raise_for_status()
-            return response.json()
+            data = response.json()
+            
+            # Verificar respuesta de Subsonic
+            subsonic_response = data.get("subsonic-response", {})
+            if subsonic_response.get("status") == "failed":
+                error = subsonic_response.get("error", {})
+                raise Exception(f"Navidrome error: {error.get('message', 'Unknown error')}")
+            
+            return subsonic_response
             
         except Exception as e:
-            print(f"Error en petición Navidrome: {e}")
+            print(f"❌ Error en petición Navidrome ({endpoint}): {e}")
             raise
     
     async def get_tracks(self, limit: int = 50, offset: int = 0, **filters) -> List[Track]:
@@ -180,16 +179,24 @@ class NavidromeService:
             return []
     
     async def search(self, query: str, limit: int = 20) -> Dict[str, List]:
-        """Buscar en la biblioteca"""
+        """Buscar en la biblioteca usando Subsonic API"""
         try:
             print(f"🔍 Buscando '{query}' en Navidrome...")
             params = {
-                "q": query,
-                "limit": limit
+                "query": query,
+                "songCount": limit,
+                "albumCount": limit,
+                "artistCount": limit
             }
             
             data = await self._make_request("search3", params)
-            print(f"📊 Resultados de búsqueda: {len(data.get('song', []))} canciones, {len(data.get('album', []))} álbumes, {len(data.get('artist', []))} artistas")
+            search_result = data.get("searchResult3", {})
+            
+            songs = search_result.get("song", [])
+            albums = search_result.get("album", [])
+            artists = search_result.get("artist", [])
+            
+            print(f"📊 Resultados de búsqueda: {len(songs)} canciones, {len(albums)} álbumes, {len(artists)} artistas")
             
             results = {
                 "tracks": [],
@@ -197,8 +204,8 @@ class NavidromeService:
                 "artists": []
             }
             
-            # Procesar resultados
-            for item in data.get("song", []):
+            # Procesar canciones
+            for item in songs:
                 track = Track(
                     id=item.get("id", ""),
                     title=item.get("title", ""),
@@ -207,34 +214,42 @@ class NavidromeService:
                     duration=item.get("duration"),
                     year=item.get("year"),
                     genre=item.get("genre"),
-                    cover_url=item.get("albumCoverArtUrl")
+                    play_count=item.get("playCount"),
+                    path=item.get("path"),
+                    cover_url=None  # Subsonic API no incluye cover URL directo en songs
                 )
                 results["tracks"].append(track)
             
-            for item in data.get("album", []):
+            # Procesar álbumes
+            for item in albums:
                 album = Album(
                     id=item.get("id", ""),
                     name=item.get("name", ""),
                     artist=item.get("artist", ""),
                     year=item.get("year"),
                     genre=item.get("genre"),
-                    cover_url=item.get("coverArtUrl")
+                    track_count=item.get("songCount"),
+                    duration=item.get("duration"),
+                    cover_url=None,  # Se puede construir con getCoverArt si es necesario
+                    play_count=item.get("playCount")
                 )
                 results["albums"].append(album)
             
-            for item in data.get("artist", []):
+            # Procesar artistas
+            for item in artists:
                 artist = Artist(
                     id=item.get("id", ""),
                     name=item.get("name", ""),
-                    genre=item.get("genre"),
-                    image_url=item.get("imageUrl")
+                    album_count=item.get("albumCount"),
+                    genre=None,  # No disponible en search3
+                    image_url=None  # Se puede construir con getArtistInfo si es necesario
                 )
                 results["artists"].append(artist)
             
             return results
             
         except Exception as e:
-            print(f"Error en búsqueda: {e}")
+            print(f"❌ Error en búsqueda: {e}")
             return {"tracks": [], "albums": [], "artists": []}
     
     async def close(self):
