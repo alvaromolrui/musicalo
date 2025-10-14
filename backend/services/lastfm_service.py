@@ -218,16 +218,39 @@ class LastFMService:
     async def get_user_stats(self) -> Dict[str, Any]:
         """Obtener estadísticas del usuario (formato compatible con el bot)"""
         try:
-            user_info = await self.get_user_info()
+            print("📊 Calculando estadísticas detalladas de Last.fm...")
             
-            return {
-                "total_listens": user_info.get("playcount", 0),
-                "total_artists": 0,  # Last.fm no proporciona este dato directamente
-                "total_albums": 0,   # Last.fm no proporciona este dato directamente
-                "total_tracks": 0,   # Last.fm no proporciona este dato directamente
+            # Obtener info básica
+            user_info = await self.get_user_info()
+            total_listens = user_info.get("playcount", 0)
+            
+            # Obtener canciones recientes para calcular únicos
+            recent_tracks = await self.get_recent_tracks(limit=1000)
+            
+            # Calcular artistas, álbumes y canciones únicas
+            unique_artists = set()
+            unique_albums = set()
+            unique_tracks = set()
+            
+            for track in recent_tracks:
+                if track.artist:
+                    unique_artists.add(track.artist)
+                if track.album:
+                    unique_albums.add(track.album)
+                if track.name and track.artist:
+                    unique_tracks.add(f"{track.artist} - {track.name}")
+            
+            stats = {
+                "total_listens": total_listens,
+                "total_artists": len(unique_artists),
+                "total_albums": len(unique_albums),
+                "total_tracks": len(unique_tracks),
                 "user_name": user_info.get("name"),
                 "country": user_info.get("country")
             }
+            
+            print(f"✅ Estadísticas: {stats['total_listens']} escuchas, {stats['total_artists']} artistas únicos")
+            return stats
             
         except Exception as e:
             print(f"❌ Error obteniendo estadísticas: {e}")

@@ -313,32 +313,90 @@ Analizo tu actividad en ListenBrainz y tu biblioteca de Navidrome para sugerirte
         
         data = query.data
         
-        if data.startswith("like_"):
-            track_id = data.split("_")[1]
-            await query.edit_message_text("❤️ ¡Gracias! He registrado que te gusta esta recomendación.")
-            
-        elif data.startswith("dislike_"):
-            track_id = data.split("_")[1]
-            await query.edit_message_text("👎 Entendido. Evitaré recomendaciones similares.")
-            
-        elif data == "more_recommendations":
-            await query.edit_message_text("🔄 Generando más recomendaciones...")
-            # Aquí podrías llamar a recommend_command nuevamente
-            
-        elif data.startswith("play_"):
-            track_id = data.split("_")[1]
-            # Aquí podrías generar un enlace a Navidrome
-            await query.edit_message_text("🎵 Abriendo en Navidrome...")
-            
-        elif data.startswith("library_"):
-            category = data.split("_")[1]
-            await query.edit_message_text(f"📚 Mostrando {category} de tu biblioteca...")
-            
-        elif data.startswith("search_"):
-            parts = data.split("_")
-            category = parts[1]
-            term = "_".join(parts[2:])
-            await query.edit_message_text(f"🔍 Mostrando {category} para '{term}'...")
+        try:
+            if data.startswith("like_"):
+                track_id = data.split("_")[1]
+                await query.edit_message_text("❤️ ¡Gracias! He registrado que te gusta esta recomendación.")
+                
+            elif data.startswith("dislike_"):
+                track_id = data.split("_")[1]
+                await query.edit_message_text("👎 Entendido. Evitaré recomendaciones similares.")
+                
+            elif data == "more_recommendations":
+                await query.edit_message_text("🔄 Generando más recomendaciones...")
+                # Aquí podrías llamar a recommend_command nuevamente
+                
+            elif data.startswith("play_"):
+                track_id = data.split("_")[1]
+                # Aquí podrías generar un enlace a Navidrome
+                await query.edit_message_text("🎵 Abriendo en Navidrome...")
+                
+            elif data.startswith("library_"):
+                category = data.split("_")[1]
+                await query.edit_message_text(f"📚 Cargando {category}...")
+                # Implementar lógica real aquí
+                
+            elif data == "daily_activity":
+                await query.edit_message_text("📈 Calculando actividad diaria...")
+                if self.music_service:
+                    activity = await self.music_service.get_listening_activity(days=30) if hasattr(self.music_service, 'get_listening_activity') else {}
+                    text = "📈 **Actividad de los últimos 30 días**\n\n"
+                    if activity:
+                        daily_listens = activity.get("daily_listens", {})
+                        text += f"📊 Total de días activos: {activity.get('total_days', 0)}\n"
+                        text += f"📊 Promedio diario: {activity.get('avg_daily_listens', 0):.1f} escuchas\n"
+                    else:
+                        text += "⚠️ No hay datos de actividad disponibles"
+                    await query.edit_message_text(text, parse_mode='Markdown')
+                else:
+                    await query.edit_message_text("⚠️ No hay servicio de scrobbling configurado")
+                
+            elif data == "favorite_genres":
+                await query.edit_message_text("🎯 Analizando géneros favoritos...")
+                await query.edit_message_text("🎯 **Géneros favoritos**\n\n⚠️ Funcionalidad en desarrollo")
+                
+            elif data == "refresh_stats":
+                await query.edit_message_text("🔄 Actualizando estadísticas...")
+                # Recalcular estadísticas
+                if self.music_service:
+                    user_stats = await self.music_service.get_user_stats() if hasattr(self.music_service, 'get_user_stats') else {}
+                    recent_tracks = await self.music_service.get_recent_tracks(limit=100)
+                    top_artists = await self.music_service.get_top_artists(limit=10)
+                    
+                    text = "📊 **Tus Estadísticas Musicales** (Actualizado)\n\n"
+                    text += f"🎵 **Total de escuchas:** {user_stats.get('total_listens', 'N/A')}\n"
+                    text += f"🎤 **Artistas únicos:** {user_stats.get('total_artists', 'N/A')}\n"
+                    text += f"📀 **Álbumes únicos:** {user_stats.get('total_albums', 'N/A')}\n"
+                    text += f"🎼 **Canciones únicas:** {user_stats.get('total_tracks', 'N/A')}\n\n"
+                    
+                    text += f"🏆 **Top 5 Artistas:**\n"
+                    for i, artist in enumerate(top_artists[:5], 1):
+                        text += f"{i}. {artist.name} ({artist.playcount} escuchas)\n"
+                    
+                    if recent_tracks:
+                        text += f"\n⏰ **Última escucha:**\n"
+                        last_track = recent_tracks[0]
+                        text += f"{last_track.artist} - {last_track.name}\n"
+                    
+                    keyboard = [
+                        [InlineKeyboardButton("📈 Actividad diaria", callback_data="daily_activity")],
+                        [InlineKeyboardButton("🎯 Géneros favoritos", callback_data="favorite_genres")],
+                        [InlineKeyboardButton("🔄 Actualizar", callback_data="refresh_stats")]
+                    ]
+                    reply_markup = InlineKeyboardMarkup(keyboard)
+                    await query.edit_message_text(text, reply_markup=reply_markup, parse_mode='Markdown')
+                else:
+                    await query.edit_message_text("⚠️ No hay servicio de scrobbling configurado")
+                    
+            elif data.startswith("search_"):
+                parts = data.split("_")
+                category = parts[1]
+                term = "_".join(parts[2:])
+                await query.edit_message_text(f"🔍 Mostrando {category} para '{term}'...")
+                
+        except Exception as e:
+            print(f"❌ Error en callback: {e}")
+            await query.edit_message_text(f"❌ Error: {str(e)}")
     
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Manejar mensajes de texto del usuario"""
