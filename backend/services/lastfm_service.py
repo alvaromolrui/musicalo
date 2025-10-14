@@ -327,10 +327,20 @@ class LastFMService:
                 similar_artists = [similar_artists]
             
             for i, artist_data in enumerate(similar_artists):
+                # Obtener imagen
+                images = artist_data.get("image", [])
+                image_url = None
+                if images:
+                    for img in images:
+                        if img.get("size") == "large":
+                            image_url = img.get("#text")
+                            break
+                
                 artist = LastFMArtist(
                     name=artist_data.get("name", ""),
                     url=artist_data.get("url"),
-                    rank=i + 1
+                    rank=i + 1,
+                    image_url=image_url
                 )
                 artists.append(artist)
             
@@ -338,6 +348,83 @@ class LastFMService:
             
         except Exception as e:
             print(f"❌ Error obteniendo artistas similares: {e}")
+            return []
+    
+    async def get_artist_top_albums(self, artist_name: str, limit: int = 5) -> List[Dict[str, Any]]:
+        """Obtener los álbumes top de un artista"""
+        try:
+            data = await self._make_request(
+                "artist.gettopalbums",
+                {"artist": artist_name, "limit": limit, "autocorrect": 1}
+            )
+            
+            albums = []
+            top_albums = data.get("topalbums", {}).get("album", [])
+            
+            if isinstance(top_albums, dict):
+                top_albums = [top_albums]
+            
+            for album_data in top_albums:
+                # Obtener imagen
+                images = album_data.get("image", [])
+                image_url = None
+                if images:
+                    for img in images:
+                        if img.get("size") == "large":
+                            image_url = img.get("#text")
+                            break
+                
+                albums.append({
+                    "name": album_data.get("name", ""),
+                    "artist": album_data.get("artist", {}).get("name", "") if isinstance(album_data.get("artist"), dict) else artist_name,
+                    "url": album_data.get("url"),
+                    "playcount": int(album_data.get("playcount", 0)),
+                    "image_url": image_url
+                })
+            
+            return albums
+            
+        except Exception as e:
+            print(f"❌ Error obteniendo top álbumes: {e}")
+            return []
+    
+    async def get_artist_top_tracks(self, artist_name: str, limit: int = 5) -> List[LastFMTrack]:
+        """Obtener las canciones top de un artista específico"""
+        try:
+            data = await self._make_request(
+                "artist.gettoptracks",
+                {"artist": artist_name, "limit": limit, "autocorrect": 1}
+            )
+            
+            tracks = []
+            top_tracks = data.get("toptracks", {}).get("track", [])
+            
+            if isinstance(top_tracks, dict):
+                top_tracks = [top_tracks]
+            
+            for track_data in top_tracks:
+                # Obtener imagen
+                images = track_data.get("image", [])
+                image_url = None
+                if images:
+                    for img in images:
+                        if img.get("size") == "large":
+                            image_url = img.get("#text")
+                            break
+                
+                track = LastFMTrack(
+                    name=track_data.get("name", ""),
+                    artist=track_data.get("artist", {}).get("name", "") if isinstance(track_data.get("artist"), dict) else artist_name,
+                    playcount=int(track_data.get("playcount", 0)),
+                    url=track_data.get("url"),
+                    image_url=image_url
+                )
+                tracks.append(track)
+            
+            return tracks
+            
+        except Exception as e:
+            print(f"❌ Error obteniendo top tracks del artista: {e}")
             return []
     
     async def get_listening_activity(self, days: int = 30) -> Dict[str, Any]:

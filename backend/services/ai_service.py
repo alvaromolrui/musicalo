@@ -198,31 +198,56 @@ class MusicRecommendationService:
                 # Crear recomendación del artista similar
                 print(f"   ➕ Agregando recomendación: {similar_artist.name}")
                 
-                # Personalizar el título según el tipo de recomendación
-                if recommendation_type == "artist":
+                # Personalizar según el tipo de recomendación
+                title = ""
+                reason = ""
+                album_name = ""
+                artist_url = similar_artist.url if hasattr(similar_artist, 'url') and similar_artist.url else ""
+                
+                if recommendation_type == "album":
+                    # Obtener el álbum top del artista similar
+                    top_albums = await self.lastfm.get_artist_top_albums(similar_artist.name, limit=1)
+                    if top_albums:
+                        album_data = top_albums[0]
+                        title = album_data.get("name", f"Álbum de {similar_artist.name}")
+                        album_name = album_data.get("name", "")
+                        artist_url = album_data.get("url", artist_url)
+                        reason = f"📀 Álbum top de artista similar a {top_artist.name}"
+                    else:
+                        title = f"Discografía de {similar_artist.name}"
+                        reason = f"📀 Similar a {top_artist.name}"
+                
+                elif recommendation_type == "track":
+                    # Obtener la canción top del artista similar
+                    top_tracks = await self.lastfm.get_artist_top_tracks(similar_artist.name, limit=1)
+                    if top_tracks:
+                        track_data = top_tracks[0]
+                        title = track_data.name
+                        artist_url = track_data.url if track_data.url else artist_url
+                        reason = f"🎵 Canción top de artista similar a {top_artist.name}"
+                    else:
+                        title = f"Música de {similar_artist.name}"
+                        reason = f"🎵 Similar a {top_artist.name}"
+                
+                elif recommendation_type == "artist":
                     title = similar_artist.name
                     reason = f"🌟 Similar a {top_artist.name}"
-                elif recommendation_type == "album":
-                    title = f"Álbumes de {similar_artist.name}"
-                    reason = f"📀 Discografía similar a {top_artist.name}"
-                elif recommendation_type == "track":
-                    title = f"Canciones de {similar_artist.name}"
-                    reason = f"🎵 Música similar a {top_artist.name}"
+                
                 else:
                     title = f"Descubre {similar_artist.name}"
                     reason = f"🌟 Artista similar a {top_artist.name} que te puede gustar"
                 
                 # Crear el objeto Track primero
                 track = Track(
-                    id=f"lastfm_{recommendation_type}_{similar_artist.name.replace(' ', '_')}",
+                    id=f"lastfm_{recommendation_type}_{similar_artist.name.replace(' ', '_')}_{title.replace(' ', '_')[:30]}",
                     title=title,
                     artist=similar_artist.name,
-                    album="",
+                    album=album_name,
                     duration=None,
                     year=None,
                     genre=genre_filter if genre_filter else "",
                     play_count=None,
-                    path="",
+                    path=artist_url if artist_url else "",  # Usar URL en el campo path
                     cover_url=None
                 )
                 

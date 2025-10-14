@@ -160,30 +160,64 @@ Analizo tu actividad en ListenBrainz y tu biblioteca de Navidrome para sugerirte
             # Si es una búsqueda "similar a...", usar Last.fm directamente
             if similar_to:
                 if self.lastfm:
-                    print(f"🔍 Buscando similares a '{similar_to}' en Last.fm...")
+                    print(f"🔍 Buscando similares a '{similar_to}' en Last.fm (tipo: {rec_type})...")
                     similar_artists = await self.lastfm.get_similar_artists(similar_to, limit=10)
                     
                     if similar_artists:
                         # Crear recomendaciones de los artistas similares
                         for similar_artist in similar_artists[:5]:
                             from models.schemas import Track
+                            
+                            title = ""
+                            album_name = ""
+                            reason = ""
+                            artist_url = similar_artist.url if similar_artist.url else ""
+                            
+                            # Obtener datos específicos según el tipo
+                            if rec_type == "album":
+                                top_albums = await self.lastfm.get_artist_top_albums(similar_artist.name, limit=1)
+                                if top_albums:
+                                    album_data = top_albums[0]
+                                    title = album_data.get("name", similar_artist.name)
+                                    album_name = album_data.get("name", "")
+                                    artist_url = album_data.get("url", artist_url)
+                                    reason = f"📀 Álbum top de artista similar a {similar_to}"
+                                else:
+                                    title = f"Discografía de {similar_artist.name}"
+                                    reason = f"📀 Similar a {similar_to}"
+                            
+                            elif rec_type == "track":
+                                top_tracks = await self.lastfm.get_artist_top_tracks(similar_artist.name, limit=1)
+                                if top_tracks:
+                                    track_data = top_tracks[0]
+                                    title = track_data.name
+                                    artist_url = track_data.url if track_data.url else artist_url
+                                    reason = f"🎵 Canción top de artista similar a {similar_to}"
+                                else:
+                                    title = f"Música de {similar_artist.name}"
+                                    reason = f"🎵 Similar a {similar_to}"
+                            
+                            else:
+                                title = similar_artist.name
+                                reason = f"🎯 Similar a {similar_to}"
+                            
                             track = Track(
                                 id=f"lastfm_similar_{similar_artist.name.replace(' ', '_')}",
-                                title=similar_artist.name if rec_type == "artist" else f"Descubre {similar_artist.name}",
+                                title=title,
                                 artist=similar_artist.name,
-                                album="",
+                                album=album_name,
                                 duration=None,
                                 year=None,
                                 genre="",
                                 play_count=None,
-                                path="",
+                                path=artist_url,
                                 cover_url=None
                             )
                             
                             from models.schemas import Recommendation
                             recommendation = Recommendation(
                                 track=track,
-                                reason=f"🎯 Similar a {similar_to}",
+                                reason=reason,
                                 confidence=0.9,
                                 source="Last.fm",
                                 tags=[]
@@ -266,6 +300,9 @@ Analizo tu actividad en ListenBrainz y tu biblioteca de Navidrome para sugerirte
                 text += f"   💡 {rec.reason}\n"
                 if rec.source:
                     text += f"   🔗 Fuente: {rec.source}\n"
+                # Agregar enlace si existe (está en el campo path)
+                if rec.track.path:
+                    text += f"   🌐 [Ver en Last.fm]({rec.track.path})\n"
                 text += f"   🎯 {int(rec.confidence * 100)}% match\n\n"
             
             # Botones de interacción
