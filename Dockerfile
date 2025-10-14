@@ -1,11 +1,11 @@
 # Usar imagen base optimizada
-FROM python:3.11-alpine
+FROM python:3.11-slim
 
 # Instalar dependencias del sistema mínimas
-RUN apk add --no-cache \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     bash \
-    && rm -rf /var/cache/apk/*
+    && rm -rf /var/lib/apt/lists/*
 
 # Establecer directorio de trabajo
 WORKDIR /app
