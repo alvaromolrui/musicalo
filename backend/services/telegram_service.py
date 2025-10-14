@@ -124,36 +124,47 @@ Analizo tu actividad en ListenBrainz y tu biblioteca de Navidrome para sugerirte
             )
             
             # Generar recomendaciones
+            print(f"🎯 Generando recomendaciones para {len(recent_tracks)} tracks y {len(top_artists)} artistas...")
             recommendations = await self.ai.generate_recommendations(user_profile, limit=5)
+            print(f"✅ Recomendaciones generadas: {len(recommendations)}")
             
             if not recommendations:
+                print("❌ No se generaron recomendaciones")
                 await update.message.reply_text(
                     "😔 No pude generar recomendaciones en este momento.\n\n"
                     "Intenta de nuevo más tarde o verifica tu configuración."
                 )
                 return
             
+            print(f"📝 Primera recomendación: {recommendations[0].artist} - {recommendations[0].title}")
+            
             # Mostrar recomendaciones
             text = "🎵 **Tus recomendaciones personalizadas:**\n\n"
             
             for i, rec in enumerate(recommendations, 1):
-                text += f"**{i}.** {rec.track.artist} - {rec.track.title}\n"
-                text += f"   📀 {rec.track.album}\n"
+                text += f"**{i}.** {rec.artist} - {rec.title}\n"
+                if rec.album:
+                    text += f"   📀 {rec.album}\n"
                 text += f"   💡 {rec.reason}\n"
-                text += f"   🎯 {int(rec.confidence * 100)}% confianza\n\n"
+                if rec.source:
+                    text += f"   🔗 Fuente: {rec.source}\n"
+                text += f"   🎯 {int(rec.score * 100)}% match\n\n"
             
             # Botones de interacción
             keyboard = [
-                [InlineKeyboardButton("❤️ Me gusta", callback_data=f"like_{recommendations[0].track.id}"),
-                 InlineKeyboardButton("👎 No me gusta", callback_data=f"dislike_{recommendations[0].track.id}")],
-                [InlineKeyboardButton("🔄 Más recomendaciones", callback_data="more_recommendations")],
-                [InlineKeyboardButton("🎵 Reproducir en Navidrome", callback_data=f"play_{recommendations[0].track.id}")]
+                [InlineKeyboardButton("❤️ Me gusta", callback_data=f"like_{recommendations[0].track_id}"),
+                 InlineKeyboardButton("👎 No me gusta", callback_data=f"dislike_{recommendations[0].track_id}")],
+                [InlineKeyboardButton("🔄 Más recomendaciones", callback_data="more_recommendations")]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             
             await update.message.reply_text(text, reply_markup=reply_markup, parse_mode='Markdown')
+            print("✅ Recomendaciones enviadas correctamente")
             
         except Exception as e:
+            print(f"❌ Error en recommend_command: {type(e).__name__}: {str(e)}")
+            import traceback
+            traceback.print_exc()
             await update.message.reply_text(f"❌ Error generando recomendaciones: {str(e)}")
     
     async def library_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
