@@ -1,0 +1,17 @@
+# Configuración adicional para desarrollo local
+# Este archivo se carga automáticamente junto con docker-compose.yml
+
+version: '3.8'
+
+services:
+  music-agent-bot:
+    # Configuración para desarrollo
+    environment:
+      - DEBUG=True
+    # Montar código fuente para desarrollo en vivo
+    volumes:
+      - ./backend:/app/backend:ro
+    # Exponer puerto para debugging
+    ports:
+      - "8000:8000"
+      - "5678:5678"  # Puerto para debugger remoto
