@@ -320,34 +320,45 @@ Analizo tu actividad en ListenBrainz y tu biblioteca de Navidrome para sugerirte
     async def button_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Manejar callbacks de botones inline"""
         query = update.callback_query
+        
+        # Importante: Responder primero al callback para que Telegram no muestre "loading"
         await query.answer()
         
         data = query.data
+        print(f"🔘 Botón presionado: {data}")
         
         try:
             if data.startswith("like_"):
-                track_id = data.split("_")[1]
+                print("   ➜ Procesando 'like'")
+                track_id = data.split("_", 1)[1]
                 await query.edit_message_text("❤️ ¡Gracias! He registrado que te gusta esta recomendación.")
+                print("   ✅ Like procesado")
                 
             elif data.startswith("dislike_"):
-                track_id = data.split("_")[1]
+                print("   ➜ Procesando 'dislike'")
+                track_id = data.split("_", 1)[1]
                 await query.edit_message_text("👎 Entendido. Evitaré recomendaciones similares.")
+                print("   ✅ Dislike procesado")
                 
             elif data == "more_recommendations":
-                await query.edit_message_text("🔄 Generando más recomendaciones...")
-                # Aquí podrías llamar a recommend_command nuevamente
+                print("   ➜ Procesando 'more_recommendations'")
+                await query.edit_message_text("🔄 Generando más recomendaciones...\n\n⚠️ Funcionalidad en desarrollo. Por favor usa /recommend de nuevo.")
+                print("   ✅ More recommendations procesado")
                 
             elif data.startswith("play_"):
-                track_id = data.split("_")[1]
-                # Aquí podrías generar un enlace a Navidrome
-                await query.edit_message_text("🎵 Abriendo en Navidrome...")
+                print("   ➜ Procesando 'play'")
+                track_id = data.split("_", 1)[1]
+                await query.edit_message_text("🎵 Abriendo en Navidrome...\n\n⚠️ Funcionalidad en desarrollo")
+                print("   ✅ Play procesado")
                 
             elif data.startswith("library_"):
-                category = data.split("_")[1]
-                await query.edit_message_text(f"📚 Cargando {category}...")
-                # Implementar lógica real aquí
+                print("   ➜ Procesando 'library'")
+                category = data.split("_", 1)[1]
+                await query.edit_message_text(f"📚 Cargando {category}...\n\n⚠️ Funcionalidad en desarrollo")
+                print("   ✅ Library procesado")
                 
             elif data == "daily_activity":
+                print("   ➜ Procesando 'daily_activity'")
                 await query.edit_message_text("📈 Calculando actividad diaria...")
                 if self.music_service:
                     activity = await self.music_service.get_listening_activity(days=30) if hasattr(self.music_service, 'get_listening_activity') else {}
@@ -359,14 +370,19 @@ Analizo tu actividad en ListenBrainz y tu biblioteca de Navidrome para sugerirte
                     else:
                         text += "⚠️ No hay datos de actividad disponibles"
                     await query.edit_message_text(text, parse_mode='Markdown')
+                    print("   ✅ Daily activity procesado")
                 else:
                     await query.edit_message_text("⚠️ No hay servicio de scrobbling configurado")
+                    print("   ⚠️ No hay servicio configurado")
                 
             elif data == "favorite_genres":
-                await query.edit_message_text("🎯 Analizando géneros favoritos...")
-                await query.edit_message_text("🎯 **Géneros favoritos**\n\n⚠️ Funcionalidad en desarrollo")
+                print("   ➜ Procesando 'favorite_genres'")
+                text = "🎯 **Géneros favoritos**\n\n⚠️ Funcionalidad en desarrollo"
+                await query.edit_message_text(text, parse_mode='Markdown')
+                print("   ✅ Favorite genres procesado")
                 
             elif data == "refresh_stats":
+                print("   ➜ Procesando 'refresh_stats'")
                 await query.edit_message_text("🔄 Actualizando estadísticas...")
                 # Recalcular estadísticas
                 if self.music_service:
@@ -396,18 +412,32 @@ Analizo tu actividad en ListenBrainz y tu biblioteca de Navidrome para sugerirte
                     ]
                     reply_markup = InlineKeyboardMarkup(keyboard)
                     await query.edit_message_text(text, reply_markup=reply_markup, parse_mode='Markdown')
+                    print("   ✅ Refresh stats procesado")
                 else:
                     await query.edit_message_text("⚠️ No hay servicio de scrobbling configurado")
+                    print("   ⚠️ No hay servicio configurado")
                     
             elif data.startswith("search_"):
+                print("   ➜ Procesando 'search'")
                 parts = data.split("_")
                 category = parts[1]
                 term = "_".join(parts[2:])
-                await query.edit_message_text(f"🔍 Mostrando {category} para '{term}'...")
+                await query.edit_message_text(f"🔍 Mostrando {category} para '{term}'...\n\n⚠️ Funcionalidad en desarrollo")
+                print("   ✅ Search procesado")
+            
+            else:
+                print(f"   ⚠️ Callback no reconocido: {data}")
+                await query.edit_message_text(f"⚠️ Opción no implementada: {data}")
                 
         except Exception as e:
-            print(f"❌ Error en callback: {e}")
-            await query.edit_message_text(f"❌ Error: {str(e)}")
+            print(f"❌ Error en callback: {type(e).__name__}: {e}")
+            import traceback
+            traceback.print_exc()
+            try:
+                await query.edit_message_text(f"❌ Error: {str(e)}")
+            except:
+                print("   ❌ No se pudo enviar mensaje de error")
+                pass
     
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Manejar mensajes de texto del usuario"""
