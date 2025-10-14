@@ -199,12 +199,12 @@ Analizo tu actividad en ListenBrainz y tu biblioteca de Navidrome para sugerirte
             elif rec_type == "track":
                 text = f"🎵 **Canciones recomendadas{f' de {genre_filter}' if genre_filter else ''}:**\n\n"
             else:
-            text = "🎵 **Tus recomendaciones personalizadas:**\n\n"
+                text = "🎵 **Tus recomendaciones personalizadas:**\n\n"
             
             for i, rec in enumerate(recommendations, 1):
                 text += f"**{i}.** {rec.track.artist} - {rec.track.title}\n"
                 if rec.track.album:
-                text += f"   📀 {rec.track.album}\n"
+                    text += f"   📀 {rec.track.album}\n"
                 text += f"   💡 {rec.reason}\n"
                 if rec.source:
                     text += f"   🔗 Fuente: {rec.source}\n"
