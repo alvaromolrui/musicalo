@@ -1,5 +1,11 @@
 # Music Agent Bot 🎵🤖
 
+[![Docker Hub](https://img.shields.io/badge/Docker%20Hub-alvaromolrui%2Fmusicalo-blue?logo=docker)](https://hub.docker.com/r/alvaromolrui/musicalo)
+[![GitHub](https://img.shields.io/badge/GitHub-alvaromolrui%2Fmusicalo-black?logo=github)](https://github.com/alvaromolrui/musicalo)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/Python-3.11-blue?logo=python)](https://python.org)
+[![Telegram](https://img.shields.io/badge/Telegram-Bot-blue?logo=telegram)](https://telegram.org)
+
 Un bot de Telegram inteligente que utiliza IA para generar recomendaciones musicales personalizadas basadas en tu biblioteca de Navidrome y tus scrobbles de ListenBrainz.
 
 ## ✨ Características
@@ -35,38 +41,60 @@ Un bot de Telegram inteligente que utiliza IA para generar recomendaciones music
 - API key de Google Gemini
 - Token de bot de Telegram
 
-### Instalación con Docker (Recomendado)
+### 🐳 Instalación Ultra-Rápida (Docker Hub)
+
+**¡La forma más sencilla de instalar!**
+
+```bash
+# 1. Clonar repositorio
+git clone https://github.com/alvaromolrui/musicalo.git
+cd musicalo
+
+# 2. Configurar credenciales
+cp env.docker .env
+nano .env  # Editar con tus credenciales
+
+# 3. Deploy instantáneo
+./quick-deploy.sh
+```
+
+**O incluso más simple con docker run:**
+```bash
+docker run -d \
+  --name music-agent-bot \
+  --restart unless-stopped \
+  -p 8000:8000 \
+  -e TELEGRAM_BOT_TOKEN=tu_token \
+  -e GEMINI_API_KEY=tu_key \
+  -e LISTENBRAINZ_USERNAME=tu_usuario \
+  -e NAVIDROME_URL=http://host.docker.internal:4533 \
+  -v $(pwd)/logs:/app/logs \
+  alvaromolrui/musicalo:latest
+```
+
+### 🔨 Instalación con Build Local
+
+Si prefieres construir la imagen localmente:
 
 1. **Clonar el repositorio**
 ```bash
-git clone <repository-url>
-cd musicAgent
+git clone https://github.com/alvaromolrui/musicalo.git
+cd musicalo
 ```
 
 2. **Configurar entorno**
 ```bash
-# Copiar archivo de configuración para Docker
 cp env.docker .env
-
-# Editar .env con tus credenciales
-nano .env
+nano .env  # Editar con tus credenciales
 ```
 
-3. **Crear bot de Telegram**
-   - Busca [@BotFather](https://t.me/botfather) en Telegram
-   - Crea un nuevo bot con `/newbot`
-   - Guarda el token en tu archivo `.env`
-
-4. **Ejecutar con Docker Compose**
+3. **Construir y ejecutar**
 ```bash
-# Opción 1: Script automático
+# Construir imagen local
 ./docker-start.sh
 
-# Opción 2: Manual
+# O manualmente
 docker-compose up -d
-
-# Opción 3: Windows
-docker-start.sh
 ```
 
 ### Instalación Manual (Sin Docker)
@@ -247,6 +275,59 @@ El sistema utiliza múltiples enfoques:
 - [ ] **Estadísticas avanzadas**: Gráficos y análisis detallados
 - [ ] **Sincronización múltiple**: Múltiples cuentas de música
 
+## 👨‍💻 Para Desarrolladores
+
+### 🔧 Build y Push Manual
+
+Si quieres construir y subir la imagen manualmente:
+
+```bash
+# Build y push a Docker Hub
+./build-and-push.sh [version]
+
+# Ejemplos:
+./build-and-push.sh latest
+./build-and-push.sh v1.0.0
+./build-and-push.sh dev
+```
+
+### 🔄 CI/CD Automático
+
+El repositorio incluye GitHub Actions que automáticamente:
+
+- ✅ **Construye la imagen** en cada push a `main`
+- ✅ **Sube a Docker Hub** como `alvaromolrui/musicalo:latest`
+- ✅ **Multiplataforma** (AMD64 y ARM64)
+- ✅ **Cache optimizado** para builds más rápidos
+- ✅ **Tags automáticos** para releases
+
+### 📦 Configurar GitHub Actions
+
+Para que funcione el CI/CD automático:
+
+1. **Ve a GitHub** → Tu repositorio → Settings → Secrets
+2. **Añade estos secrets:**
+   - `DOCKER_USERNAME`: `alvaromolrui`
+   - `DOCKER_PASSWORD`: Tu token de Docker Hub
+
+3. **Obtener token de Docker Hub:**
+   - Ve a [hub.docker.com](https://hub.docker.com)
+   - Settings → Security → New Access Token
+   - Copia el token y pégalo en `DOCKER_PASSWORD`
+
+### 🏷️ Releases y Versionado
+
+```bash
+# Crear release con tag
+git tag v1.0.0
+git push origin v1.0.0
+
+# Esto automáticamente creará:
+# - alvaromolrui/musicalo:v1.0.0
+# - alvaromolrui/musicalo:1.0
+# - alvaromolrui/musicalo:latest (si es la rama main)
+```
+
 ## 🤝 Contribuir
 
 1. Fork el proyecto
@@ -320,7 +401,23 @@ docker-compose ps
 
 ## 🚀 Inicio Rápido
 
-### Con Docker (Recomendado):
+### 🐳 Con Docker Hub (Más rápido):
+```bash
+# 1. Clonar repositorio
+git clone https://github.com/alvaromolrui/musicalo.git
+cd musicalo
+
+# 2. Configurar credenciales
+cp env.docker .env
+nano .env  # Editar con tus credenciales
+
+# 3. Deploy instantáneo
+./quick-deploy.sh
+
+# 4. ¡Listo! Busca tu bot en Telegram
+```
+
+### 🔨 Con build local:
 ```bash
 # 1. Configurar .env con tus credenciales
 cp env.docker .env

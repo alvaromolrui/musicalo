@@ -1,0 +1,101 @@
+version: '3.8'
+
+services:
+  music-agent-bot:
+    # Usar imagen pre-construida de Docker Hub
+    image: alvaromolrui/musicalo:latest
+    container_name: music-agent-bot
+    restart: unless-stopped
+    
+    environment:
+      # Navidrome Configuration
+      - NAVIDROME_URL=${NAVIDROME_URL:-http://host.docker.internal:4533}
+      - NAVIDROME_USERNAME=${NAVIDROME_USERNAME:-admin}
+      - NAVIDROME_PASSWORD=${NAVIDROME_PASSWORD:-password}
+      
+      # ListenBrainz Configuration
+      - LISTENBRAINZ_USERNAME=${LISTENBRAINZ_USERNAME}
+      - LISTENBRAINZ_TOKEN=${LISTENBRAINZ_TOKEN:-}
+      
+      # Gemini Configuration
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      
+      # Telegram Bot Configuration
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_WEBHOOK_URL=${TELEGRAM_WEBHOOK_URL:-}
+      
+      # Application Configuration
+      - DEBUG=${DEBUG:-False}
+      - HOST=${HOST:-0.0.0.0}
+      - PORT=${PORT:-8000}
+    
+    ports:
+      - "8000:8000"
+    
+    volumes:
+      # Volumen para logs persistentes
+      - ./logs:/app/logs
+      # Volumen para configuración (opcional)
+      - ./config:/app/config
+    
+    networks:
+      - music-agent-network
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    
+    # Límites de recursos
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+
+  # Servicio opcional: Nginx como proxy reverso
+  nginx:
+    image: nginx:alpine
+    container_name: music-agent-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - music-agent-bot
+    networks:
+      - music-agent-network
+    profiles:
+      - nginx  # Solo se ejecuta si se especifica el perfil
+
+  # Servicio opcional: Watchtower para actualizaciones automáticas
+  watchtower:
+    image: containrrr/watchtower
+    container_name: music-agent-watchtower
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_POLL_INTERVAL=86400  # 24 horas
+      - WATCHTOWER_INCLUDE_STOPPED=true
+      - WATCHTOWER_FILTERS=image=alvaromolrui/musicalo
+    profiles:
+      - watchtower  # Solo se ejecuta si se especifica el perfil
+
+networks:
+  music-agent-network:
+    driver: bridge
+
+volumes:
+  logs:
+    driver: local
+  config:
+    driver: local

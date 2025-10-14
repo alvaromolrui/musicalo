@@ -1,38 +1,42 @@
-# Usar imagen base de Python oficial
-FROM python:3.11-slim
+# Usar imagen base optimizada
+FROM python:3.11-alpine
+
+# Instalar dependencias del sistema mínimas
+RUN apk add --no-cache \
+    curl \
+    bash \
+    && rm -rf /var/cache/apk/*
 
 # Establecer directorio de trabajo
 WORKDIR /app
 
-# Instalar dependencias del sistema
-RUN apt-get update && apt-get install -y \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copiar archivos de dependencias
+# Copiar archivos de dependencias primero (mejor cache)
 COPY requirements.txt .
 
 # Instalar dependencias de Python
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
 # Copiar código de la aplicación
 COPY backend/ ./backend/
 COPY start-bot.py .
 COPY docker-entrypoint.sh .
 
-# Hacer ejecutable el script de entrada
-RUN chmod +x docker-entrypoint.sh
-
-# Crear directorio para logs
-RUN mkdir -p /app/logs
-
-# Crear usuario no-root para seguridad
-RUN useradd --create-home --shell /bin/bash bot && \
+# Crear usuario no-root y configurar permisos
+RUN adduser -D -s /bin/bash bot && \
+    chmod +x docker-entrypoint.sh && \
+    mkdir -p /app/logs && \
     chown -R bot:bot /app
+
+# Cambiar a usuario no-root
 USER bot
 
 # Exponer puerto
 EXPOSE 8000
 
-# Comando por defecto usando el script de entrada
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# Comando por defecto
 CMD ["./docker-entrypoint.sh"]
