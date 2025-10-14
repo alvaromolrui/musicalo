@@ -136,24 +136,24 @@ Analizo tu actividad en ListenBrainz y tu biblioteca de Navidrome para sugerirte
                 )
                 return
             
-            print(f"📝 Primera recomendación: {recommendations[0].artist} - {recommendations[0].title}")
+            print(f"📝 Primera recomendación: {recommendations[0].track.artist} - {recommendations[0].track.title}")
             
             # Mostrar recomendaciones
             text = "🎵 **Tus recomendaciones personalizadas:**\n\n"
             
             for i, rec in enumerate(recommendations, 1):
-                text += f"**{i}.** {rec.artist} - {rec.title}\n"
-                if rec.album:
-                    text += f"   📀 {rec.album}\n"
+                text += f"**{i}.** {rec.track.artist} - {rec.track.title}\n"
+                if rec.track.album:
+                    text += f"   📀 {rec.track.album}\n"
                 text += f"   💡 {rec.reason}\n"
                 if rec.source:
                     text += f"   🔗 Fuente: {rec.source}\n"
-                text += f"   🎯 {int(rec.score * 100)}% match\n\n"
+                text += f"   🎯 {int(rec.confidence * 100)}% match\n\n"
             
             # Botones de interacción
             keyboard = [
-                [InlineKeyboardButton("❤️ Me gusta", callback_data=f"like_{recommendations[0].track_id}"),
-                 InlineKeyboardButton("👎 No me gusta", callback_data=f"dislike_{recommendations[0].track_id}")],
+                [InlineKeyboardButton("❤️ Me gusta", callback_data=f"like_{recommendations[0].track.id}"),
+                 InlineKeyboardButton("👎 No me gusta", callback_data=f"dislike_{recommendations[0].track.id}")],
                 [InlineKeyboardButton("🔄 Más recomendaciones", callback_data="more_recommendations")]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)

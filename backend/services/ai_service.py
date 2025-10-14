@@ -150,16 +150,28 @@ class MusicRecommendationService:
                     
                     # Crear recomendación del artista similar
                     print(f"   ➕ Agregando recomendación: {similar_artist.name}")
-                    recommendation = Recommendation(
-                        track_id=f"lastfm_artist_{similar_artist.name.replace(' ', '_')}",
+                    
+                    # Crear el objeto Track primero
+                    track = Track(
+                        id=f"lastfm_artist_{similar_artist.name.replace(' ', '_')}",
                         title=f"Descubre música de {similar_artist.name}",
                         artist=similar_artist.name,
                         album="",
-                        score=0.85,  # Score alto para música nueva
-                        reason=f"🌟 Artista similar a {top_artist.name} que te puede gustar",
-                        source="Last.fm",
+                        duration=None,
+                        year=None,
                         genre="",
-                        year=None
+                        play_count=None,
+                        path="",
+                        cover_url=None
+                    )
+                    
+                    # Crear la recomendación
+                    recommendation = Recommendation(
+                        track=track,
+                        reason=f"🌟 Artista similar a {top_artist.name} que te puede gustar",
+                        confidence=0.85,  # Score alto para música nueva
+                        source="Last.fm",
+                        tags=[]
                     )
                     recommendations.append(recommendation)
             
