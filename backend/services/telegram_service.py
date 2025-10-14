@@ -316,10 +316,10 @@ Analizo tu actividad en Last.fm/ListenBrainz y tu biblioteca de Navidrome para s
                     text += f"   🌐 [Ver en Last.fm]({rec.track.path})\n"
                 text += f"   🎯 {int(rec.confidence * 100)}% match\n\n"
             
-            # Botones de interacción
+            # Botones de interacción (callback_data limitado a 64 bytes)
             keyboard = [
-                [InlineKeyboardButton("❤️ Me gusta", callback_data=f"like_{recommendations[0].track.id}"),
-                 InlineKeyboardButton("👎 No me gusta", callback_data=f"dislike_{recommendations[0].track.id}")],
+                [InlineKeyboardButton("❤️ Me gusta", callback_data="like_rec"),
+                 InlineKeyboardButton("👎 No me gusta", callback_data="dislike_rec")],
                 [InlineKeyboardButton("🔄 Más recomendaciones", callback_data="more_recommendations")]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
@@ -556,10 +556,9 @@ Proporciona una respuesta útil, informativa y amigable. Si la pregunta es sobre
             max_length = 4000  # Telegram tiene un límite de ~4096 caracteres
             
             if len(ai_response) <= max_length:
-                # Enviar respuesta completa
+                # Enviar respuesta completa (sin parse_mode para evitar errores de formato)
                 await update.message.reply_text(
-                    f"🤖 **Respuesta:**\n\n{ai_response}",
-                    parse_mode='Markdown'
+                    f"🤖 Respuesta:\n\n{ai_response}"
                 )
             else:
                 # Dividir la respuesta en partes
@@ -580,13 +579,11 @@ Proporciona una respuesta útil, informativa y amigable. Si la pregunta es sobre
                 for i, part in enumerate(parts):
                     if i == 0:
                         await update.message.reply_text(
-                            f"🤖 **Respuesta (Parte {i+1}/{len(parts)}):**\n\n{part}",
-                            parse_mode='Markdown'
+                            f"🤖 Respuesta (Parte {i+1}/{len(parts)}):\n\n{part}"
                         )
                     else:
                         await update.message.reply_text(
-                            f"**Parte {i+1}/{len(parts)}:**\n\n{part}",
-                            parse_mode='Markdown'
+                            f"Parte {i+1}/{len(parts)}:\n\n{part}"
                         )
             
             print("✅ Respuesta enviada correctamente")
@@ -656,8 +653,8 @@ Proporciona una respuesta útil, informativa y amigable. Si la pregunta es sobre
                             text += f"   🎯 {int(rec.confidence * 100)}% match\n\n"
                         
                         keyboard = [
-                            [InlineKeyboardButton("❤️ Me gusta", callback_data=f"like_{recommendations[0].track.id}"),
-                             InlineKeyboardButton("👎 No me gusta", callback_data=f"dislike_{recommendations[0].track.id}")],
+                            [InlineKeyboardButton("❤️ Me gusta", callback_data="like_rec"),
+                             InlineKeyboardButton("👎 No me gusta", callback_data="dislike_rec")],
                             [InlineKeyboardButton("🔄 Más recomendaciones", callback_data="more_recommendations")]
                         ]
                         reply_markup = InlineKeyboardMarkup(keyboard)
