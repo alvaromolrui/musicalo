@@ -534,7 +534,7 @@ Analizo tu actividad en Last.fm/ListenBrainz y tu biblioteca de Navidrome para s
             # Enviar prompt a Gemini
             import google.generativeai as genai
             genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-            model = genai.GenerativeModel('gemini-pro')
+            model = genai.GenerativeModel('gemini-1.5-flash')
             
             # Construir prompt completo
             full_prompt = f"""Eres un experto asistente musical que ayuda a los usuarios con preguntas sobre música, géneros, artistas, historia musical y recomendaciones.

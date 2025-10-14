@@ -14,7 +14,7 @@ class MusicRecommendationService:
     def __init__(self):
         # Configurar Gemini
         genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-        self.model = genai.GenerativeModel('gemini-pro')
+        self.model = genai.GenerativeModel('gemini-1.5-flash')
         self.navidrome = NavidromeService()
         self.listenbrainz = ListenBrainzService()
         
