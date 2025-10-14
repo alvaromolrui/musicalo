@@ -31,6 +31,10 @@ class ListenBrainzService:
                 print(f"Usuario {self.username} no encontrado en ListenBrainz")
                 return {}
             
+            if response.status_code == 410:
+                print(f"Usuario {self.username}: perfil no disponible o privado en ListenBrainz")
+                return {}
+            
             response.raise_for_status()
             return response.json()
             
