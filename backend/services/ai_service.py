@@ -7,6 +7,7 @@ import re
 from models.schemas import UserProfile, Recommendation, Track, LastFMTrack, LastFMArtist, MusicAnalysis
 from services.navidrome_service import NavidromeService
 from services.listenbrainz_service import ListenBrainzService
+from services.lastfm_service import LastFMService
 
 class MusicRecommendationService:
     def __init__(self):
@@ -15,6 +16,12 @@ class MusicRecommendationService:
         self.model = genai.GenerativeModel('gemini-pro')
         self.navidrome = NavidromeService()
         self.listenbrainz = ListenBrainzService()
+        
+        # Inicializar Last.fm si está configurado
+        self.lastfm = None
+        if os.getenv("LASTFM_API_KEY") and os.getenv("LASTFM_USERNAME"):
+            self.lastfm = LastFMService()
+            print("✅ Servicio de recomendaciones con Last.fm habilitado")
     
     async def analyze_user_profile(self, user_profile: UserProfile) -> MusicAnalysis:
         """Analizar el perfil musical del usuario"""
@@ -65,38 +72,96 @@ class MusicRecommendationService:
                 discovery_rate=0.0
             )
     
-    async def generate_recommendations(self, user_profile: UserProfile, limit: int = 10) -> List[Recommendation]:
-        """Generar recomendaciones basadas en el perfil del usuario"""
+    async def generate_recommendations(self, user_profile: UserProfile, limit: int = 10, include_new_music: bool = True) -> List[Recommendation]:
+        """Generar recomendaciones basadas en el perfil del usuario
+        
+        Args:
+            user_profile: Perfil del usuario con sus gustos
+            limit: Número de recomendaciones a generar
+            include_new_music: Si True, incluye música que no está en la biblioteca (usando Last.fm)
+        """
         try:
+            print(f"🎯 Generando {limit} recomendaciones...")
+            
             # Analizar perfil del usuario
             analysis = await self.analyze_user_profile(user_profile)
             
-            # Obtener canciones de la biblioteca
-            library_tracks = await self.navidrome.get_tracks(limit=200)
+            recommendations = []
             
-            # Filtrar canciones ya conocidas
-            known_tracks = {track.name.lower() for track in user_profile.recent_tracks}
-            unknown_tracks = [
-                track for track in library_tracks 
-                if track.title.lower() not in known_tracks
-            ]
+            # Si Last.fm está habilitado y se solicita música nueva, usarlo
+            if include_new_music and self.lastfm and len(user_profile.top_artists) > 0:
+                print("🌍 Buscando música nueva usando Last.fm...")
+                new_music_recs = await self._generate_lastfm_recommendations(user_profile, limit)
+                recommendations.extend(new_music_recs)
+                print(f"✅ Encontradas {len(new_music_recs)} recomendaciones de música nueva")
             
-            # Generar recomendaciones usando IA
-            recommendations = await self._generate_ai_recommendations(
-                user_profile, analysis, unknown_tracks, limit
-            )
-            
-            # Si no hay suficientes recomendaciones, usar algoritmo de similitud
+            # Si no hay suficientes, buscar en la biblioteca
             if len(recommendations) < limit:
-                additional_recs = await self._generate_similarity_recommendations(
-                    user_profile, unknown_tracks, limit - len(recommendations)
+                print("📚 Buscando en tu biblioteca de Navidrome...")
+                library_tracks = await self.navidrome.get_tracks(limit=200)
+                
+                # Filtrar canciones ya conocidas
+                known_tracks = {track.name.lower() for track in user_profile.recent_tracks}
+                unknown_tracks = [
+                    track for track in library_tracks 
+                    if track.title.lower() not in known_tracks
+                ]
+                
+                # Generar recomendaciones usando IA
+                library_recs = await self._generate_ai_recommendations(
+                    user_profile, analysis, unknown_tracks, limit - len(recommendations)
                 )
-                recommendations.extend(additional_recs)
+                recommendations.extend(library_recs)
+                print(f"✅ Encontradas {len(library_recs)} recomendaciones de tu biblioteca")
             
+            print(f"🎵 Total de recomendaciones: {len(recommendations)}")
             return recommendations[:limit]
             
         except Exception as e:
-            print(f"Error generando recomendaciones: {e}")
+            print(f"❌ Error generando recomendaciones: {e}")
+            return []
+    
+    async def _generate_lastfm_recommendations(self, user_profile: UserProfile, limit: int) -> List[Recommendation]:
+        """Generar recomendaciones usando Last.fm (música nueva que no tienes)"""
+        try:
+            recommendations = []
+            processed_artists = set()
+            
+            # Obtener artistas similares basados en los top artistas del usuario
+            for top_artist in user_profile.top_artists[:5]:  # Usar los top 5 artistas
+                if len(recommendations) >= limit:
+                    break
+                
+                # Obtener artistas similares
+                similar_artists = await self.lastfm.get_similar_artists(top_artist.name, limit=5)
+                
+                for similar_artist in similar_artists:
+                    if len(recommendations) >= limit:
+                        break
+                    
+                    if similar_artist.name in processed_artists:
+                        continue
+                    
+                    processed_artists.add(similar_artist.name)
+                    
+                    # Crear recomendación del artista similar
+                    recommendation = Recommendation(
+                        track_id=f"lastfm_artist_{similar_artist.name.replace(' ', '_')}",
+                        title=f"Descubre música de {similar_artist.name}",
+                        artist=similar_artist.name,
+                        album="",
+                        score=0.85,  # Score alto para música nueva
+                        reason=f"🌟 Artista similar a {top_artist.name} que te puede gustar",
+                        source="Last.fm",
+                        genre="",
+                        year=None
+                    )
+                    recommendations.append(recommendation)
+            
+            return recommendations
+            
+        except Exception as e:
+            print(f"❌ Error generando recomendaciones de Last.fm: {e}")
             return []
     
     async def _generate_ai_recommendations(
