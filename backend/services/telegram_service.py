@@ -42,12 +42,15 @@ Soy tu asistente personal de música que utiliza IA para recomendarte canciones 
 /library - Explorar tu biblioteca musical
 /stats - Ver estadísticas de escucha
 /search <término> - Buscar música en tu biblioteca
+/ask <pregunta> - Pregunta directa a la IA 🤖
 /help - Mostrar ayuda
 
 **¿Cómo funciona?**
-Analizo tu actividad en ListenBrainz y tu biblioteca de Navidrome para sugerirte música que realmente te gustará.
+Analizo tu actividad en Last.fm/ListenBrainz y tu biblioteca de Navidrome para sugerirte música que realmente te gustará.
 
-¡Escribe /recommend para empezar! 🎶
+**Nuevo:** Ahora puedes hacer preguntas directas a la IA con `/ask` o `/prompt` para obtener información sobre música, géneros, artistas y más.
+
+¡Escribe /recommend para empezar o /ask para preguntar algo! 🎶
         """
         
         keyboard = [
@@ -71,6 +74,8 @@ Analizo tu actividad en ListenBrainz y tu biblioteca de Navidrome para sugerirte
 • `/library` - Ver tu biblioteca musical
 • `/stats` - Estadísticas de escucha
 • `/search <término>` - Buscar en tu biblioteca
+• `/ask <pregunta>` - Pregunta directa a la IA
+• `/prompt <texto>` - Enviar prompt personalizado
 
 **Recomendaciones con filtros:**
 • `/recommend rock` - Música de rock
@@ -82,6 +87,12 @@ Analizo tu actividad en ListenBrainz y tu biblioteca de Navidrome para sugerirte
 • `/recommend similar albertucho` - Artistas similares
 • `/recommend like extremoduro` - Música parecida
 • `/recommend como marea` - Alternativa en español
+
+**Preguntas a la IA:**
+• `/ask ¿Qué es el rock progresivo?`
+• `/prompt Dame ideas para una playlist`
+• `/ask Explícame la historia del jazz`
+• `/prompt Recomienda bandas de metal melódico`
 
 **Búsqueda:**
 • `/search queen` - Buscar Queen
@@ -471,6 +482,123 @@ Analizo tu actividad en ListenBrainz y tu biblioteca de Navidrome para sugerirte
             
         except Exception as e:
             await update.message.reply_text(f"❌ Error en la búsqueda: {str(e)}")
+    
+    async def ask_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Comando /ask o /prompt - Enviar prompts personalizados a la IA
+        
+        Uso:
+        - /ask ¿Qué características tiene el rock progresivo?
+        - /prompt Dame ideas para una playlist de estudio
+        - /ask Explícame la diferencia entre jazz y blues
+        """
+        if not context.args:
+            await update.message.reply_text(
+                "🤖 **Uso:** `/ask <tu pregunta o prompt>`\n\n"
+                "También puedes usar `/prompt <tu prompt>`\n\n"
+                "**Ejemplos:**\n"
+                "• `/ask ¿Qué características tiene el rock progresivo?`\n"
+                "• `/prompt Dame ideas para una playlist de estudio`\n"
+                "• `/ask Explícame la historia del punk rock`\n"
+                "• `/prompt Recomiéndame bandas de metal melódico`\n"
+                "• `/ask ¿Cuál es la diferencia entre jazz y blues?`\n\n"
+                "💡 Puedes preguntar sobre música, géneros, artistas, historia musical, o pedirle a la IA que te ayude con cualquier tema relacionado con música.",
+                parse_mode='Markdown'
+            )
+            return
+        
+        # Construir el prompt del usuario
+        user_prompt = " ".join(context.args)
+        
+        # Enviar mensaje de espera
+        await update.message.reply_text(f"🤖 Procesando tu pregunta...\n\n_{user_prompt}_", parse_mode='Markdown')
+        
+        try:
+            # Opcional: Agregar contexto del usuario si está disponible
+            context_info = ""
+            if self.music_service:
+                try:
+                    # Obtener datos del usuario para dar contexto a la IA
+                    recent_tracks = await self.music_service.get_recent_tracks(limit=5)
+                    top_artists = await self.music_service.get_top_artists(limit=5)
+                    
+                    if recent_tracks or top_artists:
+                        context_info = "\n\nContexto del usuario para personalizar tu respuesta:\n"
+                        if top_artists:
+                            context_info += f"Top artistas: {', '.join([artist.name for artist in top_artists[:3]])}\n"
+                        if recent_tracks:
+                            context_info += f"Escuchas recientes: {', '.join([f'{track.artist}' for track in recent_tracks[:3]])}\n"
+                except Exception as e:
+                    print(f"⚠️ No se pudo obtener contexto del usuario: {e}")
+                    context_info = ""
+            
+            # Enviar prompt a Gemini
+            import google.generativeai as genai
+            genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+            model = genai.GenerativeModel('gemini-pro')
+            
+            # Construir prompt completo
+            full_prompt = f"""Eres un experto asistente musical que ayuda a los usuarios con preguntas sobre música, géneros, artistas, historia musical y recomendaciones.
+
+Pregunta del usuario: {user_prompt}
+{context_info}
+
+Proporciona una respuesta útil, informativa y amigable. Si la pregunta es sobre recomendaciones de música específica, intenta ser específico con nombres de artistas, álbumes o canciones."""
+            
+            print(f"🤖 Enviando prompt a Gemini: {user_prompt}")
+            
+            # Generar respuesta
+            response = model.generate_content(full_prompt)
+            ai_response = response.text
+            
+            print(f"✅ Respuesta de Gemini recibida (longitud: {len(ai_response)})")
+            
+            # Si la respuesta es muy larga, dividirla en varios mensajes
+            max_length = 4000  # Telegram tiene un límite de ~4096 caracteres
+            
+            if len(ai_response) <= max_length:
+                # Enviar respuesta completa
+                await update.message.reply_text(
+                    f"🤖 **Respuesta:**\n\n{ai_response}",
+                    parse_mode='Markdown'
+                )
+            else:
+                # Dividir la respuesta en partes
+                parts = []
+                current_part = ""
+                
+                for line in ai_response.split('\n'):
+                    if len(current_part) + len(line) + 1 > max_length:
+                        parts.append(current_part)
+                        current_part = line + '\n'
+                    else:
+                        current_part += line + '\n'
+                
+                if current_part:
+                    parts.append(current_part)
+                
+                # Enviar cada parte
+                for i, part in enumerate(parts):
+                    if i == 0:
+                        await update.message.reply_text(
+                            f"🤖 **Respuesta (Parte {i+1}/{len(parts)}):**\n\n{part}",
+                            parse_mode='Markdown'
+                        )
+                    else:
+                        await update.message.reply_text(
+                            f"**Parte {i+1}/{len(parts)}:**\n\n{part}",
+                            parse_mode='Markdown'
+                        )
+            
+            print("✅ Respuesta enviada correctamente")
+            
+        except Exception as e:
+            print(f"❌ Error en ask_command: {type(e).__name__}: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            await update.message.reply_text(
+                f"❌ Error al procesar tu pregunta: {str(e)}\n\n"
+                "Verifica que la API de Gemini esté configurada correctamente."
+            )
     
     async def button_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Manejar callbacks de botones inline"""
