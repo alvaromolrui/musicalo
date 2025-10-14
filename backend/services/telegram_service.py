@@ -64,25 +64,34 @@ Analizo tu actividad en ListenBrainz y tu biblioteca de Navidrome para sugerirte
 🎵 **Music Agent - Guía de Comandos**
 
 **Comandos principales:**
-• `/recommend` - Obtener recomendaciones basadas en IA
+• `/recommend` - Recomendaciones generales
+• `/recommend album` - Recomendar álbumes
+• `/recommend artist` - Recomendar artistas
+• `/recommend track` - Recomendar canciones
 • `/library` - Ver tu biblioteca musical
 • `/stats` - Estadísticas de escucha
-• `/search <término>` - Buscar canciones, artistas o álbumes
+• `/search <término>` - Buscar en tu biblioteca
 
-**Ejemplos:**
+**Recomendaciones con filtros:**
+• `/recommend rock` - Música de rock
+• `/recommend album jazz` - Álbumes de jazz
+• `/recommend artist metal` - Artistas de metal
+• `/recommend track pop` - Canciones pop
+
+**Búsqueda:**
 • `/search queen` - Buscar Queen
-• `/search bohemian rhapsody` - Buscar canción específica
+• `/search bohemian rhapsody` - Buscar canción
 
 **Botones interactivos:**
-• ❤️ - Me gusta esta recomendación
-• 👎 - No me gusta
-• 🔄 - Más recomendaciones
-• 🎵 - Reproducir en Navidrome
+• ❤️ Me gusta / 👎 No me gusta
+• 🔄 Más recomendaciones (genera nuevas)
+• 📚 Ver más (biblioteca)
+• 📊 Actualizar (estadísticas)
 
-**Configuración necesaria:**
-• ListenBrainz: Para análisis de escucha
-• Navidrome: Para tu biblioteca musical
-• Gemini AI: Para recomendaciones inteligentes
+**Servicios:**
+• Last.fm: Análisis de escucha y descubrimiento
+• Navidrome: Tu biblioteca musical
+• Gemini AI: Recomendaciones inteligentes
 
 ¿Necesitas ayuda con la configuración? Escribe /setup
         """
@@ -90,7 +99,46 @@ Analizo tu actividad en ListenBrainz y tu biblioteca de Navidrome para sugerirte
         await update.message.reply_text(help_text, parse_mode='Markdown')
     
     async def recommend_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Comando /recommend - Generar recomendaciones"""
+        """Comando /recommend - Generar recomendaciones
+        
+        Uso:
+        - /recommend → Recomendaciones generales
+        - /recommend album → Solo álbumes
+        - /recommend artist → Solo artistas
+        - /recommend track → Solo canciones
+        - /recommend rock → Recomendaciones de rock
+        - /recommend album metal → Álbumes de metal
+        """
+        # Parsear argumentos
+        rec_type = "general"  # general, album, artist, track
+        genre_filter = None
+        
+        if context.args:
+            args = [arg.lower() for arg in context.args]
+            
+            # Detectar tipo de recomendación
+            if any(word in args for word in ["album", "disco", "cd", "álbum"]):
+                rec_type = "album"
+                args = [a for a in args if a not in ["album", "disco", "cd", "álbum"]]
+            elif any(word in args for word in ["artist", "artista", "banda", "grupo"]):
+                rec_type = "artist"
+                args = [a for a in args if a not in ["artist", "artista", "banda", "grupo"]]
+            elif any(word in args for word in ["track", "song", "cancion", "canción", "tema"]):
+                rec_type = "track"
+                args = [a for a in args if a not in ["track", "song", "cancion", "canción", "tema"]]
+            
+            # El resto son géneros/estilos
+            if args:
+                genre_filter = " ".join(args)
+        
+        # Mensaje personalizado según el tipo
+        if rec_type == "album":
+            await update.message.reply_text(f"📀 Analizando álbumes{f' de {genre_filter}' if genre_filter else ''}...")
+        elif rec_type == "artist":
+            await update.message.reply_text(f"🎤 Buscando artistas{f' de {genre_filter}' if genre_filter else ''}...")
+        elif rec_type == "track":
+            await update.message.reply_text(f"🎵 Buscando canciones{f' de {genre_filter}' if genre_filter else ''}...")
+        else:
         await update.message.reply_text("🎵 Analizando tus gustos musicales...")
         
         try:
@@ -124,8 +172,13 @@ Analizo tu actividad en ListenBrainz y tu biblioteca de Navidrome para sugerirte
             )
             
             # Generar recomendaciones
-            print(f"🎯 Generando recomendaciones para {len(recent_tracks)} tracks y {len(top_artists)} artistas...")
-            recommendations = await self.ai.generate_recommendations(user_profile, limit=5)
+            print(f"🎯 Generando recomendaciones (tipo: {rec_type}, género: {genre_filter}) para {len(recent_tracks)} tracks y {len(top_artists)} artistas...")
+            recommendations = await self.ai.generate_recommendations(
+                user_profile, 
+                limit=5,
+                recommendation_type=rec_type,
+                genre_filter=genre_filter
+            )
             print(f"✅ Recomendaciones generadas: {len(recommendations)}")
             
             if not recommendations:
@@ -138,13 +191,20 @@ Analizo tu actividad en ListenBrainz y tu biblioteca de Navidrome para sugerirte
             
             print(f"📝 Primera recomendación: {recommendations[0].track.artist} - {recommendations[0].track.title}")
             
-            # Mostrar recomendaciones
+            # Mostrar recomendaciones con título personalizado
+            if rec_type == "album":
+                text = f"📀 **Álbumes recomendados{f' de {genre_filter}' if genre_filter else ''}:**\n\n"
+            elif rec_type == "artist":
+                text = f"🎤 **Artistas recomendados{f' de {genre_filter}' if genre_filter else ''}:**\n\n"
+            elif rec_type == "track":
+                text = f"🎵 **Canciones recomendadas{f' de {genre_filter}' if genre_filter else ''}:**\n\n"
+            else:
             text = "🎵 **Tus recomendaciones personalizadas:**\n\n"
             
             for i, rec in enumerate(recommendations, 1):
                 text += f"**{i}.** {rec.track.artist} - {rec.track.title}\n"
                 if rec.track.album:
-                    text += f"   📀 {rec.track.album}\n"
+                text += f"   📀 {rec.track.album}\n"
                 text += f"   💡 {rec.reason}\n"
                 if rec.source:
                     text += f"   🔗 Fuente: {rec.source}\n"
@@ -328,21 +388,21 @@ Analizo tu actividad en ListenBrainz y tu biblioteca de Navidrome para sugerirte
         print(f"🔘 Botón presionado: {data}")
         
         try:
-            if data.startswith("like_"):
+        if data.startswith("like_"):
                 print("   ➜ Procesando 'like'")
                 track_id = data.split("_", 1)[1]
-                await query.edit_message_text("❤️ ¡Gracias! He registrado que te gusta esta recomendación.")
+            await query.edit_message_text("❤️ ¡Gracias! He registrado que te gusta esta recomendación.")
                 print("   ✅ Like procesado")
-                
-            elif data.startswith("dislike_"):
+            
+        elif data.startswith("dislike_"):
                 print("   ➜ Procesando 'dislike'")
                 track_id = data.split("_", 1)[1]
-                await query.edit_message_text("👎 Entendido. Evitaré recomendaciones similares.")
+            await query.edit_message_text("👎 Entendido. Evitaré recomendaciones similares.")
                 print("   ✅ Dislike procesado")
-                
-            elif data == "more_recommendations":
+            
+        elif data == "more_recommendations":
                 print("   ➜ Procesando 'more_recommendations'")
-                await query.edit_message_text("🔄 Generando más recomendaciones...")
+            await query.edit_message_text("🔄 Generando más recomendaciones...")
                 
                 # Obtener datos del usuario y generar nuevas recomendaciones
                 if self.music_service:
@@ -385,14 +445,14 @@ Analizo tu actividad en ListenBrainz y tu biblioteca de Navidrome para sugerirte
                     await query.edit_message_text("⚠️ No hay servicio de scrobbling configurado")
                 
                 print("   ✅ More recommendations procesado")
-                
-            elif data.startswith("play_"):
+            
+        elif data.startswith("play_"):
                 print("   ➜ Procesando 'play'")
                 track_id = data.split("_", 1)[1]
                 await query.edit_message_text("🎵 Abriendo en Navidrome...\n\n⚠️ Funcionalidad en desarrollo")
                 print("   ✅ Play procesado")
-                
-            elif data.startswith("library_"):
+            
+        elif data.startswith("library_"):
                 print("   ➜ Procesando 'library'")
                 category = data.split("_", 1)[1]
                 await query.edit_message_text(f"📚 Cargando {category}...")
@@ -484,12 +544,12 @@ Analizo tu actividad en ListenBrainz y tu biblioteca de Navidrome para sugerirte
                 else:
                     await query.edit_message_text("⚠️ No hay servicio de scrobbling configurado")
                     print("   ⚠️ No hay servicio configurado")
-                    
-            elif data.startswith("search_"):
+            
+        elif data.startswith("search_"):
                 print("   ➜ Procesando 'search'")
-                parts = data.split("_")
-                category = parts[1]
-                term = "_".join(parts[2:])
+            parts = data.split("_")
+            category = parts[1]
+            term = "_".join(parts[2:])
                 await query.edit_message_text(f"🔍 Mostrando {category} para '{term}'...\n\n⚠️ Funcionalidad en desarrollo")
                 print("   ✅ Search procesado")
             

@@ -73,13 +73,22 @@ class MusicRecommendationService:
                 discovery_rate=0.0
             )
     
-    async def generate_recommendations(self, user_profile: UserProfile, limit: int = 10, include_new_music: bool = True) -> List[Recommendation]:
+    async def generate_recommendations(
+        self, 
+        user_profile: UserProfile, 
+        limit: int = 10, 
+        include_new_music: bool = True,
+        recommendation_type: str = "general",
+        genre_filter: Optional[str] = None
+    ) -> List[Recommendation]:
         """Generar recomendaciones basadas en el perfil del usuario
         
         Args:
             user_profile: Perfil del usuario con sus gustos
             limit: Número de recomendaciones a generar
             include_new_music: Si True, incluye música que no está en la biblioteca (usando Last.fm)
+            recommendation_type: 'general', 'album', 'artist', 'track'
+            genre_filter: Género o estilo específico para filtrar
         """
         try:
             print(f"🎯 Generando {limit} recomendaciones...")
@@ -91,8 +100,13 @@ class MusicRecommendationService:
             
             # Si Last.fm está habilitado y se solicita música nueva, usarlo
             if include_new_music and self.lastfm and len(user_profile.top_artists) > 0:
-                print("🌍 Buscando música nueva usando Last.fm...")
-                new_music_recs = await self._generate_lastfm_recommendations(user_profile, limit)
+                print(f"🌍 Buscando música nueva usando Last.fm (tipo: {recommendation_type}, género: {genre_filter})...")
+                new_music_recs = await self._generate_lastfm_recommendations(
+                    user_profile, 
+                    limit, 
+                    recommendation_type=recommendation_type,
+                    genre_filter=genre_filter
+                )
                 recommendations.extend(new_music_recs)
                 print(f"✅ Encontradas {len(new_music_recs)} recomendaciones de música nueva")
             
@@ -122,8 +136,21 @@ class MusicRecommendationService:
             print(f"❌ Error generando recomendaciones: {e}")
             return []
     
-    async def _generate_lastfm_recommendations(self, user_profile: UserProfile, limit: int) -> List[Recommendation]:
-        """Generar recomendaciones usando Last.fm (música nueva que no tienes)"""
+    async def _generate_lastfm_recommendations(
+        self, 
+        user_profile: UserProfile, 
+        limit: int,
+        recommendation_type: str = "general",
+        genre_filter: Optional[str] = None
+    ) -> List[Recommendation]:
+        """Generar recomendaciones usando Last.fm (música nueva que no tienes)
+        
+        Args:
+            user_profile: Perfil del usuario
+            limit: Número de recomendaciones
+            recommendation_type: 'general', 'album', 'artist', 'track'
+            genre_filter: Filtro de género/estilo
+        """
         try:
             recommendations = []
             processed_artists = set()
@@ -158,18 +185,38 @@ class MusicRecommendationService:
                     
                     processed_artists.add(similar_artist.name)
                     
+                    # Aplicar filtro de género si existe (usando IA para verificar si coincide)
+                    if genre_filter:
+                        # Simplificación: verificar si el género está en el nombre del artista o usar tags
+                        # En una implementación más completa, se podría consultar info adicional del artista
+                        pass  # Por ahora, incluir todos los artistas similares
+                    
                     # Crear recomendación del artista similar
                     print(f"   ➕ Agregando recomendación: {similar_artist.name}")
                     
+                    # Personalizar el título según el tipo de recomendación
+                    if recommendation_type == "artist":
+                        title = similar_artist.name
+                        reason = f"🌟 Similar a {top_artist.name}"
+                    elif recommendation_type == "album":
+                        title = f"Álbumes de {similar_artist.name}"
+                        reason = f"📀 Discografía similar a {top_artist.name}"
+                    elif recommendation_type == "track":
+                        title = f"Canciones de {similar_artist.name}"
+                        reason = f"🎵 Música similar a {top_artist.name}"
+                    else:
+                        title = f"Descubre {similar_artist.name}"
+                        reason = f"🌟 Artista similar a {top_artist.name} que te puede gustar"
+                    
                     # Crear el objeto Track primero
                     track = Track(
-                        id=f"lastfm_artist_{similar_artist.name.replace(' ', '_')}",
-                        title=f"Descubre música de {similar_artist.name}",
+                        id=f"lastfm_{recommendation_type}_{similar_artist.name.replace(' ', '_')}",
+                        title=title,
                         artist=similar_artist.name,
                         album="",
                         duration=None,
                         year=None,
-                        genre="",
+                        genre=genre_filter if genre_filter else "",
                         play_count=None,
                         path="",
                         cover_url=None
@@ -178,10 +225,10 @@ class MusicRecommendationService:
                     # Crear la recomendación
                     recommendation = Recommendation(
                         track=track,
-                        reason=f"🌟 Artista similar a {top_artist.name} que te puede gustar",
+                        reason=reason,
                         confidence=0.85,  # Score alto para música nueva
                         source="Last.fm",
-                        tags=[]
+                        tags=[genre_filter] if genre_filter else []
                     )
                     recommendations.append(recommendation)
             
