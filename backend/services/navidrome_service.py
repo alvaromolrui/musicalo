@@ -84,18 +84,31 @@ class NavidromeService:
             raise
     
     async def get_tracks(self, limit: int = 50, offset: int = 0, **filters) -> List[Track]:
-        """Obtener canciones de la biblioteca"""
+        """Obtener canciones aleatorias de la biblioteca"""
         try:
+            print(f"🎵 Obteniendo {limit} canciones aleatorias de Navidrome...")
+            
+            # Usar getRandomSongs para obtener canciones aleatorias
             params = {
-                "limit": limit,
-                "offset": offset,
-                **filters
+                "size": min(limit, 500)  # Máximo 500 según API de Subsonic
             }
             
-            data = await self._make_request("song", params)
+            # Agregar filtros si existen
+            if filters.get("genre"):
+                params["genre"] = filters["genre"]
+            if filters.get("fromYear"):
+                params["fromYear"] = filters["fromYear"]
+            if filters.get("toYear"):
+                params["toYear"] = filters["toYear"]
+            
+            data = await self._make_request("getRandomSongs", params)
             tracks = []
             
-            for item in data.get("content", []):
+            songs = data.get("randomSongs", {}).get("song", [])
+            if isinstance(songs, dict):
+                songs = [songs]
+            
+            for item in songs:
                 track = Track(
                     id=item.get("id", ""),
                     title=item.get("title", ""),
@@ -106,29 +119,37 @@ class NavidromeService:
                     genre=item.get("genre"),
                     play_count=item.get("playCount"),
                     path=item.get("path"),
-                    cover_url=item.get("albumCoverArtUrl")
+                    cover_url=None
                 )
                 tracks.append(track)
             
+            print(f"✅ Obtenidas {len(tracks)} canciones de Navidrome")
             return tracks
             
         except Exception as e:
-            print(f"Error obteniendo tracks: {e}")
+            print(f"❌ Error obteniendo tracks: {e}")
             return []
     
     async def get_albums(self, limit: int = 50, offset: int = 0, **filters) -> List[Album]:
         """Obtener álbumes de la biblioteca"""
         try:
+            print(f"📀 Obteniendo {limit} álbumes de Navidrome...")
+            
+            # Usar getAlbumList2 (tipo: random, newest, frequent, recent, etc)
             params = {
-                "limit": limit,
-                "offset": offset,
-                **filters
+                "type": "random",
+                "size": min(limit, 500),
+                "offset": offset
             }
             
-            data = await self._make_request("album", params)
+            data = await self._make_request("getAlbumList2", params)
             albums = []
             
-            for item in data.get("content", []):
+            album_list = data.get("albumList2", {}).get("album", [])
+            if isinstance(album_list, dict):
+                album_list = [album_list]
+            
+            for item in album_list:
                 album = Album(
                     id=item.get("id", ""),
                     name=item.get("name", ""),
@@ -137,45 +158,62 @@ class NavidromeService:
                     genre=item.get("genre"),
                     track_count=item.get("songCount"),
                     duration=item.get("duration"),
-                    cover_url=item.get("coverArtUrl"),
+                    cover_url=None,
                     play_count=item.get("playCount")
                 )
                 albums.append(album)
             
+            print(f"✅ Obtenidos {len(albums)} álbumes de Navidrome")
             return albums
             
         except Exception as e:
-            print(f"Error obteniendo álbumes: {e}")
+            print(f"❌ Error obteniendo álbumes: {e}")
             return []
     
     async def get_artists(self, limit: int = 50, offset: int = 0, **filters) -> List[Artist]:
         """Obtener artistas de la biblioteca"""
         try:
-            params = {
-                "limit": limit,
-                "offset": offset,
-                **filters
-            }
+            print(f"🎤 Obteniendo artistas de Navidrome...")
             
-            data = await self._make_request("artist", params)
+            # Usar getArtists para obtener todos los artistas
+            data = await self._make_request("getArtists", {})
             artists = []
             
-            for item in data.get("content", []):
-                artist = Artist(
-                    id=item.get("id", ""),
-                    name=item.get("name", ""),
-                    album_count=item.get("albumCount"),
-                    track_count=item.get("songCount"),
-                    play_count=item.get("playCount"),
-                    genre=item.get("genre"),
-                    image_url=item.get("imageUrl")
-                )
-                artists.append(artist)
+            # La API de Subsonic agrupa artistas por índice (A, B, C, etc.)
+            indexes = data.get("artists", {}).get("index", [])
+            if isinstance(indexes, dict):
+                indexes = [indexes]
             
+            artist_count = 0
+            for index in indexes:
+                artists_in_index = index.get("artist", [])
+                if isinstance(artists_in_index, dict):
+                    artists_in_index = [artists_in_index]
+                
+                for item in artists_in_index:
+                    if artist_count >= limit:
+                        break
+                    
+                    artist = Artist(
+                        id=item.get("id", ""),
+                        name=item.get("name", ""),
+                        album_count=item.get("albumCount"),
+                        track_count=None,  # No disponible en getArtists
+                        play_count=None,   # No disponible en getArtists
+                        genre=None,        # No disponible en getArtists
+                        image_url=None
+                    )
+                    artists.append(artist)
+                    artist_count += 1
+                
+                if artist_count >= limit:
+                    break
+            
+            print(f"✅ Obtenidos {len(artists)} artistas de Navidrome")
             return artists
             
         except Exception as e:
-            print(f"Error obteniendo artistas: {e}")
+            print(f"❌ Error obteniendo artistas: {e}")
             return []
     
     async def search(self, query: str, limit: int = 20) -> Dict[str, List]:
