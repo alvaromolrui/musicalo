@@ -41,6 +41,7 @@ Thumbs.db
 
 # Scripts
 docker-*.sh
+!docker-entrypoint.sh
 start-bot.bat
 
 # Config
