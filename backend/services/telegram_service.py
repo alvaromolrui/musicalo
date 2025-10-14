@@ -342,7 +342,48 @@ Analizo tu actividad en ListenBrainz y tu biblioteca de Navidrome para sugerirte
                 
             elif data == "more_recommendations":
                 print("   ➜ Procesando 'more_recommendations'")
-                await query.edit_message_text("🔄 Generando más recomendaciones...\n\n⚠️ Funcionalidad en desarrollo. Por favor usa /recommend de nuevo.")
+                await query.edit_message_text("🔄 Generando más recomendaciones...")
+                
+                # Obtener datos del usuario y generar nuevas recomendaciones
+                if self.music_service:
+                    recent_tracks = await self.music_service.get_recent_tracks(limit=20)
+                    top_artists = await self.music_service.get_top_artists(limit=10)
+                    
+                    from models.schemas import UserProfile
+                    user_profile = UserProfile(
+                        recent_tracks=recent_tracks,
+                        top_artists=top_artists,
+                        favorite_genres=[],
+                        mood_preference="",
+                        activity_context=""
+                    )
+                    
+                    recommendations = await self.ai.generate_recommendations(user_profile, limit=5)
+                    
+                    if recommendations:
+                        text = "🎵 **Nuevas recomendaciones para ti:**\n\n"
+                        
+                        for i, rec in enumerate(recommendations, 1):
+                            text += f"**{i}.** {rec.track.artist} - {rec.track.title}\n"
+                            if rec.track.album:
+                                text += f"   📀 {rec.track.album}\n"
+                            text += f"   💡 {rec.reason}\n"
+                            if rec.source:
+                                text += f"   🔗 Fuente: {rec.source}\n"
+                            text += f"   🎯 {int(rec.confidence * 100)}% match\n\n"
+                        
+                        keyboard = [
+                            [InlineKeyboardButton("❤️ Me gusta", callback_data=f"like_{recommendations[0].track.id}"),
+                             InlineKeyboardButton("👎 No me gusta", callback_data=f"dislike_{recommendations[0].track.id}")],
+                            [InlineKeyboardButton("🔄 Más recomendaciones", callback_data="more_recommendations")]
+                        ]
+                        reply_markup = InlineKeyboardMarkup(keyboard)
+                        await query.edit_message_text(text, reply_markup=reply_markup, parse_mode='Markdown')
+                    else:
+                        await query.edit_message_text("😔 No pude generar más recomendaciones en este momento.")
+                else:
+                    await query.edit_message_text("⚠️ No hay servicio de scrobbling configurado")
+                
                 print("   ✅ More recommendations procesado")
                 
             elif data.startswith("play_"):
@@ -354,7 +395,34 @@ Analizo tu actividad en ListenBrainz y tu biblioteca de Navidrome para sugerirte
             elif data.startswith("library_"):
                 print("   ➜ Procesando 'library'")
                 category = data.split("_", 1)[1]
-                await query.edit_message_text(f"📚 Cargando {category}...\n\n⚠️ Funcionalidad en desarrollo")
+                await query.edit_message_text(f"📚 Cargando {category}...")
+                
+                if category == "tracks":
+                    tracks = await self.navidrome.get_tracks(limit=20)
+                    text = "🎵 **Canciones de tu biblioteca:**\n\n"
+                    for i, track in enumerate(tracks[:15], 1):
+                        text += f"{i}. {track.artist} - {track.title}\n"
+                    await query.edit_message_text(text, parse_mode='Markdown')
+                    
+                elif category == "albums":
+                    albums = await self.navidrome.get_albums(limit=20)
+                    text = "📀 **Álbumes de tu biblioteca:**\n\n"
+                    for i, album in enumerate(albums[:15], 1):
+                        text += f"{i}. {album.artist} - {album.name}\n"
+                    await query.edit_message_text(text, parse_mode='Markdown')
+                    
+                elif category == "artists":
+                    artists = await self.navidrome.get_artists(limit=20)
+                    text = "🎤 **Artistas de tu biblioteca:**\n\n"
+                    for i, artist in enumerate(artists[:15], 1):
+                        text += f"{i}. {artist.name}\n"
+                    await query.edit_message_text(text, parse_mode='Markdown')
+                    
+                elif category == "search":
+                    await query.edit_message_text("🔍 Usa el comando `/search <término>` para buscar música", parse_mode='Markdown')
+                else:
+                    await query.edit_message_text(f"📚 Cargando {category}...\n\n⚠️ Funcionalidad en desarrollo")
+                
                 print("   ✅ Library procesado")
                 
             elif data == "daily_activity":

@@ -340,6 +340,44 @@ class LastFMService:
             print(f"❌ Error obteniendo artistas similares: {e}")
             return []
     
+    async def get_listening_activity(self, days: int = 30) -> Dict[str, Any]:
+        """Obtener actividad de escucha por días"""
+        try:
+            print(f"📅 Obteniendo actividad de los últimos {days} días...")
+            
+            # Obtener escuchas recientes (Last.fm devuelve hasta 1000)
+            recent_tracks = await self.get_recent_tracks(limit=1000)
+            
+            # Agrupar por fecha
+            from datetime import datetime, timedelta
+            daily_activity = {}
+            
+            # Calcular fecha límite
+            date_limit = datetime.now() - timedelta(days=days)
+            
+            for track in recent_tracks:
+                if track.date and track.date >= date_limit:
+                    date_str = track.date.strftime("%Y-%m-%d")
+                    if date_str not in daily_activity:
+                        daily_activity[date_str] = 0
+                    daily_activity[date_str] += 1
+            
+            avg_listens = sum(daily_activity.values()) / max(len(daily_activity), 1)
+            
+            result = {
+                "daily_listens": daily_activity,
+                "total_days": len(daily_activity),
+                "avg_daily_listens": avg_listens,
+                "date_range_days": days
+            }
+            
+            print(f"✅ Actividad: {len(daily_activity)} días activos, promedio {avg_listens:.1f} escuchas/día")
+            return result
+            
+        except Exception as e:
+            print(f"❌ Error obteniendo actividad: {e}")
+            return {}
+    
     async def close(self):
         """Cerrar conexión"""
         await self.client.aclose()
