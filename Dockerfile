@@ -23,7 +23,7 @@ COPY start-bot.py .
 COPY docker-entrypoint.sh .
 
 # Crear usuario no-root y configurar permisos
-RUN adduser -D -s /bin/bash bot && \
+RUN useradd -m -s /bin/bash bot && \
     chmod +x docker-entrypoint.sh && \
     mkdir -p /app/logs && \
     chown -R bot:bot /app
