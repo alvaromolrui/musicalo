@@ -4,6 +4,7 @@ from typing import List, Dict, Any, Optional
 import numpy as np
 from collections import Counter
 import re
+import random
 from models.schemas import UserProfile, Recommendation, Track, LastFMTrack, LastFMArtist, MusicAnalysis
 from services.navidrome_service import NavidromeService
 from services.listenbrainz_service import ListenBrainzService
@@ -127,17 +128,26 @@ class MusicRecommendationService:
             recommendations = []
             processed_artists = set()
             
-            print(f"🔍 Generando recomendaciones de Last.fm para {len(user_profile.top_artists[:5])} artistas")
+            # Seleccionar aleatoriamente algunos top artistas para variar las recomendaciones
+            available_top_artists = user_profile.top_artists[:10]  # Considerar top 10
+            num_artists_to_use = min(5, len(available_top_artists))
+            selected_artists = random.sample(available_top_artists, num_artists_to_use) if len(available_top_artists) > num_artists_to_use else available_top_artists
             
-            # Obtener artistas similares basados en los top artistas del usuario
-            for top_artist in user_profile.top_artists[:5]:  # Usar los top 5 artistas
+            print(f"🔍 Generando recomendaciones de Last.fm para {len(selected_artists)} artistas (seleccionados aleatoriamente)")
+            
+            # Obtener artistas similares basados en los artistas seleccionados
+            for top_artist in selected_artists:
                 if len(recommendations) >= limit:
                     break
                 
                 print(f"🎤 Buscando artistas similares a: {top_artist.name}")
-                # Obtener artistas similares
-                similar_artists = await self.lastfm.get_similar_artists(top_artist.name, limit=5)
+                # Obtener más artistas similares y seleccionar aleatoriamente
+                similar_artists = await self.lastfm.get_similar_artists(top_artist.name, limit=10)
                 print(f"   Encontrados {len(similar_artists)} artistas similares")
+                
+                # Aleatorizar el orden de artistas similares
+                if similar_artists:
+                    random.shuffle(similar_artists)
                 
                 for similar_artist in similar_artists:
                     if len(recommendations) >= limit:
