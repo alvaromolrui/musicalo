@@ -127,13 +127,17 @@ class MusicRecommendationService:
             recommendations = []
             processed_artists = set()
             
+            print(f"🔍 Generando recomendaciones de Last.fm para {len(user_profile.top_artists[:5])} artistas")
+            
             # Obtener artistas similares basados en los top artistas del usuario
             for top_artist in user_profile.top_artists[:5]:  # Usar los top 5 artistas
                 if len(recommendations) >= limit:
                     break
                 
+                print(f"🎤 Buscando artistas similares a: {top_artist.name}")
                 # Obtener artistas similares
                 similar_artists = await self.lastfm.get_similar_artists(top_artist.name, limit=5)
+                print(f"   Encontrados {len(similar_artists)} artistas similares")
                 
                 for similar_artist in similar_artists:
                     if len(recommendations) >= limit:
@@ -145,6 +149,7 @@ class MusicRecommendationService:
                     processed_artists.add(similar_artist.name)
                     
                     # Crear recomendación del artista similar
+                    print(f"   ➕ Agregando recomendación: {similar_artist.name}")
                     recommendation = Recommendation(
                         track_id=f"lastfm_artist_{similar_artist.name.replace(' ', '_')}",
                         title=f"Descubre música de {similar_artist.name}",
@@ -158,10 +163,13 @@ class MusicRecommendationService:
                     )
                     recommendations.append(recommendation)
             
+            print(f"✅ Total de recomendaciones de Last.fm: {len(recommendations)}")
             return recommendations
             
         except Exception as e:
             print(f"❌ Error generando recomendaciones de Last.fm: {e}")
+            import traceback
+            traceback.print_exc()
             return []
     
     async def _generate_ai_recommendations(
