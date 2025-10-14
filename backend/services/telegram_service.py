@@ -388,21 +388,21 @@ Analizo tu actividad en ListenBrainz y tu biblioteca de Navidrome para sugerirte
         print(f"🔘 Botón presionado: {data}")
         
         try:
-        if data.startswith("like_"):
+            if data.startswith("like_"):
                 print("   ➜ Procesando 'like'")
                 track_id = data.split("_", 1)[1]
-            await query.edit_message_text("❤️ ¡Gracias! He registrado que te gusta esta recomendación.")
+                await query.edit_message_text("❤️ ¡Gracias! He registrado que te gusta esta recomendación.")
                 print("   ✅ Like procesado")
-            
-        elif data.startswith("dislike_"):
+                
+            elif data.startswith("dislike_"):
                 print("   ➜ Procesando 'dislike'")
                 track_id = data.split("_", 1)[1]
-            await query.edit_message_text("👎 Entendido. Evitaré recomendaciones similares.")
+                await query.edit_message_text("👎 Entendido. Evitaré recomendaciones similares.")
                 print("   ✅ Dislike procesado")
-            
-        elif data == "more_recommendations":
+                
+            elif data == "more_recommendations":
                 print("   ➜ Procesando 'more_recommendations'")
-            await query.edit_message_text("🔄 Generando más recomendaciones...")
+                await query.edit_message_text("🔄 Generando más recomendaciones...")
                 
                 # Obtener datos del usuario y generar nuevas recomendaciones
                 if self.music_service:
@@ -445,14 +445,14 @@ Analizo tu actividad en ListenBrainz y tu biblioteca de Navidrome para sugerirte
                     await query.edit_message_text("⚠️ No hay servicio de scrobbling configurado")
                 
                 print("   ✅ More recommendations procesado")
-            
-        elif data.startswith("play_"):
+                
+            elif data.startswith("play_"):
                 print("   ➜ Procesando 'play'")
                 track_id = data.split("_", 1)[1]
                 await query.edit_message_text("🎵 Abriendo en Navidrome...\n\n⚠️ Funcionalidad en desarrollo")
                 print("   ✅ Play procesado")
-            
-        elif data.startswith("library_"):
+                
+            elif data.startswith("library_"):
                 print("   ➜ Procesando 'library'")
                 category = data.split("_", 1)[1]
                 await query.edit_message_text(f"📚 Cargando {category}...")
@@ -544,15 +544,15 @@ Analizo tu actividad en ListenBrainz y tu biblioteca de Navidrome para sugerirte
                 else:
                     await query.edit_message_text("⚠️ No hay servicio de scrobbling configurado")
                     print("   ⚠️ No hay servicio configurado")
-            
-        elif data.startswith("search_"):
+                    
+            elif data.startswith("search_"):
                 print("   ➜ Procesando 'search'")
-            parts = data.split("_")
-            category = parts[1]
-            term = "_".join(parts[2:])
+                parts = data.split("_")
+                category = parts[1]
+                term = "_".join(parts[2:])
                 await query.edit_message_text(f"🔍 Mostrando {category} para '{term}'...\n\n⚠️ Funcionalidad en desarrollo")
                 print("   ✅ Search procesado")
-            
+                
             else:
                 print(f"   ⚠️ Callback no reconocido: {data}")
                 await query.edit_message_text(f"⚠️ Opción no implementada: {data}")
