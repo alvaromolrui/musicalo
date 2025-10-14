@@ -5,6 +5,7 @@ import os
 from models.schemas import Recommendation, Track, LastFMTrack, LastFMArtist
 from services.navidrome_service import NavidromeService
 from services.listenbrainz_service import ListenBrainzService
+from services.lastfm_service import LastFMService
 from services.ai_service import MusicRecommendationService
 
 class TelegramService:
@@ -12,6 +13,22 @@ class TelegramService:
         self.navidrome = NavidromeService()
         self.listenbrainz = ListenBrainzService()
         self.ai = MusicRecommendationService()
+        
+        # Detectar qué servicio de scrobbling usar
+        self.lastfm = None
+        if os.getenv("LASTFM_API_KEY") and os.getenv("LASTFM_USERNAME"):
+            self.lastfm = LastFMService()
+            self.music_service = self.lastfm
+            self.music_service_name = "Last.fm"
+            print("✅ Usando Last.fm para datos de escucha")
+        elif os.getenv("LISTENBRAINZ_USERNAME"):
+            self.music_service = self.listenbrainz
+            self.music_service_name = "ListenBrainz"
+            print("✅ Usando ListenBrainz para datos de escucha")
+        else:
+            self.music_service = None
+            self.music_service_name = None
+            print("⚠️ No hay servicio de scrobbling configurado (Last.fm o ListenBrainz)")
         
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Comando /start - Bienvenida del bot"""
@@ -77,13 +94,21 @@ Analizo tu actividad en ListenBrainz y tu biblioteca de Navidrome para sugerirte
         await update.message.reply_text("🎵 Analizando tus gustos musicales...")
         
         try:
+            # Verificar que haya servicio de scrobbling configurado
+            if not self.music_service:
+                await update.message.reply_text(
+                    "⚠️ No hay servicio de scrobbling configurado.\n\n"
+                    "Por favor configura Last.fm o ListenBrainz para recibir recomendaciones personalizadas."
+                )
+                return
+            
             # Obtener datos del usuario
-            recent_tracks = await self.listenbrainz.get_recent_tracks(limit=20)
-            top_artists = await self.listenbrainz.get_top_artists(limit=10)
+            recent_tracks = await self.music_service.get_recent_tracks(limit=20)
+            top_artists = await self.music_service.get_top_artists(limit=10)
             
             if not recent_tracks:
                 await update.message.reply_text(
-                    "⚠️ No se encontraron escuchas recientes en ListenBrainz.\n\n"
+                    f"⚠️ No se encontraron escuchas recientes en {self.music_service_name}.\n\n"
                     "Asegúrate de tener escuchas registradas para recibir recomendaciones personalizadas."
                 )
                 return
@@ -175,10 +200,18 @@ Analizo tu actividad en ListenBrainz y tu biblioteca de Navidrome para sugerirte
         await update.message.reply_text("📊 Calculando tus estadísticas musicales...")
         
         try:
-            # Obtener estadísticas de ListenBrainz
-            user_stats = await self.listenbrainz.get_user_stats()
-            recent_tracks = await self.listenbrainz.get_recent_tracks(limit=100)
-            top_artists = await self.listenbrainz.get_top_artists(limit=10)
+            # Verificar que haya servicio de scrobbling configurado
+            if not self.music_service:
+                await update.message.reply_text(
+                    "⚠️ No hay servicio de scrobbling configurado.\n\n"
+                    "Por favor configura Last.fm o ListenBrainz para ver tus estadísticas."
+                )
+                return
+            
+            # Obtener estadísticas
+            user_stats = await self.music_service.get_user_stats() if hasattr(self.music_service, 'get_user_stats') else {}
+            recent_tracks = await self.music_service.get_recent_tracks(limit=100)
+            top_artists = await self.music_service.get_top_artists(limit=10)
             
             text = "📊 **Tus Estadísticas Musicales**\n\n"
             

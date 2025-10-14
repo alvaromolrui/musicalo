@@ -215,6 +215,24 @@ class LastFMService:
             print(f"❌ Error obteniendo info del usuario: {e}")
             return {}
     
+    async def get_user_stats(self) -> Dict[str, Any]:
+        """Obtener estadísticas del usuario (formato compatible con el bot)"""
+        try:
+            user_info = await self.get_user_info()
+            
+            return {
+                "total_listens": user_info.get("playcount", 0),
+                "total_artists": 0,  # Last.fm no proporciona este dato directamente
+                "total_albums": 0,   # Last.fm no proporciona este dato directamente
+                "total_tracks": 0,   # Last.fm no proporciona este dato directamente
+                "user_name": user_info.get("name"),
+                "country": user_info.get("country")
+            }
+            
+        except Exception as e:
+            print(f"❌ Error obteniendo estadísticas: {e}")
+            return {}
+    
     async def search_track(self, track_name: str, artist_name: str) -> Dict[str, Any]:
         """Buscar información de una canción específica"""
         try:
