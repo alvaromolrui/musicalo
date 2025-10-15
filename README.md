@@ -112,12 +112,11 @@ cd musicalo
 # 2. Instalar dependencias
 pip install -r requirements.txt
 
-# 3. Configurar (ajustar para localhost)
+# 3. Configurar
 cp env.example .env
 nano .env
-# Cambiar: NAVIDROME_URL=http://localhost:4533
-#          HOST=localhost
-#          DEBUG=True
+# Cambiar NAVIDROME_URL a: http://localhost:4533
+# (para instalación local sin Docker)
 
 # 4. Ejecutar
 python start-bot.py

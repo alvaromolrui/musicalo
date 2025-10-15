@@ -22,13 +22,7 @@ services:
       
       # Telegram Bot Configuration
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
-      - TELEGRAM_WEBHOOK_URL=${TELEGRAM_WEBHOOK_URL}
       - TELEGRAM_ALLOWED_USER_IDS=${TELEGRAM_ALLOWED_USER_IDS}
-      
-      # Application Configuration
-      - DEBUG=${DEBUG}
-      - HOST=${HOST}
-      - PORT=${PORT}
     
     volumes:
       # Volumen para logs persistentes
