@@ -30,9 +30,6 @@ services:
       - HOST=${HOST}
       - PORT=${PORT}
     
-    ports:
-      - "8000:8000"
-    
     volumes:
       # Volumen para logs persistentes
       - logs:/app/logs
