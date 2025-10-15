@@ -1,0 +1,88 @@
+name: Build and Push Docker Image
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+
+env:
+  DOCKER_USERNAME: alvaromolrui
+  IMAGE_NAME: musicalo
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ env.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+      
+      - name: Extract metadata
+        id: meta
+        run: |
+          # Determinar tags según el tipo de push
+          if [[ $GITHUB_REF == refs/tags/v* ]]; then
+            # Es un tag (release)
+            VERSION=${GITHUB_REF#refs/tags/v}
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "is_release=true" >> $GITHUB_OUTPUT
+            
+            # Tags para release: específico + latest
+            TAGS="${{ env.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${VERSION}"
+            TAGS="${TAGS},${{ env.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:latest"
+            echo "tags=$TAGS" >> $GITHUB_OUTPUT
+            
+          elif [[ $GITHUB_REF == refs/heads/main ]]; then
+            # Es push a main
+            echo "version=main" >> $GITHUB_OUTPUT
+            echo "is_release=false" >> $GITHUB_OUTPUT
+            
+            # Tag para main: solo main (NO latest)
+            TAGS="${{ env.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:main"
+            echo "tags=$TAGS" >> $GITHUB_OUTPUT
+          fi
+          
+          echo "📦 Tags a construir: $TAGS"
+      
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          labels: |
+            org.opencontainers.image.title=Musicalo
+            org.opencontainers.image.description=Bot de Telegram con IA para recomendaciones musicales
+            org.opencontainers.image.version=${{ steps.meta.outputs.version }}
+            org.opencontainers.image.source=https://github.com/${{ env.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}
+      
+      - name: Summary
+        run: |
+          echo "### 🎉 Build Completado" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Versión**: \`${{ steps.meta.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Tags**: \`${{ steps.meta.outputs.tags }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [[ "${{ steps.meta.outputs.is_release }}" == "true" ]]; then
+            echo "✅ **Release** publicado en Docker Hub" >> $GITHUB_STEP_SUMMARY
+            echo "🏷️ Tag \`latest\` actualizado" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "🔄 Tag \`main\` actualizado (desarrollo)" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "🐳 **Docker Hub**: https://hub.docker.com/r/${{ env.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}" >> $GITHUB_STEP_SUMMARY
+
