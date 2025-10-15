@@ -1,0 +1,78 @@
+version: '3.8'
+
+services:
+  musicalo-testing:
+    # Imagen de pruebas con tag específico
+    image: alvaromolrui/musicalo:testing
+    container_name: musicalo-testing
+    restart: unless-stopped
+    
+    environment:
+      # Navidrome Configuration (puede usar el mismo)
+      - NAVIDROME_URL=${NAVIDROME_URL}
+      - NAVIDROME_USERNAME=${NAVIDROME_USERNAME}
+      - NAVIDROME_PASSWORD=${NAVIDROME_PASSWORD}
+      
+      # ListenBrainz Configuration (puede usar el mismo)
+      - LISTENBRAINZ_USERNAME=${LISTENBRAINZ_USERNAME}
+      - LISTENBRAINZ_TOKEN=${LISTENBRAINZ_TOKEN}
+      
+      # Last.fm Configuration (puede usar el mismo)
+      - LASTFM_API_KEY=${LASTFM_API_KEY}
+      - LASTFM_USERNAME=${LASTFM_USERNAME}
+      
+      # Gemini Configuration (puede usar la misma API key)
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      
+      # Telegram Bot Configuration (DEBE SER UN BOT DIFERENTE PARA PRUEBAS)
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN_TESTING}
+      - TELEGRAM_WEBHOOK_URL=${TELEGRAM_WEBHOOK_URL_TESTING}
+      
+      # Application Configuration
+      - DEBUG=${DEBUG:-True}
+      - HOST=${HOST:-0.0.0.0}
+      - PORT=${PORT:-8000}
+    
+    ports:
+      # Puerto diferente para no colisionar con producción
+      - "8001:8000"
+    
+    volumes:
+      # Logs separados para testing
+      - logs-testing:/app/logs
+      # Config separado para testing
+      - config-testing:/app/config
+    
+    networks:
+      - musicalo-testing-network
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    
+    # Límites de recursos (más permisivos para testing)
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+    
+    labels:
+      - "com.musicalo.environment=testing"
+      - "com.musicalo.branch=feature/ai-natural-language-interaction"
+
+networks:
+  musicalo-testing-network:
+    driver: bridge
+
+volumes:
+  logs-testing:
+    driver: local
+  config-testing:
+    driver: local
+
