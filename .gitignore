@@ -25,9 +25,9 @@ wheels/
 
 # Environment files
 .env
-.env.local
-.env.testing
-.env.production
+.env.*
+!env.example
+!env.docker
 
 # Logs
 *.log
@@ -44,6 +44,7 @@ docker-compose.override.yml
 *.swo
 *~
 .DS_Store
+Thumbs.db
 
 # Config
 config/
@@ -55,7 +56,11 @@ config/
 .coverage
 htmlcov/
 
-# Personal notes
+# Personal notes y documentación interna
 notes.txt
 TODO.txt
+LISTO-PARA-PROBAR.md
+INSTRUCCIONES-FINALES.md
+RELEASE-*.md
+DESPLIEGUE-*.md
 

@@ -1,0 +1,21 @@
+# Configuración adicional para desarrollo local
+# Copia este archivo como docker-compose.override.yml para usarlo
+# docker-compose.override.yml se carga automáticamente junto con docker-compose.yml
+
+version: '3.8'
+
+services:
+  musicalo:  # DEBE coincidir con el nombre en docker-compose.yml
+    # Configuración para desarrollo
+    environment:
+      - DEBUG=True
+    
+    # Montar código fuente para desarrollo en vivo (opcional)
+    # Descomentar si quieres ver cambios sin rebuild
+    # volumes:
+    #   - ./backend:/app/backend:ro
+    
+    # Puerto para debugger remoto (opcional)
+    # ports:
+    #   - "5678:5678"
+
