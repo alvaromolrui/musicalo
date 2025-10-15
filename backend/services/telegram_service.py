@@ -157,23 +157,32 @@ Ahora puedes escribirme directamente sin usar comandos:
         if context.args:
             args = [arg.lower() for arg in context.args]
             
-            # Detectar búsquedas "similar a..." o "como..."
-            if args and args[0] in ["similar", "like", "como", "parecido"]:
-                similar_to = " ".join(args[1:])
-                print(f"🔍 Búsqueda de similares a: {similar_to}")
-            else:
-                # Detectar tipo de recomendación
-                if any(word in args for word in ["album", "disco", "cd", "álbum"]):
-                    rec_type = "album"
-                    args = [a for a in args if a not in ["album", "disco", "cd", "álbum"]]
-                elif any(word in args for word in ["artist", "artista", "banda", "grupo"]):
-                    rec_type = "artist"
-                    args = [a for a in args if a not in ["artist", "artista", "banda", "grupo"]]
-                elif any(word in args for word in ["track", "song", "cancion", "canción", "tema"]):
-                    rec_type = "track"
-                    args = [a for a in args if a not in ["track", "song", "cancion", "canción", "tema"]]
+            # Primero detectar tipo de recomendación (puede estar en cualquier posición)
+            if any(word in args for word in ["album", "disco", "cd", "álbum"]):
+                rec_type = "album"
+                args = [a for a in args if a not in ["album", "disco", "cd", "álbum"]]
+            elif any(word in args for word in ["artist", "artista", "banda", "grupo"]):
+                rec_type = "artist"
+                args = [a for a in args if a not in ["artist", "artista", "banda", "grupo"]]
+            elif any(word in args for word in ["track", "song", "cancion", "canción", "tema"]):
+                rec_type = "track"
+                args = [a for a in args if a not in ["track", "song", "cancion", "canción", "tema"]]
+            
+            # Luego detectar búsquedas "similar a..." o "como..."
+            if "similar" in args or "like" in args or "como" in args or "parecido" in args:
+                # Encontrar el índice de la palabra clave
+                similar_idx = -1
+                for keyword in ["similar", "like", "como", "parecido"]:
+                    if keyword in args:
+                        similar_idx = args.index(keyword)
+                        break
                 
-                # El resto son géneros/estilos
+                if similar_idx >= 0 and similar_idx + 1 < len(args):
+                    # Tomar todo después de "similar"
+                    similar_to = " ".join(args[similar_idx + 1:])
+                    print(f"🔍 Búsqueda de similares a: {similar_to} (tipo: {rec_type})")
+            else:
+                # Si no hay "similar", el resto son géneros/estilos
                 if args:
                     genre_filter = " ".join(args)
         
@@ -946,6 +955,9 @@ Responde AHORA con el JSON:"""
                     
                     # Si hay una referencia específica (similar_to), usarla
                     if similar_to:
+                        # IMPORTANTE: Añadir el tipo primero si no es general
+                        if rec_type and rec_type != "general":
+                            context.args.append(rec_type)
                         context.args.append("similar")
                         context.args.append(similar_to)
                     else:
