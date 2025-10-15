@@ -12,12 +12,29 @@ Un bot de Telegram inteligente que utiliza IA para generar recomendaciones music
 ## ✨ Características
 
 - **🤖 Lenguaje Natural**: Habla directamente con el bot sin necesidad de comandos
+- **🎨 Peticiones Específicas (NUEVO)**: Describe exactamente lo que buscas con todos los detalles
 - **🎯 IA Contextual**: Gemini AI entiende intenciones y responde con tus datos reales
 - **🎵 Integración con Navidrome**: Acceso completo a tu biblioteca musical autoalojada
 - **📊 Scrobbles de Last.fm/ListenBrainz**: Análisis de tus hábitos de escucha y patrones
 - **🧠 Recomendaciones Inteligentes**: Sistema usando Google Gemini que aprende de tus gustos
 - **🔄 Variedad**: Diferentes recomendaciones cada vez
 - **📱 Acceso móvil**: Optimizado para usar desde tu smartphone
+
+### 🎨 Recomendaciones Ultra-Específicas
+
+Ahora puedes ser todo lo específico que quieras en tus peticiones:
+
+```
+✅ "Rock progresivo de los 70s con sintetizadores"
+✅ "Música energética con buenos solos de guitarra"
+✅ "Jazz suave instrumental para estudiar"
+✅ "Metal melódico con voces limpias"
+✅ "Álbumes conceptuales melancólicos"
+```
+
+La IA entiende múltiples criterios y genera recomendaciones precisas que cumplen **todos** tus requisitos.
+
+📚 **[Ver guía completa de recomendaciones específicas →](RECOMENDACIONES-ESPECIFICAS.md)**
 
 ## 🏗️ Arquitectura
 
@@ -470,5 +487,6 @@ python start-bot.py
 ---
 
 **Music Agent Bot** - Descubre nueva música con el poder de la IA y la simplicidad de Telegram 🎵🤖
- 
+
+ 
  

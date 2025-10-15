@@ -47,6 +47,13 @@ Ya no necesitas recordar comandos. Escribe lo que quieras:
 • "Muéstrame mis estadísticas"
 • "¿Qué es el jazz?"
 
+**🎨 Sé específico en tus peticiones:**
+Puedes dar todos los detalles que quieras:
+• "Rock progresivo de los 70s con sintetizadores"
+• "Música energética para hacer ejercicio"
+• "Jazz suave para estudiar"
+• "Metal melódico con voces limpias"
+
 **📝 Comandos disponibles:**
 /recommend - Obtener recomendaciones personalizadas
 /library - Explorar tu biblioteca musical
@@ -81,6 +88,14 @@ Ahora puedes escribirme directamente sin usar comandos:
 • "Muéstrame mis estadísticas"
 • "¿Qué artistas tengo en mi biblioteca?"
 • "¿Qué es el blues?"
+
+**🎨 Peticiones Específicas (NUEVO):**
+Sé todo lo detallado que quieras:
+• "Rock progresivo de los 70s con sintetizadores"
+• "Música energética con buenos solos de guitarra"
+• "Álbumes conceptuales melancólicos"
+• "Jazz suave para estudiar"
+• "Metal melódico con voces limpias"
 
 **Comandos principales:**
 • `/recommend` - Recomendaciones generales
@@ -146,14 +161,22 @@ Ahora puedes escribirme directamente sin usar comandos:
         genre_filter = None
         similar_to = None  # Para búsquedas "similar a..."
         recommendation_limit = 5  # Por defecto
+        custom_prompt = None  # Para descripciones específicas
         
-        # Extraer límite si está en los args (viene de handle_message)
-        if context.args and any(arg.startswith("__limit=") for arg in context.args):
+        # Extraer argumentos especiales (vienen de handle_message)
+        if context.args:
             for arg in context.args[:]:
                 if arg.startswith("__limit="):
                     try:
-                        recommendation_limit = int(arg.split("=")[1])
+                        recommendation_limit = int(arg.split("=", 1)[1])
                         context.args.remove(arg)
+                    except:
+                        pass
+                elif arg.startswith("__custom_prompt="):
+                    try:
+                        custom_prompt = arg.split("=", 1)[1]
+                        context.args.remove(arg)
+                        print(f"🎨 Custom prompt extraído: {custom_prompt}")
                     except:
                         pass
         
@@ -190,7 +213,9 @@ Ahora puedes escribirme directamente sin usar comandos:
                     genre_filter = " ".join(args)
         
         # Mensaje personalizado según el tipo
-        if similar_to:
+        if custom_prompt:
+            await update.message.reply_text(f"🎨 Analizando tu petición: '{custom_prompt}'...")
+        elif similar_to:
             await update.message.reply_text(f"🔍 Buscando música similar a '{similar_to}'...")
         elif rec_type == "album":
             await update.message.reply_text(f"📀 Analizando álbumes{f' de {genre_filter}' if genre_filter else ''}...")
@@ -327,12 +352,17 @@ Ahora puedes escribirme directamente sin usar comandos:
                 )
                 
                 # Generar recomendaciones (recommendation_limit ya está definido arriba)
-                print(f"🎯 Generando recomendaciones (tipo: {rec_type}, género: {genre_filter}) para {len(recent_tracks)} tracks y {len(top_artists)} artistas...")
+                if custom_prompt:
+                    print(f"🎯 Generando recomendaciones con prompt personalizado: {custom_prompt}")
+                else:
+                    print(f"🎯 Generando recomendaciones (tipo: {rec_type}, género: {genre_filter}) para {len(recent_tracks)} tracks y {len(top_artists)} artistas...")
+                
                 recommendations = await self.ai.generate_recommendations(
                     user_profile, 
                     limit=recommendation_limit,
                     recommendation_type=rec_type,
-                    genre_filter=genre_filter
+                    genre_filter=genre_filter,
+                    custom_prompt=custom_prompt
                 )
                 print(f"✅ Recomendaciones generadas: {len(recommendations)}")
             
@@ -347,7 +377,9 @@ Ahora puedes escribirme directamente sin usar comandos:
             print(f"📝 Primera recomendación: {recommendations[0].track.artist} - {recommendations[0].track.title}")
             
             # Mostrar recomendaciones con título personalizado
-            if similar_to:
+            if custom_prompt:
+                text = f"🎨 **Recomendaciones para:** _{custom_prompt}_\n\n"
+            elif similar_to:
                 text = f"🎯 **Música similar a '{similar_to}':**\n\n"
             elif rec_type == "album":
                 text = f"📀 **Álbumes recomendados{f' de {genre_filter}' if genre_filter else ''}:**\n\n"
@@ -969,15 +1001,16 @@ Acciones disponibles:
 1. "recommend" - Para recomendar música, álbumes, artistas o canciones
    - Parámetros: 
      * rec_type (general/album/artist/track)
-     * genre_filter (opcional, solo para géneros musicales)
+     * genre_filter (opcional, solo para géneros musicales SIMPLES)
      * similar_to (opcional, nombre de artista/álbum para buscar similares)
      * limit (número de resultados: 1, 3, 5, etc. Por defecto 5)
+     * custom_prompt (opcional, descripción ESPECÍFICA cuando hay múltiples criterios o características detalladas)
 2. "search" - Para buscar música específica en su biblioteca
    - Parámetros: search_term (término de búsqueda)
 3. "stats" - Para ver estadísticas de escucha completas (mensaje largo)
 4. "library" - Para explorar su biblioteca musical completa (mensaje largo)
 5. "chat" - Para CUALQUIER pregunta conversacional sobre música del usuario o recomendaciones complejas
-   - Usar cuando pregunte: "cuál es mi última canción", "recomiéndame algo como...", "qué álbumes tengo de..."
+   - Usar cuando pregunte: "cuál es mi última canción", "qué álbumes tengo de..."
    - Parámetros: question (la pregunta del usuario)
 6. "question" - Para responder preguntas GENERALES sobre teoría musical, historia, géneros
    - Usar cuando pregunte: "qué es el jazz", "quién inventó el rock"
@@ -985,13 +1018,26 @@ Acciones disponibles:
 7. "unknown" - Cuando NO sepas qué acción tomar o el mensaje sea muy complejo/ambiguo
    - Se manejará conversacionalmente con todos los datos del usuario
 
-IMPORTANTE:
-- Si el usuario menciona un artista/álbum específico como referencia (ej: "como Pink Floyd", "similar a", "parecido a"), usa "similar_to" con el nombre del artista
+IMPORTANTE - CUÁNDO USAR custom_prompt:
+- USA custom_prompt cuando el usuario especifique MÚLTIPLES CARACTERÍSTICAS o CRITERIOS DETALLADOS
+- Ejemplos que REQUIEREN custom_prompt:
+  * "rock progresivo de los 70s con sintetizadores"
+  * "música energética con buenos solos de guitarra"
+  * "álbumes conceptuales melancólicos"
+  * "rock alternativo español de los 90s"
+  * "jazz suave para estudiar"
+  * "metal melódico con voces limpias"
+- NO uses custom_prompt para peticiones simples:
+  * "discos de rock" → solo genre_filter
+  * "similar a Queen" → solo similar_to
+
+REGLAS BÁSICAS:
 - Si pide "un disco" o "álbum" (singular) usa limit=1 y rec_type="album"
 - Si pide "discos" o "álbumes" (plural) usa limit=5 y rec_type="album"
 - "disco" y "álbum" SIEMPRE significan rec_type="album"
-- Si menciona un género musical (rock, jazz, etc) SIN referencia específica, usa "genre_filter"
-- Si menciona una referencia específica (artista/álbum), NO uses genre_filter, usa "similar_to"
+- Si es SOLO un género simple → usa genre_filter
+- Si es SOLO similar a un artista → usa similar_to
+- Si tiene MÚLTIPLES criterios o características específicas → usa custom_prompt con TODO el contexto
 
 Responde SOLO con un objeto JSON en este formato exacto (sin markdown, sin explicaciones):
 {{"action": "nombre_accion", "params": {{"parametro": "valor"}}}}
@@ -999,15 +1045,14 @@ Responde SOLO con un objeto JSON en este formato exacto (sin markdown, sin expli
 Ejemplos:
 - "recomiéndame un disco" → {{"action": "recommend", "params": {{"rec_type": "album", "limit": 1}}}}
 - "recomiéndame discos de rock" → {{"action": "recommend", "params": {{"rec_type": "album", "genre_filter": "rock", "limit": 5}}}}
-- "recomiéndame un disco como Dark Side of the Moon de Pink Floyd" → {{"action": "recommend", "params": {{"rec_type": "album", "similar_to": "Pink Floyd", "limit": 1}}}}
-- "recomiéndame un disco de algún grupo similar a Cala vento" → {{"action": "recommend", "params": {{"rec_type": "album", "similar_to": "Cala vento", "limit": 1}}}}
-- "artistas similares a Queen" → {{"action": "recommend", "params": {{"rec_type": "artist", "similar_to": "Queen", "limit": 5}}}}
+- "recomiéndame rock progresivo de los 70s con sintetizadores" → {{"action": "recommend", "params": {{"rec_type": "general", "custom_prompt": "rock progresivo de los 70s con sintetizadores", "limit": 5}}}}
+- "álbumes de metal melódico con voces limpias" → {{"action": "recommend", "params": {{"rec_type": "album", "custom_prompt": "metal melódico con voces limpias", "limit": 5}}}}
+- "música energética para hacer ejercicio" → {{"action": "recommend", "params": {{"rec_type": "general", "custom_prompt": "música energética para hacer ejercicio", "limit": 5}}}}
+- "similar a Pink Floyd" → {{"action": "recommend", "params": {{"rec_type": "general", "similar_to": "Pink Floyd", "limit": 5}}}}
 - "busca Queen" → {{"action": "search", "params": {{"search_term": "Queen"}}}}
 - "cuál es mi última canción" → {{"action": "chat", "params": {{"question": "cuál es mi última canción"}}}}
-- "qué artista he escuchado más" → {{"action": "chat", "params": {{"question": "qué artista he escuchado más"}}}}
 - "mis estadísticas" → {{"action": "stats", "params": {{}}}}
 - "¿qué es el jazz?" → {{"action": "question", "params": {{"question": "¿qué es el jazz?"}}}}
-- "quién inventó el rock" → {{"action": "question", "params": {{"question": "quién inventó el rock"}}}}
 
 Responde AHORA con el JSON:"""
             
@@ -1039,6 +1084,7 @@ Responde AHORA con el JSON:"""
                     genre_filter = params.get("genre_filter")
                     similar_to = params.get("similar_to")
                     limit = params.get("limit", 5)
+                    custom_prompt = params.get("custom_prompt")
                     
                     # Fallback: si el mensaje menciona "disco" o "álbum" y rec_type no está definido, forzar a "album"
                     if rec_type == "general" and any(word in user_message.lower() for word in ["disco", "discos", "álbum", "album", "albumes", "álbumes"]):
@@ -1048,8 +1094,16 @@ Responde AHORA con el JSON:"""
                     # Construir los argumentos para recommend_command
                     context.args = []
                     
+                    # Si hay custom_prompt, agregarlo como argumento especial
+                    if custom_prompt:
+                        # Agregar tipo si no es general
+                        if rec_type and rec_type != "general":
+                            context.args.append(rec_type)
+                        # Agregar el custom_prompt como argumento especial
+                        context.args.append(f"__custom_prompt={custom_prompt}")
+                        print(f"🎨 Usando custom_prompt: {custom_prompt}")
                     # Si hay una referencia específica (similar_to), usarla
-                    if similar_to:
+                    elif similar_to:
                         # IMPORTANTE: Añadir el tipo primero si no es general
                         if rec_type and rec_type != "general":
                             context.args.append(rec_type)
