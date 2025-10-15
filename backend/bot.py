@@ -67,8 +67,23 @@ class MusicAgentBot:
         """Configurar webhook para recibir actualizaciones"""
         if self.webhook_url:
             webhook_url = f"{self.webhook_url}/webhook"
-            await self.application.bot.set_webhook(url=webhook_url)
-            logger.info(f"Webhook configurado: {webhook_url}")
+            try:
+                # Verificar si el webhook ya está configurado
+                webhook_info = await self.application.bot.get_webhook_info()
+                if webhook_info.url == webhook_url:
+                    logger.info(f"Webhook ya está configurado: {webhook_url}")
+                    return
+                
+                # Configurar webhook
+                await self.application.bot.set_webhook(url=webhook_url)
+                logger.info(f"Webhook configurado: {webhook_url}")
+            except Exception as e:
+                if "Flood control exceeded" in str(e) or "429" in str(e):
+                    logger.warning(f"Rate limit de Telegram alcanzado. El webhook probablemente ya está configurado.")
+                    logger.info("Continuando con la configuración existente...")
+                else:
+                    logger.error(f"Error configurando webhook: {e}")
+                    raise
         else:
             logger.info("Webhook URL no configurado, usando polling")
     

@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   musicalo:
     image: alvaromolrui/musicalo:latest
@@ -76,20 +74,6 @@ services:
       - musicalo-network
     profiles:
       - nginx  # Solo se ejecuta si se especifica el perfil
-
-  # Servicio opcional: Watchtower para actualizaciones automáticas
-  watchtower:
-    image: containrrr/watchtower
-    container_name: musicalo-watchtower
-    restart: unless-stopped
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    environment:
-      - WATCHTOWER_CLEANUP=true
-      - WATCHTOWER_POLL_INTERVAL=86400  # 24 horas
-      - WATCHTOWER_INCLUDE_STOPPED=true
-    profiles:
-      - watchtower  # Solo se ejecuta si se especifica el perfil
 
 networks:
   musicalo-network:
