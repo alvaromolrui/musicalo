@@ -1,4 +1,4 @@
-# 📋 Changelog v1.1.0 - Lenguaje Natural con IA
+# 📋 Changelog v1.1.0-alpha - Lenguaje Natural con IA
 
 ## 🎉 Nuevas Características
 

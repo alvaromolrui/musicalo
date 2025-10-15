@@ -1,9 +1,9 @@
-# 🚀 Release v1.1.0 - Instrucciones de Despliegue
+# 🚀 Release v1.1.0-alpha - Instrucciones de Despliegue
 
 ## ✅ Estado Actual
 
 - ✅ Merge a main completado
-- ✅ Tag v1.1.0 creado
+- ✅ Tag v1.1.0-alpha creado
 - ✅ Código pusheado a GitHub
 - ✅ Versión actualizada en archivos
 

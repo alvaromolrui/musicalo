@@ -1,10 +1,10 @@
-# 🎉 MUSICALO v1.1.0 - TODO LISTO
+# 🎉 MUSICALO v1.1.0-alpha - TODO LISTO
 
 ## ✅ Completado
 
 ### En GitHub:
 - ✅ Merge a `main` completado
-- ✅ Tag `v1.1.0` creado y pusheado
+- ✅ Tag `v1.1.0-alpha` creado y pusheado
 - ✅ Versión actualizada en archivos
 - ✅ CHANGELOG completo
 - ✅ Documentación actualizada

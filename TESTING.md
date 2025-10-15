@@ -1,6 +1,6 @@
-# 🧪 Guía de Testing - Musicalo v1.1.0
+# 🧪 Guía de Testing - Musicalo v1.1.0-alpha
 
-## ✨ Nueva Funcionalidad: Lenguaje Natural con IA
+## ✨ Nueva Funcionalidad: Lenguaje Natural con IA (Alpha)
 
 Esta versión añade **conversación natural** al bot de Telegram usando Gemini AI.
 
