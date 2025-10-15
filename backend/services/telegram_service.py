@@ -10,12 +10,28 @@ from services.navidrome_service import NavidromeService
 from services.listenbrainz_service import ListenBrainzService
 from services.lastfm_service import LastFMService
 from services.ai_service import MusicRecommendationService
+from functools import wraps
 
 class TelegramService:
     def __init__(self):
         self.navidrome = NavidromeService()
         self.listenbrainz = ListenBrainzService()
         self.ai = MusicRecommendationService()
+        
+        # Configurar lista de usuarios permitidos
+        allowed_ids_str = os.getenv("TELEGRAM_ALLOWED_USER_IDS", "")
+        if allowed_ids_str.strip():
+            try:
+                self.allowed_user_ids = [int(uid.strip()) for uid in allowed_ids_str.split(',') if uid.strip()]
+                print(f"🔒 Bot configurado en modo privado para {len(self.allowed_user_ids)} usuario(s)")
+            except ValueError as e:
+                print(f"⚠️ Error parseando TELEGRAM_ALLOWED_USER_IDS: {e}")
+                print(f"⚠️ Usando modo público (sin restricciones)")
+                self.allowed_user_ids = []
+        else:
+            self.allowed_user_ids = []
+            print("⚠️ Bot en modo público - cualquier usuario puede usarlo")
+            print("💡 Para hacerlo privado, configura TELEGRAM_ALLOWED_USER_IDS en .env")
         
         # Detectar qué servicio de scrobbling usar
         self.lastfm = None
@@ -32,7 +48,38 @@ class TelegramService:
             self.music_service = None
             self.music_service_name = None
             print("⚠️ No hay servicio de scrobbling configurado (Last.fm o ListenBrainz)")
-        
+    
+    def _is_user_allowed(self, user_id: int) -> bool:
+        """Verifica si un usuario está autorizado para usar el bot"""
+        # Si no hay lista de usuarios permitidos, todos están permitidos
+        if not self.allowed_user_ids:
+            return True
+        return user_id in self.allowed_user_ids
+    
+    def _check_authorization(func):
+        """Decorador para verificar autorización de usuario"""
+        @wraps(func)
+        async def wrapper(self, update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
+            user_id = update.effective_user.id
+            username = update.effective_user.username or update.effective_user.first_name
+            
+            if not self._is_user_allowed(user_id):
+                print(f"🚫 Acceso denegado para usuario {username} (ID: {user_id})")
+                await update.message.reply_text(
+                    "🚫 **Acceso Denegado**\n\n"
+                    "Este bot es privado y solo puede ser usado por usuarios autorizados.\n\n"
+                    f"Tu ID de usuario es: `{user_id}`\n\n"
+                    "Si crees que deberías tener acceso, contacta con el administrador del bot "
+                    "y proporciona tu ID de usuario.",
+                    parse_mode='Markdown'
+                )
+                return
+            
+            # Usuario autorizado, ejecutar función
+            return await func(self, update, context, *args, **kwargs)
+        return wrapper
+    
+    @_check_authorization
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Comando /start - Bienvenida del bot"""
         welcome_text = """
@@ -76,6 +123,7 @@ Analizo tu actividad en Last.fm/ListenBrainz y tu biblioteca de Navidrome para s
         
         await update.message.reply_text(welcome_text, reply_markup=reply_markup, parse_mode='Markdown')
     
+    @_check_authorization
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Comando /help - Ayuda detallada"""
         help_text = """
@@ -145,6 +193,7 @@ Sé todo lo detallado que quieras:
         
         await update.message.reply_text(help_text, parse_mode='Markdown')
     
+    @_check_authorization
     async def recommend_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Comando /recommend - Generar recomendaciones
         
@@ -430,6 +479,7 @@ Sé todo lo detallado que quieras:
             traceback.print_exc()
             await update.message.reply_text(f"❌ Error generando recomendaciones: {str(e)}")
     
+    @_check_authorization
     async def library_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Comando /library - Mostrar biblioteca"""
         await update.message.reply_text("📚 Cargando tu biblioteca musical...")
@@ -469,6 +519,7 @@ Sé todo lo detallado que quieras:
         except Exception as e:
             await update.message.reply_text(f"❌ Error accediendo a la biblioteca: {str(e)}")
     
+    @_check_authorization
     async def stats_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Comando /stats - Mostrar estadísticas"""
         await update.message.reply_text("📊 Calculando tus estadísticas musicales...")
@@ -519,6 +570,7 @@ Sé todo lo detallado que quieras:
         except Exception as e:
             await update.message.reply_text(f"❌ Error obteniendo estadísticas: {str(e)}")
     
+    @_check_authorization
     async def search_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Comando /search - Buscar música"""
         if not context.args:
@@ -580,6 +632,7 @@ Sé todo lo detallado que quieras:
         except Exception as e:
             await update.message.reply_text(f"❌ Error en la búsqueda: {str(e)}")
     
+    @_check_authorization
     async def ask_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Comando /ask o /prompt - Enviar prompts personalizados a la IA
         
@@ -693,6 +746,7 @@ Proporciona una respuesta útil, informativa y amigable. Si la pregunta es sobre
                 "Verifica que la API de Gemini esté configurada correctamente."
             )
     
+    @_check_authorization
     async def _handle_conversational_query(self, update: Update, user_message: str):
         """Manejar consultas conversacionales de forma inteligente usando IA y APIs"""
         try:
@@ -778,6 +832,7 @@ Respuesta natural y conversacional:"""
                 f"• /help - Para ver todos los comandos"
             )
     
+    @_check_authorization
     async def button_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Manejar callbacks de botones inline"""
         query = update.callback_query
@@ -968,6 +1023,7 @@ Respuesta natural y conversacional:"""
                 print("   ❌ No se pudo enviar mensaje de error")
                 pass
     
+    @_check_authorization
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Manejar mensajes de texto con IA - Interpreta intención y ejecuta acciones"""
         user_message = update.message.text

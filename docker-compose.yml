@@ -11,18 +11,19 @@ services:
       
       # ListenBrainz Configuration
       - LISTENBRAINZ_USERNAME=${LISTENBRAINZ_USERNAME}
-      - LISTENBRAINZ_TOKEN=${LISTENBRAINZ_TOKEN
+      - LISTENBRAINZ_TOKEN=${LISTENBRAINZ_TOKEN}
       
       # Last.fm Configuration
-      - LASTFM_API_KEY=${LASTFM_API_KEY
-      - LASTFM_USERNAME=${LASTFM_USERNAME
+      - LASTFM_API_KEY=${LASTFM_API_KEY}
+      - LASTFM_USERNAME=${LASTFM_USERNAME}
       
       # Gemini Configuration
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       
       # Telegram Bot Configuration
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
-      - TELEGRAM_WEBHOOK_URL=${TELEGRAM_WEBHOOK_URL
+      - TELEGRAM_WEBHOOK_URL=${TELEGRAM_WEBHOOK_URL}
+      - TELEGRAM_ALLOWED_USER_IDS=${TELEGRAM_ALLOWED_USER_IDS}
       
       # Application Configuration
       - DEBUG=${DEBUG}

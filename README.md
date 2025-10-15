@@ -1,6 +1,6 @@
 # Music Agent Bot 🎵🤖
 
-[![Version](https://img.shields.io/badge/Version-1.1.0--alpha-orange.svg)](VERSION)
+[![Version](https://img.shields.io/badge/Version-1.1.1-green.svg)](VERSION)
 [![Docker Hub](https://img.shields.io/badge/Docker%20Hub-alvaromolrui%2Fmusicalo-blue?logo=docker)](https://hub.docker.com/r/alvaromolrui/musicalo)
 [![GitHub](https://img.shields.io/badge/GitHub-alvaromolrui%2Fmusicalo-black?logo=github)](https://github.com/alvaromolrui/musicalo)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
@@ -19,6 +19,7 @@ Un bot de Telegram inteligente que utiliza IA para generar recomendaciones music
 - **🧠 Recomendaciones Inteligentes**: Sistema usando Google Gemini que aprende de tus gustos
 - **🔄 Variedad**: Diferentes recomendaciones cada vez
 - **📱 Acceso móvil**: Optimizado para usar desde tu smartphone
+- **🔒 Bot Privado (NUEVO)**: Restringe el acceso solo a usuarios autorizados
 
 ### 🎨 Recomendaciones Ultra-Específicas
 
@@ -159,6 +160,9 @@ GEMINI_API_KEY=your_gemini_api_key
 TELEGRAM_BOT_TOKEN=your_telegram_bot_token
 # Solo para webhooks con IP fija
 # TELEGRAM_WEBHOOK_URL=http://tu-ip-publica:8000
+# IDs de usuarios permitidos (separados por comas)
+# Dejar vacío para permitir todos los usuarios
+TELEGRAM_ALLOWED_USER_IDS=123456789,987654321
 
 # Application Configuration
 DEBUG=False
@@ -183,6 +187,9 @@ GEMINI_API_KEY=your_gemini_api_key
 # Telegram Bot Configuration
 TELEGRAM_BOT_TOKEN=your_telegram_bot_token
 TELEGRAM_WEBHOOK_URL=https://your-domain.com/webhook
+# IDs de usuarios permitidos (separados por comas)
+# Dejar vacío para permitir todos los usuarios
+TELEGRAM_ALLOWED_USER_IDS=123456789,987654321
 
 # Application Configuration
 DEBUG=True
@@ -198,6 +205,12 @@ PORT=8000
 3. Elige un nombre y username para tu bot
 4. Guarda el token que te proporciona
 
+#### Obtener tu ID de Usuario (Para Bot Privado)
+1. Busca [@userinfobot](https://t.me/userinfobot) en Telegram
+2. Inicia conversación y el bot te mostrará tu ID
+3. Copia el número de ID y agrégalo a `TELEGRAM_ALLOWED_USER_IDS` en tu archivo `.env`
+4. Puedes agregar múltiples IDs separados por comas (ej: `123456789,987654321`)
+
 #### ListenBrainz
 1. Ve a [ListenBrainz](https://listenbrainz.org/)
 2. Regístrate con tu cuenta de MusicBrainz
@@ -207,6 +220,60 @@ PORT=8000
 1. Ve a [Google AI Studio](https://makersuite.google.com/app/apikey)
 2. Crea una nueva API key
 3. Es gratuita hasta 15 requests por minuto
+
+## 🔒 Seguridad: Bot Privado
+
+Por defecto, cualquier usuario de Telegram puede interactuar con tu bot. Para hacerlo **privado y seguro**, configura la variable `TELEGRAM_ALLOWED_USER_IDS` con tu ID de usuario de Telegram.
+
+### 🔐 Configurar Bot Privado
+
+**Paso 1: Obtener tu ID de Usuario**
+1. Abre Telegram y busca el bot [@userinfobot](https://t.me/userinfobot)
+2. Inicia conversación con el bot
+3. El bot te mostrará tu información, incluyendo tu **User ID** (un número como `123456789`)
+4. Copia ese número
+
+**Paso 2: Configurar IDs Permitidos**
+
+Edita tu archivo `.env` y agrega tu ID:
+
+```env
+# Solo tú puedes usar el bot
+TELEGRAM_ALLOWED_USER_IDS=123456789
+
+# O múltiples usuarios (separados por comas)
+TELEGRAM_ALLOWED_USER_IDS=123456789,987654321,555444333
+```
+
+**Paso 3: Reiniciar el Bot**
+
+```bash
+# Si usas Docker
+./docker-restart.sh
+
+# Si lo ejecutas manualmente
+python start-bot.py
+```
+
+### ✅ Verificar Configuración
+
+Al iniciar, el bot mostrará en los logs:
+- `🔒 Bot configurado en modo privado para N usuario(s)` - ✅ Está protegido
+- `⚠️ Bot en modo público` - ⚠️ Cualquiera puede usarlo
+
+### 🚫 ¿Qué pasa si alguien no autorizado intenta usar el bot?
+
+Recibirá un mensaje como:
+```
+🚫 Acceso Denegado
+
+Este bot es privado y solo puede ser usado por usuarios autorizados.
+
+Tu ID de usuario es: 999888777
+
+Si crees que deberías tener acceso, contacta con el administrador 
+del bot y proporciona tu ID de usuario.
+```
 
 ## 📱 Uso del Bot
 

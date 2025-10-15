@@ -5,6 +5,23 @@ Todos los cambios notables en este proyecto serán documentados en este archivo.
 El formato está basado en [Keep a Changelog](https://keepachangelog.com/es/1.0.0/),
 y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
+## [1.1.1] - 2025-10-15
+
+### ✨ Añadido
+- **🔒 Bot Privado**: Nueva funcionalidad de control de acceso por ID de usuario
+  - Variable de entorno `TELEGRAM_ALLOWED_USER_IDS` para especificar usuarios autorizados
+  - Decorador `@_check_authorization` para validar acceso en todos los comandos
+  - Mensaje de acceso denegado con información del ID de usuario
+  - Logs informativos sobre el modo de seguridad configurado
+- **📚 Documentación de Seguridad**: Nueva sección en README sobre configuración de bot privado
+
+### 🐛 Corregido
+- Error de sintaxis en `docker-compose.yml`: llaves de cierre faltantes en líneas 14, 17, 18, 25
+
+### 🔧 Mejorado
+- Archivos de configuración actualizados con instrucciones detalladas sobre `TELEGRAM_ALLOWED_USER_IDS`
+- README ampliado con guía paso a paso para obtener ID de usuario y configurar acceso privado
+
 ## [1.1.0-alpha] - 2025-10-15
 
 ### ✨ Añadido
