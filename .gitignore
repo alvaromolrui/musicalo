@@ -27,7 +27,6 @@ wheels/
 .env
 .env.*
 !env.example
-!env.docker
 
 # Logs
 *.log

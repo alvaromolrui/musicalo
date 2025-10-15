@@ -35,8 +35,6 @@ Ahora puedes ser todo lo específico que quieras en tus peticiones:
 
 La IA entiende múltiples criterios y genera recomendaciones precisas que cumplen **todos** tus requisitos.
 
-📚 **[Ver guía completa de recomendaciones específicas →](RECOMENDACIONES-ESPECIFICAS.md)**
-
 ## 🏗️ Arquitectura
 
 ### Bot de Telegram
@@ -56,15 +54,15 @@ La IA entiende múltiples criterios y genera recomendaciones precisas que cumple
 ## 🚀 Instalación
 
 ### Prerrequisitos
-- **Docker y Docker Compose** instalados
-- Servidor Navidrome funcionando
-- Cuenta de ListenBrainz (opcional: token de API)
-- API key de Google Gemini
-- Token de bot de Telegram
+- **Docker y Docker Compose** (recomendado) o Python 3.11+
+- Servidor **Navidrome** funcionando
+- Cuenta de **ListenBrainz** o **Last.fm**
+- **API key de Google Gemini** (gratuita)
+- **Token de bot de Telegram**
 
-### 🐳 Instalación Ultra-Rápida (Docker Hub)
+### 🐳 Opción 1: Docker (Recomendado)
 
-**¡La forma más sencilla de instalar!**
+**Usando imagen de Docker Hub (más rápido):**
 
 ```bash
 # 1. Clonar repositorio
@@ -72,130 +70,72 @@ git clone https://github.com/alvaromolrui/musicalo.git
 cd musicalo
 
 # 2. Configurar credenciales
-cp env.docker .env
+cp env.example .env
 nano .env  # Editar con tus credenciales
 
-# 3. Deploy instantáneo
-./quick-deploy.sh
+# 3. Iniciar con imagen pre-construida
+docker-compose -f docker-compose.production.yml up -d
 ```
 
-**O incluso más simple con docker run:**
+**Construyendo imagen localmente:**
+
 ```bash
-docker run -d \
-  --name music-agent-bot \
-  --restart unless-stopped \
-  -p 8000:8000 \
-  -e TELEGRAM_BOT_TOKEN=tu_token \
-  -e GEMINI_API_KEY=tu_key \
-  -e LISTENBRAINZ_USERNAME=tu_usuario \
-  -e NAVIDROME_URL=http://host.docker.internal:4533 \
-  -v $(pwd)/logs:/app/logs \
-  alvaromolrui/musicalo:latest
-```
-
-### 🔨 Instalación con Build Local
-
-Si prefieres construir la imagen localmente:
-
-1. **Clonar el repositorio**
-```bash
+# 1. Clonar y configurar (igual que arriba)
 git clone https://github.com/alvaromolrui/musicalo.git
 cd musicalo
-```
+cp env.example .env
+nano .env
 
-2. **Configurar entorno**
-```bash
-cp env.docker .env
-nano .env  # Editar con tus credenciales
-```
-
-3. **Construir y ejecutar**
-```bash
-# Construir imagen local
-./docker-start.sh
-
-# O manualmente
+# 2. Construir e iniciar
 docker-compose up -d
 ```
 
-### Instalación Manual (Sin Docker)
-
-Si prefieres instalar sin Docker:
-
-1. **Instalar dependencias**
+**Comandos útiles:**
 ```bash
-pip install -r requirements.txt
+./docker-start.sh      # Iniciar
+./docker-logs.sh       # Ver logs
+./docker-restart.sh    # Reiniciar
+./docker-stop.sh       # Detener
 ```
 
-2. **Configurar entorno**
+### 📦 Opción 2: Instalación Manual (Sin Docker)
+
 ```bash
+# 1. Clonar repositorio
+git clone https://github.com/alvaromolrui/musicalo.git
+cd musicalo
+
+# 2. Instalar dependencias
+pip install -r requirements.txt
+
+# 3. Configurar (ajustar para localhost)
 cp env.example .env
 nano .env
-```
+# Cambiar: NAVIDROME_URL=http://localhost:4533
+#          HOST=localhost
+#          DEBUG=True
 
-3. **Ejecutar directamente**
-```bash
+# 4. Ejecutar
 python start-bot.py
 ```
 
 ## ⚙️ Configuración
 
-### Variables de entorno (.env)
+Copia el archivo `env.example` a `.env` y configura tus credenciales:
 
-**Para Docker:**
-```env
-# Navidrome Configuration (usar host.docker.internal para Docker)
-NAVIDROME_URL=http://host.docker.internal:4533
-NAVIDROME_USERNAME=admin
-NAVIDROME_PASSWORD=password
-
-# ListenBrainz Configuration
-LISTENBRAINZ_USERNAME=your_listenbrainz_username
-LISTENBRAINZ_TOKEN=your_listenbrainz_token
-
-# Gemini Configuration
-GEMINI_API_KEY=your_gemini_api_key
-
-# Telegram Bot Configuration
-TELEGRAM_BOT_TOKEN=your_telegram_bot_token
-# Solo para webhooks con IP fija
-# TELEGRAM_WEBHOOK_URL=http://tu-ip-publica:8000
-# IDs de usuarios permitidos (separados por comas)
-# Dejar vacío para permitir todos los usuarios
-TELEGRAM_ALLOWED_USER_IDS=123456789,987654321
-
-# Application Configuration
-DEBUG=False
-HOST=0.0.0.0
-PORT=8000
+```bash
+cp env.example .env
+nano .env
 ```
 
-**Para instalación manual:**
-```env
-# Navidrome Configuration
-NAVIDROME_URL=http://localhost:4533
-NAVIDROME_USERNAME=admin
-NAVIDROME_PASSWORD=password
+El archivo `.env` está completamente documentado con comentarios explicativos para cada variable.
 
-# ListenBrainz Configuration
-LISTENBRAINZ_USERNAME=your_listenbrainz_username
-LISTENBRAINZ_TOKEN=your_listenbrainz_token
-
-# Gemini Configuration
-GEMINI_API_KEY=your_gemini_api_key
-
-# Telegram Bot Configuration
-TELEGRAM_BOT_TOKEN=your_telegram_bot_token
-TELEGRAM_WEBHOOK_URL=https://your-domain.com/webhook
-# IDs de usuarios permitidos (separados por comas)
-# Dejar vacío para permitir todos los usuarios
-TELEGRAM_ALLOWED_USER_IDS=123456789,987654321
-
-# Application Configuration
-DEBUG=True
-HOST=localhost
-PORT=8000
-```
+**Variables principales:**
+- `NAVIDROME_URL`: URL de tu servidor Navidrome
+- `LISTENBRAINZ_USERNAME` o `LASTFM_API_KEY`: Tu cuenta de scrobbling
+- `GEMINI_API_KEY`: API key de Google Gemini (gratuita)
+- `TELEGRAM_BOT_TOKEN`: Token de tu bot de Telegram
+- `TELEGRAM_ALLOWED_USER_IDS`: IDs permitidos (para bot privado)
 
 ### Obtener Credenciales
 
@@ -456,99 +396,38 @@ Este proyecto está bajo la Licencia MIT. Ver `LICENSE` para más detalles.
 
 ## 🐳 Gestión con Docker
 
-### Scripts de gestión incluidos:
+### Archivos Docker Compose
+
+El proyecto incluye dos configuraciones:
+
+- **`docker-compose.yml`**: Construye la imagen localmente (para desarrollo)
+- **`docker-compose.production.yml`**: Usa imagen de Docker Hub (para producción)
+
+Usa el que prefieras según tus necesidades.
+
+### Scripts de gestión incluidos
 
 ```bash
-# Iniciar el bot
-./docker-start.sh
-
-# Ver logs en tiempo real
-./docker-logs.sh
-
-# Ver estado del bot
-./docker-status.sh
-
-# Reiniciar el bot
-./docker-restart.sh
-
-# Actualizar el bot
-./docker-update.sh
-
-# Parar el bot
-./docker-stop.sh
+./docker-start.sh      # Iniciar el bot
+./docker-logs.sh       # Ver logs en tiempo real
+./docker-status.sh     # Ver estado del bot
+./docker-restart.sh    # Reiniciar el bot
+./docker-update.sh     # Actualizar el bot
+./docker-stop.sh       # Detener el bot
 ```
 
-### Comandos Docker Compose manuales:
+### Comandos Docker Compose manuales
 
 ```bash
-# Construir y ejecutar
+# Con imagen de Docker Hub (producción)
+docker-compose -f docker-compose.production.yml up -d
+docker-compose -f docker-compose.production.yml logs -f
+docker-compose -f docker-compose.production.yml down
+
+# Con build local (desarrollo)
 docker-compose up -d
-
-# Ver logs
 docker-compose logs -f
-
-# Parar
 docker-compose down
-
-# Reiniciar
-docker-compose restart
-
-# Ver estado
-docker-compose ps
-```
-
-### Características de Docker:
-
-- ✅ **Aislamiento**: El bot corre en su propio contenedor
-- ✅ **Reinicio automático**: Si falla, se reinicia automáticamente
-- ✅ **Logs persistentes**: Los logs se guardan en `./logs/`
-- ✅ **Health checks**: Monitoreo automático del estado
-- ✅ **Límites de recursos**: Control de memoria y CPU
-- ✅ **Nginx opcional**: Proxy reverso con SSL
-
-## 🚀 Inicio Rápido
-
-### 🐳 Con Docker Hub (Más rápido):
-```bash
-# 1. Clonar repositorio
-git clone https://github.com/alvaromolrui/musicalo.git
-cd musicalo
-
-# 2. Configurar credenciales
-cp env.docker .env
-nano .env  # Editar con tus credenciales
-
-# 3. Deploy instantáneo
-./quick-deploy.sh
-
-# 4. ¡Listo! Busca tu bot en Telegram
-```
-
-### 🔨 Con build local:
-```bash
-# 1. Configurar .env con tus credenciales
-cp env.docker .env
-# Editar .env con tu token de bot, API keys, etc.
-
-# 2. Ejecutar con Docker
-./docker-start.sh
-
-# 3. Buscar tu bot en Telegram y escribir /start
-```
-
-### Sin Docker:
-```bash
-# 1. Instalar dependencias
-pip install -r requirements.txt
-
-# 2. Configurar .env con tus credenciales
-cp env.example .env
-# Editar .env con tu token de bot, API keys, etc.
-
-# 3. Ejecutar el bot
-python start-bot.py
-
-# 4. Buscar tu bot en Telegram y escribir /start
 ```
 
 ---
