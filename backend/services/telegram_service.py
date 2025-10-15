@@ -198,11 +198,16 @@ Ahora puedes escribirme directamente sin usar comandos:
                 
                 if self.lastfm:
                     print(f"🔍 Buscando similares a '{similar_to}' en Last.fm (tipo: {rec_type})...")
-                    similar_artists = await self.lastfm.get_similar_artists(similar_to, limit=max(10, recommendation_limit))
+                    # Buscar más artistas de los necesarios por si algunos no tienen álbumes/tracks
+                    search_limit = max(20, recommendation_limit * 3)
+                    similar_artists = await self.lastfm.get_similar_artists(similar_to, limit=search_limit)
                     
                     if similar_artists:
                         # Crear recomendaciones de los artistas similares
-                        for similar_artist in similar_artists[:recommendation_limit]:
+                        # Continuar hasta tener suficientes recomendaciones
+                        for similar_artist in similar_artists:
+                            if len(recommendations) >= recommendation_limit:
+                                break  # Ya tenemos suficientes recomendaciones
                             from models.schemas import Track
                             
                             title = ""
@@ -215,13 +220,15 @@ Ahora puedes escribirme directamente sin usar comandos:
                                 top_albums = await self.lastfm.get_artist_top_albums(similar_artist.name, limit=1)
                                 if top_albums:
                                     album_data = top_albums[0]
-                                    title = album_data.get("name", similar_artist.name)
-                                    album_name = album_data.get("name", "")
+                                    album_name = album_data.get("name", similar_artist.name)
+                                    title = f"{album_name}"  # Solo el nombre del álbum
                                     artist_url = album_data.get("url", artist_url)
-                                    reason = f"📀 Álbum top de artista similar a {similar_to}"
+                                    reason = f"📀 Álbum top de {similar_artist.name}, artista similar a {similar_to}"
+                                    print(f"   📀 Encontrado álbum: {album_name} de {similar_artist.name}")
                                 else:
-                                    title = f"Discografía de {similar_artist.name}"
-                                    reason = f"📀 Similar a {similar_to}"
+                                    # Si no hay álbum disponible, buscar el siguiente artista
+                                    print(f"   ⚠️ No se encontró álbum para {similar_artist.name}")
+                                    continue  # Saltar este artista y buscar el siguiente
                             
                             elif rec_type == "track":
                                 top_tracks = await self.lastfm.get_artist_top_tracks(similar_artist.name, limit=1)
@@ -331,9 +338,20 @@ Ahora puedes escribirme directamente sin usar comandos:
                 text = "🎵 **Tus recomendaciones personalizadas:**\n\n"
             
             for i, rec in enumerate(recommendations, 1):
-                text += f"**{i}.** {rec.track.artist} - {rec.track.title}\n"
-                if rec.track.album:
-                    text += f"   📀 {rec.track.album}\n"
+                # Formato diferente según el tipo de recomendación
+                if rec_type == "album":
+                    # Para álbumes: mostrar prominentemente el nombre del álbum
+                    text += f"**{i}. 📀 {rec.track.title}**\n"
+                    text += f"   🎤 Artista: {rec.track.artist}\n"
+                elif rec_type == "artist":
+                    # Para artistas: solo el nombre del artista
+                    text += f"**{i}. 🎤 {rec.track.artist}**\n"
+                else:
+                    # Para canciones y general: formato estándar
+                    text += f"**{i}.** {rec.track.artist} - {rec.track.title}\n"
+                    if rec.track.album:
+                        text += f"   📀 {rec.track.album}\n"
+                
                 text += f"   💡 {rec.reason}\n"
                 if rec.source:
                     text += f"   🔗 Fuente: {rec.source}\n"
