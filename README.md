@@ -1,5 +1,6 @@
 # Music Agent Bot 🎵🤖
 
+[![Version](https://img.shields.io/badge/Version-1.1.0-brightgreen.svg)](VERSION)
 [![Docker Hub](https://img.shields.io/badge/Docker%20Hub-alvaromolrui%2Fmusicalo-blue?logo=docker)](https://hub.docker.com/r/alvaromolrui/musicalo)
 [![GitHub](https://img.shields.io/badge/GitHub-alvaromolrui%2Fmusicalo-black?logo=github)](https://github.com/alvaromolrui/musicalo)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
