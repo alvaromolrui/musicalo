@@ -35,25 +35,25 @@ jobs:
           if [[ $GITHUB_REF == refs/tags/v* ]]; then
             # Es un tag (release)
             VERSION=${GITHUB_REF#refs/tags/v}
-            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "version=${VERSION}" >> $GITHUB_OUTPUT
             echo "is_release=true" >> $GITHUB_OUTPUT
             
             # Leer versión desde archivo VERSION para comparar
             CURRENT_VERSION=$(cat VERSION 2>/dev/null || echo "0.0.0")
-            echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+            CURRENT_VERSION=$(echo "$CURRENT_VERSION" | tr -d '\n' | tr -d '\r')
+            echo "current_version=${CURRENT_VERSION}" >> $GITHUB_OUTPUT
             
             # Determinar si debe actualizar latest
-            # Solo actualiza latest si NO es una versión antigua (no contiene números menores)
             SHOULD_UPDATE_LATEST=true
             
             # Extraer números de versión (ignorar sufijos como -alpha, -beta)
-            TAG_VERSION=$(echo $VERSION | sed 's/-.*$//')
-            FILE_VERSION=$(echo $CURRENT_VERSION | sed 's/-.*$//')
+            TAG_VERSION=$(echo "$VERSION" | sed 's/-.*$//')
+            FILE_VERSION=$(echo "$CURRENT_VERSION" | sed 's/-.*$//')
             
             # Comparar versiones
             if [ "$TAG_VERSION" != "$FILE_VERSION" ]; then
               echo "⚠️ Tag version ($TAG_VERSION) != VERSION file ($FILE_VERSION)"
-              echo "latest_note=Tag version no coincide con VERSION file. No se actualizará latest." >> $GITHUB_OUTPUT
+              echo "latest_note=Version mismatch" >> $GITHUB_OUTPUT
               SHOULD_UPDATE_LATEST=false
             fi
             
@@ -67,7 +67,11 @@ jobs:
               echo "⚠️ NO se actualizará latest (solo tag específico: $VERSION)"
             fi
             
-            echo "tags=$TAGS" >> $GITHUB_OUTPUT
+            {
+              echo "tags<<EOF"
+              echo "$TAGS"
+              echo "EOF"
+            } >> $GITHUB_OUTPUT
             
           elif [[ $GITHUB_REF == refs/heads/main ]]; then
             # Es push a main
@@ -76,7 +80,11 @@ jobs:
             
             # Tag para main: solo main (NO latest)
             TAGS="${{ env.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:main"
-            echo "tags=$TAGS" >> $GITHUB_OUTPUT
+            {
+              echo "tags<<EOF"
+              echo "$TAGS"
+              echo "EOF"
+            } >> $GITHUB_OUTPUT
           fi
           
           echo "📦 Tags a construir: $TAGS"
