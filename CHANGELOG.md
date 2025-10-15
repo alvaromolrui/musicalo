@@ -34,6 +34,7 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 - Secciones duplicadas en README
 - Health check del Dockerfile (no aplicable en modo polling)
 - Referencias a webhooks como característica principal
+- Mapeo de puertos en docker-compose (innecesario en modo polling)
 
 ## [1.1.0-alpha] - 2025-10-15
 
