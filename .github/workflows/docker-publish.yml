@@ -38,9 +38,35 @@ jobs:
             echo "version=$VERSION" >> $GITHUB_OUTPUT
             echo "is_release=true" >> $GITHUB_OUTPUT
             
-            # Tags para release: específico + latest
+            # Leer versión desde archivo VERSION para comparar
+            CURRENT_VERSION=$(cat VERSION 2>/dev/null || echo "0.0.0")
+            echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+            
+            # Determinar si debe actualizar latest
+            # Solo actualiza latest si NO es una versión antigua (no contiene números menores)
+            SHOULD_UPDATE_LATEST=true
+            
+            # Extraer números de versión (ignorar sufijos como -alpha, -beta)
+            TAG_VERSION=$(echo $VERSION | sed 's/-.*$//')
+            FILE_VERSION=$(echo $CURRENT_VERSION | sed 's/-.*$//')
+            
+            # Comparar versiones
+            if [ "$TAG_VERSION" != "$FILE_VERSION" ]; then
+              echo "⚠️ Tag version ($TAG_VERSION) != VERSION file ($FILE_VERSION)"
+              echo "latest_note=Tag version no coincide con VERSION file. No se actualizará latest." >> $GITHUB_OUTPUT
+              SHOULD_UPDATE_LATEST=false
+            fi
+            
+            # Tags para release
             TAGS="${{ env.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${VERSION}"
-            TAGS="${TAGS},${{ env.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:latest"
+            
+            if [ "$SHOULD_UPDATE_LATEST" = true ]; then
+              TAGS="${TAGS},${{ env.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:latest"
+              echo "✅ Se actualizará latest a $VERSION"
+            else
+              echo "⚠️ NO se actualizará latest (solo tag específico: $VERSION)"
+            fi
+            
             echo "tags=$TAGS" >> $GITHUB_OUTPUT
             
           elif [[ $GITHUB_REF == refs/heads/main ]]; then
