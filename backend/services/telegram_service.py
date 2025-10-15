@@ -809,92 +809,12 @@ Proporciona una respuesta útil, informativa y amigable. Si la pregunta es sobre
         
         try:
             import google.generativeai as genai
-            from google.generativeai.types import content_types
+            import json
             
             genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
             
-            # Definir las herramientas usando la sintaxis correcta con TYPE_OBJECT
-            get_recommendations_tool = content_types.FunctionDeclaration(
-                name="get_recommendations",
-                description="Genera recomendaciones musicales personalizadas para el usuario basadas en sus gustos. Úsala cuando el usuario pida recomendaciones de música, álbumes, artistas o canciones.",
-                parameters=content_types.Schema(
-                    type=content_types.Type.OBJECT,
-                    properties={
-                        "rec_type": content_types.Schema(
-                            type=content_types.Type.STRING,
-                            description="Tipo de recomendación: 'general' para cualquier música, 'album' para álbumes, 'artist' para artistas, 'track' para canciones"
-                        ),
-                        "genre_filter": content_types.Schema(
-                            type=content_types.Type.STRING,
-                            description="Filtro de género musical opcional, ej: 'rock', 'jazz', 'metal', 'pop'"
-                        ),
-                    },
-                    required=["rec_type"]
-                )
-            )
-            
-            search_music_tool = content_types.FunctionDeclaration(
-                name="search_music",
-                description="Busca música en la biblioteca del usuario. Útil para encontrar canciones, álbumes o artistas específicos que el usuario mencione.",
-                parameters=content_types.Schema(
-                    type=content_types.Type.OBJECT,
-                    properties={
-                        "search_term": content_types.Schema(
-                            type=content_types.Type.STRING,
-                            description="Término de búsqueda: nombre de artista, canción o álbum a buscar"
-                        ),
-                    },
-                    required=["search_term"]
-                )
-            )
-            
-            get_statistics_tool = content_types.FunctionDeclaration(
-                name="get_statistics",
-                description="Muestra estadísticas de escucha del usuario: top artistas, total de escuchas, álbumes favoritos, etc.",
-                parameters=content_types.Schema(
-                    type=content_types.Type.OBJECT,
-                    properties={},
-                )
-            )
-            
-            show_library_tool = content_types.FunctionDeclaration(
-                name="show_library",
-                description="Muestra la biblioteca musical del usuario con canciones, álbumes y artistas disponibles.",
-                parameters=content_types.Schema(
-                    type=content_types.Type.OBJECT,
-                    properties={},
-                )
-            )
-            
-            answer_question_tool = content_types.FunctionDeclaration(
-                name="answer_question",
-                description="Responde preguntas generales sobre música, géneros musicales, artistas, historia de la música, teoría musical, etc. Úsala para preguntas informativas.",
-                parameters=content_types.Schema(
-                    type=content_types.Type.OBJECT,
-                    properties={
-                        "question": content_types.Schema(
-                            type=content_types.Type.STRING,
-                            description="La pregunta del usuario sobre música"
-                        ),
-                    },
-                    required=["question"]
-                )
-            )
-            
-            # Crear herramientas
-            tools = [
-                get_recommendations_tool,
-                search_music_tool,
-                get_statistics_tool,
-                show_library_tool,
-                answer_question_tool
-            ]
-            
-            # Crear modelo con function calling
-            model = genai.GenerativeModel(
-                'gemini-1.5-flash',
-                tools=tools
-            )
+            # Usar un modelo simple sin function calling - más robusto
+            model = genai.GenerativeModel('gemini-1.5-flash')
             
             # Obtener contexto del usuario para personalizar
             context_info = ""
@@ -902,97 +822,110 @@ Proporciona una respuesta útil, informativa y amigable. Si la pregunta es sobre
                 try:
                     top_artists = await self.music_service.get_top_artists(limit=3)
                     if top_artists:
-                        context_info = f"\n\nContexto: Los artistas favoritos del usuario son: {', '.join([a.name for a in top_artists[:3]])}"
+                        context_info = f"\nArtistas favoritos del usuario: {', '.join([a.name for a in top_artists[:3]])}"
                 except Exception as e:
                     print(f"⚠️ No se pudo obtener contexto: {e}")
             
-            # Crear el prompt para la IA
-            prompt = f"""Eres un asistente musical inteligente llamado Music Agent. El usuario te ha escrito:
+            # Crear el prompt para la IA - respuesta en JSON
+            prompt = f"""Eres un asistente musical inteligente. Analiza el siguiente mensaje del usuario y decide qué acción tomar.
 
-"{user_message}"
+Mensaje del usuario: "{user_message}"
+{context_info}
 
-Analiza su mensaje y decide qué herramienta usar para ayudarle de la mejor manera.{context_info}
+Acciones disponibles:
+1. "recommend" - Para recomendar música, álbumes, artistas o canciones
+   - Parámetros: rec_type (general/album/artist/track), genre_filter (opcional)
+2. "search" - Para buscar música específica en su biblioteca
+   - Parámetros: search_term (término de búsqueda)
+3. "stats" - Para ver estadísticas de escucha
+4. "library" - Para explorar su biblioteca musical
+5. "question" - Para responder preguntas sobre música en general
+   - Parámetros: question (la pregunta del usuario)
 
-Herramientas disponibles:
-- get_recommendations: Para recomendar música, álbumes, artistas o canciones
-- search_music: Para buscar música específica en su biblioteca
-- get_statistics: Para ver estadísticas de escucha
-- show_library: Para explorar su biblioteca musical
-- answer_question: Para responder preguntas sobre música en general
+Responde SOLO con un objeto JSON en este formato exacto (sin markdown, sin explicaciones):
+{{"action": "nombre_accion", "params": {{"parametro": "valor"}}}}
 
-IMPORTANTE: Debes llamar a UNA función apropiada. No respondas con texto, elige la función correcta."""
+Ejemplos:
+- "recomiéndame un disco" → {{"action": "recommend", "params": {{"rec_type": "album"}}}}
+- "busca Queen" → {{"action": "search", "params": {{"search_term": "Queen"}}}}
+- "¿qué es el jazz?" → {{"action": "question", "params": {{"question": "¿qué es el jazz?"}}}}
+- "mis estadísticas" → {{"action": "stats", "params": {{}}}}
+
+Responde AHORA con el JSON:"""
             
-            # Generar respuesta con function calling
+            # Generar respuesta
             print(f"🤖 Usuario escribió: {user_message}")
             response = model.generate_content(prompt)
+            response_text = response.text.strip()
             
-            # Verificar si el modelo quiere llamar una función
-            if response.candidates and response.candidates[0].content.parts:
-                part = response.candidates[0].content.parts[0]
+            # Limpiar la respuesta si tiene markdown
+            if response_text.startswith("```"):
+                response_text = response_text.replace("```json", "").replace("```", "").strip()
+            
+            print(f"🤖 Respuesta de IA: {response_text}")
+            
+            # Parsear JSON
+            try:
+                action_data = json.loads(response_text)
+                action = action_data.get("action", "")
+                params = action_data.get("params", {})
                 
-                if hasattr(part, 'function_call') and part.function_call:
-                    function_call = part.function_call
-                    function_name = function_call.name
-                    function_args = dict(function_call.args)
+                print(f"🤖 Acción detectada: {action} con params: {params}")
+                
+                # Borrar mensaje de espera
+                await waiting_msg.delete()
+                
+                # Ejecutar la acción correspondiente
+                if action == "recommend":
+                    rec_type = params.get("rec_type", "general")
+                    genre_filter = params.get("genre_filter")
                     
-                    print(f"🤖 IA decidió llamar: {function_name} con args: {function_args}")
+                    context.args = []
+                    if rec_type and rec_type != "general":
+                        context.args.append(rec_type)
+                    if genre_filter:
+                        context.args.append(genre_filter)
                     
-                    # Borrar mensaje de espera
-                    await waiting_msg.delete()
+                    await self.recommend_command(update, context)
                     
-                    # Ejecutar la función correspondiente
-                    if function_name == "get_recommendations":
-                        rec_type = function_args.get("rec_type", "general")
-                        genre_filter = function_args.get("genre_filter", None)
-                        
-                        # Simular el context.args para reutilizar recommend_command
-                        context.args = []
-                        if rec_type and rec_type != "general":
-                            context.args.append(rec_type)
-                        if genre_filter:
-                            context.args.append(genre_filter)
-                        
-                        await self.recommend_command(update, context)
-                        
-                    elif function_name == "search_music":
-                        search_term = function_args.get("search_term", "")
-                        if search_term:
-                            context.args = search_term.split()
-                            await self.search_command(update, context)
-                        else:
-                            await update.message.reply_text("❌ No especificaste qué buscar. Por ejemplo: 'busca Queen'")
-                        
-                    elif function_name == "get_statistics":
-                        await self.stats_command(update, context)
-                        
-                    elif function_name == "show_library":
-                        await self.library_command(update, context)
-                        
-                    elif function_name == "answer_question":
-                        question = function_args.get("question", user_message)
-                        # Usar el ask_command existente
-                        context.args = question.split()
-                        await self.ask_command(update, context)
-                    
+                elif action == "search":
+                    search_term = params.get("search_term", "")
+                    if search_term:
+                        context.args = search_term.split()
+                        await self.search_command(update, context)
                     else:
-                        await update.message.reply_text(f"⚠️ Función no reconocida: {function_name}")
-                        
-                elif hasattr(part, 'text') and part.text:
-                    # Si la IA responde con texto en lugar de function call
-                    await waiting_msg.edit_text(f"🤖 {part.text}\n\n💡 Tip: Puedes usar comandos como /recommend, /search, /stats")
+                        await update.message.reply_text("❌ No especificaste qué buscar.")
+                    
+                elif action == "stats":
+                    await self.stats_command(update, context)
+                    
+                elif action == "library":
+                    await self.library_command(update, context)
+                    
+                elif action == "question":
+                    question = params.get("question", user_message)
+                    context.args = question.split()
+                    await self.ask_command(update, context)
+                
                 else:
-                    await waiting_msg.edit_text(
-                        "🤔 No estoy seguro de cómo ayudarte con eso.\n\n"
-                        "Puedes usar:\n"
-                        "• /recommend - Para recomendaciones\n"
-                        "• /search <término> - Para buscar\n"
-                        "• /stats - Para estadísticas\n"
-                        "• /help - Para ver todos los comandos"
+                    await update.message.reply_text(
+                        f"🤔 No entendí bien tu mensaje.\n\n"
+                        f"Puedes usar:\n"
+                        f"• /recommend - Para recomendaciones\n"
+                        f"• /search <término> - Para buscar\n"
+                        f"• /stats - Para estadísticas\n"
+                        f"• /help - Para ver todos los comandos"
                     )
-            else:
+                    
+            except json.JSONDecodeError as e:
+                print(f"❌ Error parseando JSON: {e}")
+                print(f"   Respuesta recibida: {response_text}")
                 await waiting_msg.edit_text(
-                    "🤔 No pude procesar tu mensaje.\n\n"
-                    "Usa /help para ver los comandos disponibles."
+                    f"🤔 No pude entender tu mensaje correctamente.\n\n"
+                    f"💡 Intenta con:\n"
+                    f"• /recommend - Para recomendaciones\n"
+                    f"• /search <término> - Para buscar\n"
+                    f"• /stats - Para estadísticas"
                 )
                 
         except Exception as e:
