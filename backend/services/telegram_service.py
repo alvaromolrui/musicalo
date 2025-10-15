@@ -2,6 +2,9 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKe
 from telegram.ext import ContextTypes
 from typing import List, Dict, Any, Optional
 import os
+import json
+import random
+import google.generativeai as genai
 from models.schemas import Recommendation, Track, LastFMTrack, LastFMArtist
 from services.navidrome_service import NavidromeService
 from services.listenbrainz_service import ListenBrainzService
@@ -158,16 +161,16 @@ Ahora puedes escribirme directamente sin usar comandos:
             args = [arg.lower() for arg in context.args]
             
             # Primero detectar tipo de recomendación (puede estar en cualquier posición)
-            if any(word in args for word in ["album", "disco", "cd", "álbum"]):
-                rec_type = "album"
-                args = [a for a in args if a not in ["album", "disco", "cd", "álbum"]]
-            elif any(word in args for word in ["artist", "artista", "banda", "grupo"]):
-                rec_type = "artist"
-                args = [a for a in args if a not in ["artist", "artista", "banda", "grupo"]]
-            elif any(word in args for word in ["track", "song", "cancion", "canción", "tema"]):
-                rec_type = "track"
-                args = [a for a in args if a not in ["track", "song", "cancion", "canción", "tema"]]
-            
+                if any(word in args for word in ["album", "disco", "cd", "álbum"]):
+                    rec_type = "album"
+                    args = [a for a in args if a not in ["album", "disco", "cd", "álbum"]]
+                elif any(word in args for word in ["artist", "artista", "banda", "grupo"]):
+                    rec_type = "artist"
+                    args = [a for a in args if a not in ["artist", "artista", "banda", "grupo"]]
+                elif any(word in args for word in ["track", "song", "cancion", "canción", "tema"]):
+                    rec_type = "track"
+                    args = [a for a in args if a not in ["track", "song", "cancion", "canción", "tema"]]
+                
             # Luego detectar búsquedas "similar a..." o "como..."
             if "similar" in args or "like" in args or "como" in args or "parecido" in args:
                 # Encontrar el índice de la palabra clave
@@ -213,7 +216,6 @@ Ahora puedes escribirme directamente sin usar comandos:
                     
                     if similar_artists:
                         # Añadir variedad: mezclar los resultados para no siempre mostrar los mismos
-                        import random
                         # Mantener los top 5 pero mezclar el resto
                         top_artists = similar_artists[:5]
                         rest_artists = similar_artists[5:]
@@ -367,9 +369,9 @@ Ahora puedes escribirme directamente sin usar comandos:
                     text += f"**{i}. 🎤 {rec.track.artist}**\n"
                 else:
                     # Para canciones y general: formato estándar
-                    text += f"**{i}.** {rec.track.artist} - {rec.track.title}\n"
-                    if rec.track.album:
-                        text += f"   📀 {rec.track.album}\n"
+                text += f"**{i}.** {rec.track.artist} - {rec.track.title}\n"
+                if rec.track.album:
+                    text += f"   📀 {rec.track.album}\n"
                 
                 text += f"   💡 {rec.reason}\n"
                 if rec.source:
@@ -595,7 +597,6 @@ Ahora puedes escribirme directamente sin usar comandos:
                     context_info = ""
             
             # Enviar prompt a Gemini
-            import google.generativeai as genai
             genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
             model = genai.GenerativeModel('gemini-2.5-flash')
             
@@ -663,9 +664,6 @@ Proporciona una respuesta útil, informativa y amigable. Si la pregunta es sobre
     async def _handle_conversational_query(self, update: Update, user_message: str):
         """Manejar consultas conversacionales de forma inteligente usando IA y APIs"""
         try:
-            import google.generativeai as genai
-            import random
-            
             genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
             
             # Obtener TODOS los datos disponibles del usuario
@@ -946,9 +944,6 @@ Respuesta natural y conversacional:"""
         waiting_msg = await update.message.reply_text("🤔 Analizando tu mensaje...")
         
         try:
-            import google.generativeai as genai
-            import json
-            
             genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
             
             # Usar un modelo simple sin function calling - más robusto
@@ -1070,7 +1065,7 @@ Responde AHORA con el JSON:"""
                     # Agregar límite como argumento especial al final
                     context.args.append(f"__limit={limit}")
                     
-                    await self.recommend_command(update, context)
+            await self.recommend_command(update, context)
                     
                 elif action == "search":
                     search_term = params.get("search_term", "")
@@ -1081,7 +1076,7 @@ Responde AHORA con el JSON:"""
                         await update.message.reply_text("❌ No especificaste qué buscar.")
                     
                 elif action == "stats":
-                    await self.stats_command(update, context)
+            await self.stats_command(update, context)
                     
                 elif action == "library":
                     await self.library_command(update, context)
@@ -1100,7 +1095,7 @@ Responde AHORA con el JSON:"""
                     await self.ask_command(update, context)
                 
                 else:
-                    await update.message.reply_text(
+            await update.message.reply_text(
                         f"🤔 No entendí bien tu mensaje.\n\n"
                         f"Puedes usar:\n"
                         f"• /recommend - Para recomendaciones\n"
@@ -1135,6 +1130,6 @@ Responde AHORA con el JSON:"""
                     "• /ask <pregunta> - Preguntar sobre música"
                 )
             except:
-                await update.message.reply_text(
+            await update.message.reply_text(
                     "❌ Hubo un error. Usa /help para ver los comandos disponibles."
-                )
+            )

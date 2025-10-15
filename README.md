@@ -6,24 +6,26 @@
 [![Python](https://img.shields.io/badge/Python-3.11-blue?logo=python)](https://python.org)
 [![Telegram](https://img.shields.io/badge/Telegram-Bot-blue?logo=telegram)](https://telegram.org)
 
-Un bot de Telegram inteligente que utiliza IA para generar recomendaciones musicales personalizadas basadas en tu biblioteca de Navidrome y tus scrobbles de ListenBrainz.
+Un bot de Telegram inteligente que utiliza IA para generar recomendaciones musicales personalizadas basadas en tu biblioteca de Navidrome y tus scrobbles de ListenBrainz o Last.fm.
 
 ## ✨ Características
 
-- **🤖 Bot de Telegram**: Interfaz simple y accesible desde cualquier dispositivo
+- **🤖 Lenguaje Natural**: Habla directamente con el bot sin necesidad de comandos
+- **🎯 IA Contextual**: Gemini AI entiende intenciones y responde con tus datos reales
 - **🎵 Integración con Navidrome**: Acceso completo a tu biblioteca musical autoalojada
-- **📊 Scrobbles de ListenBrainz**: Análisis de tus hábitos de escucha y patrones (open source)
-- **🧠 Recomendaciones con IA**: Sistema inteligente usando Google Gemini que aprende de tus gustos
-- **💬 Interacción natural**: Chat directo con comandos simples y botones interactivos
+- **📊 Scrobbles de Last.fm/ListenBrainz**: Análisis de tus hábitos de escucha y patrones
+- **🧠 Recomendaciones Inteligentes**: Sistema usando Google Gemini que aprende de tus gustos
+- **🔄 Variedad**: Diferentes recomendaciones cada vez
 - **📱 Acceso móvil**: Optimizado para usar desde tu smartphone
 
 ## 🏗️ Arquitectura
 
 ### Bot de Telegram
-- **Comandos simples**: `/recommend`, `/library`, `/stats`, `/search`
-- **Botones interactivos**: Me gusta, no me gusta, más recomendaciones
-- **Notificaciones**: Alertas sobre nueva música y descubrimientos
-- **Conversación natural**: Interacción fluida con la IA
+- **💬 Lenguaje Natural**: Escribe directamente sin comandos (ej: "recomiéndame un disco de Pink Floyd")
+- **🎯 Comandos tradicionales**: `/recommend`, `/library`, `/stats`, `/search` (también funcionan)
+- **🔘 Botones interactivos**: Me gusta, no me gusta, más recomendaciones
+- **📊 Respuestas contextuales**: La IA usa tus datos reales de escucha
+- **🎵 Recomendaciones variadas**: Diferentes sugerencias cada vez
 
 ### Backend (Python + FastAPI)
 - **Servicios integrados**: 
@@ -190,7 +192,23 @@ PORT=8000
 
 ## 📱 Uso del Bot
 
-### Comandos Principales
+### 💬 Lenguaje Natural (NUEVO - v1.1.0)
+
+¡Ahora puedes hablar directamente con el bot sin comandos!
+
+**Ejemplos:**
+```
+"recomiéndame un disco de algún grupo similar a Pink Floyd"
+"¿cuál fue mi última canción?"
+"dame 3 artistas parecidos a Queen"
+"¿qué he escuchado hoy de rock?"
+"busca música de Queen en mi biblioteca"
+"¿qué es el jazz?" (preguntas generales sobre música)
+```
+
+La IA entiende tu intención y responde usando tus datos reales de Last.fm/ListenBrainz.
+
+### 🎯 Comandos Tradicionales (también funcionan)
 
 - **`/start`** - Iniciar el bot y ver el menú principal
 - **`/help`** - Mostrar ayuda detallada
@@ -198,22 +216,25 @@ PORT=8000
 - **`/library`** - Explorar tu biblioteca musical
 - **`/stats`** - Ver estadísticas de escucha
 - **`/search <término>`** - Buscar música en tu biblioteca
+- **`/ask <pregunta>`** - Hacer preguntas sobre música
 
-### Ejemplos de Uso
+### Ejemplos con Comandos
 
 ```
-/recommend          # Obtener recomendaciones
-/library            # Ver biblioteca
-/stats              # Ver estadísticas
-/search queen       # Buscar Queen
-/search bohemian    # Buscar "bohemian"
+/recommend                    # Recomendaciones generales
+/recommend album rock         # Álbumes de rock
+/recommend similar Queen      # Música similar a Queen
+/library                      # Ver biblioteca
+/stats                        # Ver estadísticas
+/search queen                 # Buscar Queen
+/ask ¿qué es el blues?       # Pregunta sobre música
 ```
 
-### Interacciones
+### 🔘 Interacciones
 
 - **Botones inline**: ❤️ Me gusta, 👎 No me gusta, 🔄 Más recomendaciones
 - **Teclado personalizado**: Botones rápidos para comandos comunes
-- **Notificaciones**: Alertas sobre nueva música y descubrimientos
+- **Respuestas conversacionales**: La IA responde de forma natural
 
 ## 🤖 Comandos del Bot
 
@@ -266,14 +287,15 @@ El sistema utiliza múltiples enfoques:
 
 ## 🔮 Roadmap
 
+- [x] **Modo conversacional**: Chat natural con la IA ✅ (v1.1.0)
 - [ ] **Notificaciones inteligentes**: Alertas basadas en patrones de escucha
 - [ ] **Playlists automáticas**: Creación de playlists por IA
 - [ ] **Integración con Spotify**: Acceso a biblioteca de Spotify
 - [ ] **Recomendaciones colaborativas**: Basadas en usuarios similares
 - [ ] **Análisis de sentimientos**: Recomendaciones por estado de ánimo
-- [ ] **Modo conversacional**: Chat natural con la IA
 - [ ] **Estadísticas avanzadas**: Gráficos y análisis detallados
 - [ ] **Sincronización múltiple**: Múltiples cuentas de música
+- [ ] **Webhooks implementados**: Soporte completo para webhooks con FastAPI
 
 ## 👨‍💻 Para Desarrolladores
 
