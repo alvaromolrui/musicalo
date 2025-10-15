@@ -1065,7 +1065,7 @@ Responde AHORA con el JSON:"""
                     # Agregar límite como argumento especial al final
                     context.args.append(f"__limit={limit}")
                     
-            await self.recommend_command(update, context)
+                    await self.recommend_command(update, context)
                     
                 elif action == "search":
                     search_term = params.get("search_term", "")
@@ -1076,7 +1076,7 @@ Responde AHORA con el JSON:"""
                         await update.message.reply_text("❌ No especificaste qué buscar.")
                     
                 elif action == "stats":
-            await self.stats_command(update, context)
+                    await self.stats_command(update, context)
                     
                 elif action == "library":
                     await self.library_command(update, context)
@@ -1095,7 +1095,7 @@ Responde AHORA con el JSON:"""
                     await self.ask_command(update, context)
                 
                 else:
-            await update.message.reply_text(
+                    await update.message.reply_text(
                         f"🤔 No entendí bien tu mensaje.\n\n"
                         f"Puedes usar:\n"
                         f"• /recommend - Para recomendaciones\n"
@@ -1130,6 +1130,6 @@ Responde AHORA con el JSON:"""
                     "• /ask <pregunta> - Preguntar sobre música"
                 )
             except:
-            await update.message.reply_text(
+                await update.message.reply_text(
                     "❌ Hubo un error. Usa /help para ver los comandos disponibles."
-            )
+                )
