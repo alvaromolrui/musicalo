@@ -369,9 +369,9 @@ Ahora puedes escribirme directamente sin usar comandos:
                     text += f"**{i}. 🎤 {rec.track.artist}**\n"
                 else:
                     # Para canciones y general: formato estándar
-                text += f"**{i}.** {rec.track.artist} - {rec.track.title}\n"
-                if rec.track.album:
-                    text += f"   📀 {rec.track.album}\n"
+                    text += f"**{i}.** {rec.track.artist} - {rec.track.title}\n"
+                    if rec.track.album:
+                        text += f"   📀 {rec.track.album}\n"
                 
                 text += f"   💡 {rec.reason}\n"
                 if rec.source:
