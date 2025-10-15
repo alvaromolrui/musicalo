@@ -42,13 +42,9 @@ services:
     networks:
       - musicalo-network
     
-    # Health check
+    # Health check desactivado (no necesario en modo polling)
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+      disable: true
     
     # Límites de recursos
     deploy:

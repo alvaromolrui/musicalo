@@ -43,13 +43,15 @@ La IA entiende múltiples criterios y genera recomendaciones precisas que cumple
 - **🔘 Botones interactivos**: Me gusta, no me gusta, más recomendaciones
 - **📊 Respuestas contextuales**: La IA usa tus datos reales de escucha
 - **🎵 Recomendaciones variadas**: Diferentes sugerencias cada vez
+- **🔄 Polling Mode**: No requiere configuración de webhooks, SSL ni puertos públicos
 
-### Backend (Python + FastAPI)
+### Backend (Python + Telegram Bot API)
 - **Servicios integrados**: 
   - `NavidromeService`: Conexión con tu servidor Navidrome
   - `ListenBrainzService`: Integración con la API de ListenBrainz (open source)
+  - `LastFMService`: Integración con Last.fm para descubrimiento de música
   - `MusicRecommendationService`: IA con Google Gemini para recomendaciones personalizadas
-  - `TelegramService`: Manejo de interacciones del bot
+  - `TelegramService`: Manejo de interacciones del bot en modo polling
 
 ## 🚀 Instalación
 
@@ -59,6 +61,8 @@ La IA entiende múltiples criterios y genera recomendaciones precisas que cumple
 - Cuenta de **ListenBrainz** o **Last.fm**
 - **API key de Google Gemini** (gratuita)
 - **Token de bot de Telegram**
+
+> **Nota:** El bot usa **polling** para comunicarse con Telegram. No necesitas configurar webhooks, SSL, ni exponer puertos públicos.
 
 ### 🐳 Opción 1: Docker (Recomendado)
 
@@ -134,8 +138,10 @@ El archivo `.env` está completamente documentado con comentarios explicativos p
 - `NAVIDROME_URL`: URL de tu servidor Navidrome
 - `LISTENBRAINZ_USERNAME` o `LASTFM_API_KEY`: Tu cuenta de scrobbling
 - `GEMINI_API_KEY`: API key de Google Gemini (gratuita)
-- `TELEGRAM_BOT_TOKEN`: Token de tu bot de Telegram
-- `TELEGRAM_ALLOWED_USER_IDS`: IDs permitidos (para bot privado)
+- `TELEGRAM_BOT_TOKEN`: Token de tu bot de Telegram (REQUERIDO)
+- `TELEGRAM_ALLOWED_USER_IDS`: IDs permitidos para bot privado (RECOMENDADO)
+
+> **Importante:** El bot usa **polling** por defecto. No necesitas configurar `TELEGRAM_WEBHOOK_URL`.
 
 ### Obtener Credenciales
 
@@ -290,17 +296,18 @@ El sistema utiliza múltiples enfoques:
 ## 🎨 Tecnologías
 
 ### Backend
-- **python-telegram-bot**: Framework para bots de Telegram
-- **FastAPI**: API REST opcional para webhooks
+- **python-telegram-bot 20.7**: Framework moderno para bots (modo polling)
 - **Google Gemini**: IA para recomendaciones contextuales
-- **httpx**: Cliente HTTP asíncrono
+- **httpx**: Cliente HTTP asíncrono para APIs
 - **Pydantic**: Validación de datos
+- **FastAPI**: API REST (opcional, no usado por defecto)
 
 ### Bot
-- **python-telegram-bot 20.7**: Framework moderno para bots
+- **Polling Mode**: Conexión persistente con Telegram (sin necesidad de webhooks)
 - **Inline Keyboards**: Botones interactivos
 - **Reply Keyboards**: Teclados personalizados
 - **Callback Handlers**: Manejo de interacciones
+- **Async/Await**: Operaciones asíncronas para mejor rendimiento
 
 ## 📊 Características de la IA
 
@@ -313,6 +320,7 @@ El sistema utiliza múltiples enfoques:
 ## 🔮 Roadmap
 
 - [x] **Modo conversacional**: Chat natural con la IA ✅ (v1.1.0)
+- [x] **Bot privado**: Control de acceso por usuario ✅ (v1.1.1)
 - [ ] **Notificaciones inteligentes**: Alertas basadas en patrones de escucha
 - [ ] **Playlists automáticas**: Creación de playlists por IA
 - [ ] **Integración con Spotify**: Acceso a biblioteca de Spotify
@@ -320,7 +328,6 @@ El sistema utiliza múltiples enfoques:
 - [ ] **Análisis de sentimientos**: Recomendaciones por estado de ánimo
 - [ ] **Estadísticas avanzadas**: Gráficos y análisis detallados
 - [ ] **Sincronización múltiple**: Múltiples cuentas de música
-- [ ] **Webhooks implementados**: Soporte completo para webhooks con FastAPI
 
 ## 👨‍💻 Para Desarrolladores
 

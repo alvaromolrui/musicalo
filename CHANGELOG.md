@@ -18,18 +18,22 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 ### 🐛 Corregido
 - Error de sintaxis en `docker-compose.yml` (llaves faltantes)
 - Error de sintaxis en `docker-compose.production.yml` (llaves faltantes)
+- Health check eliminado (no funcional en modo polling)
 
 ### 🔧 Mejorado
 - **Configuración consolidada**: Un solo archivo `env.example` para Docker y manual
 - **README simplificado**: Eliminadas duplicaciones y secciones obsoletas
 - **Documentación clara**: Explicación de archivos docker-compose
 - **Rebranding completo**: "Music Agent" → "Musicalo" en todo el proyecto
+- **Modo polling por defecto**: Documentado que webhooks no son necesarios
 - Archivos bien documentados con comentarios organizados
 
 ### 🗑️ Eliminado
 - `env.docker` (consolidado en `env.example`)
 - Referencias a archivos inexistentes
 - Secciones duplicadas en README
+- Health check del Dockerfile (no aplicable en modo polling)
+- Referencias a webhooks como característica principal
 
 ## [1.1.0-alpha] - 2025-10-15
 
