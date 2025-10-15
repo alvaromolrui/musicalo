@@ -809,79 +809,79 @@ Proporciona una respuesta útil, informativa y amigable. Si la pregunta es sobre
         
         try:
             import google.generativeai as genai
+            from google.generativeai.types import content_types
             
             genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
             
-            # Definir las herramientas disponibles para el bot (usando la sintaxis correcta)
-            get_recommendations_tool = {
-                "name": "get_recommendations",
-                "description": "Genera recomendaciones musicales personalizadas para el usuario basadas en sus gustos. Úsala cuando el usuario pida recomendaciones de música, álbumes, artistas o canciones.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "rec_type": {
-                            "type": "string",
-                            "description": "Tipo de recomendación: 'general' para cualquier música, 'album' para álbumes, 'artist' para artistas, 'track' para canciones"
-                        },
-                        "genre_filter": {
-                            "type": "string",
-                            "description": "Filtro de género musical opcional, ej: 'rock', 'jazz', 'metal', 'pop'"
-                        }
+            # Definir las herramientas usando la sintaxis correcta con TYPE_OBJECT
+            get_recommendations_tool = content_types.FunctionDeclaration(
+                name="get_recommendations",
+                description="Genera recomendaciones musicales personalizadas para el usuario basadas en sus gustos. Úsala cuando el usuario pida recomendaciones de música, álbumes, artistas o canciones.",
+                parameters=content_types.Schema(
+                    type=content_types.Type.OBJECT,
+                    properties={
+                        "rec_type": content_types.Schema(
+                            type=content_types.Type.STRING,
+                            description="Tipo de recomendación: 'general' para cualquier música, 'album' para álbumes, 'artist' para artistas, 'track' para canciones"
+                        ),
+                        "genre_filter": content_types.Schema(
+                            type=content_types.Type.STRING,
+                            description="Filtro de género musical opcional, ej: 'rock', 'jazz', 'metal', 'pop'"
+                        ),
                     },
-                    "required": ["rec_type"]
-                }
-            }
+                    required=["rec_type"]
+                )
+            )
             
-            search_music_tool = {
-                "name": "search_music",
-                "description": "Busca música en la biblioteca del usuario. Útil para encontrar canciones, álbumes o artistas específicos que el usuario mencione.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "search_term": {
-                            "type": "string",
-                            "description": "Término de búsqueda: nombre de artista, canción o álbum a buscar"
-                        }
+            search_music_tool = content_types.FunctionDeclaration(
+                name="search_music",
+                description="Busca música en la biblioteca del usuario. Útil para encontrar canciones, álbumes o artistas específicos que el usuario mencione.",
+                parameters=content_types.Schema(
+                    type=content_types.Type.OBJECT,
+                    properties={
+                        "search_term": content_types.Schema(
+                            type=content_types.Type.STRING,
+                            description="Término de búsqueda: nombre de artista, canción o álbum a buscar"
+                        ),
                     },
-                    "required": ["search_term"]
-                }
-            }
+                    required=["search_term"]
+                )
+            )
             
-            get_statistics_tool = {
-                "name": "get_statistics",
-                "description": "Muestra estadísticas de escucha del usuario: top artistas, total de escuchas, álbumes favoritos, etc.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {},
-                    "required": []
-                }
-            }
+            get_statistics_tool = content_types.FunctionDeclaration(
+                name="get_statistics",
+                description="Muestra estadísticas de escucha del usuario: top artistas, total de escuchas, álbumes favoritos, etc.",
+                parameters=content_types.Schema(
+                    type=content_types.Type.OBJECT,
+                    properties={},
+                )
+            )
             
-            show_library_tool = {
-                "name": "show_library",
-                "description": "Muestra la biblioteca musical del usuario con canciones, álbumes y artistas disponibles.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {},
-                    "required": []
-                }
-            }
+            show_library_tool = content_types.FunctionDeclaration(
+                name="show_library",
+                description="Muestra la biblioteca musical del usuario con canciones, álbumes y artistas disponibles.",
+                parameters=content_types.Schema(
+                    type=content_types.Type.OBJECT,
+                    properties={},
+                )
+            )
             
-            answer_question_tool = {
-                "name": "answer_question",
-                "description": "Responde preguntas generales sobre música, géneros musicales, artistas, historia de la música, teoría musical, etc. Úsala para preguntas informativas.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "question": {
-                            "type": "string",
-                            "description": "La pregunta del usuario sobre música"
-                        }
+            answer_question_tool = content_types.FunctionDeclaration(
+                name="answer_question",
+                description="Responde preguntas generales sobre música, géneros musicales, artistas, historia de la música, teoría musical, etc. Úsala para preguntas informativas.",
+                parameters=content_types.Schema(
+                    type=content_types.Type.OBJECT,
+                    properties={
+                        "question": content_types.Schema(
+                            type=content_types.Type.STRING,
+                            description="La pregunta del usuario sobre música"
+                        ),
                     },
-                    "required": ["question"]
-                }
-            }
+                    required=["question"]
+                )
+            )
             
+            # Crear herramientas
             tools = [
                 get_recommendations_tool,
                 search_music_tool,
