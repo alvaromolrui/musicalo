@@ -183,13 +183,19 @@ Ahora puedes escribirme directamente sin usar comandos:
             
             # Si es una búsqueda "similar a...", usar Last.fm directamente
             if similar_to:
+                # Obtener límite del contexto si está disponible
+                recommendation_limit = 5
+                if hasattr(context, 'bot_data') and context.bot_data and 'recommendation_limit' in context.bot_data:
+                    recommendation_limit = context.bot_data['recommendation_limit']
+                    print(f"🎯 Usando límite personalizado para similares: {recommendation_limit}")
+                
                 if self.lastfm:
                     print(f"🔍 Buscando similares a '{similar_to}' en Last.fm (tipo: {rec_type})...")
-                    similar_artists = await self.lastfm.get_similar_artists(similar_to, limit=10)
+                    similar_artists = await self.lastfm.get_similar_artists(similar_to, limit=max(10, recommendation_limit))
                     
                     if similar_artists:
                         # Crear recomendaciones de los artistas similares
-                        for similar_artist in similar_artists[:5]:
+                        for similar_artist in similar_artists[:recommendation_limit]:
                             from models.schemas import Track
                             
                             title = ""
@@ -285,11 +291,17 @@ Ahora puedes escribirme directamente sin usar comandos:
                     activity_context=""
                 )
                 
+                # Obtener límite del contexto si está disponible (desde handle_message)
+                recommendation_limit = 5
+                if hasattr(context, 'bot_data') and context.bot_data and 'recommendation_limit' in context.bot_data:
+                    recommendation_limit = context.bot_data['recommendation_limit']
+                    print(f"🎯 Usando límite personalizado: {recommendation_limit}")
+                
                 # Generar recomendaciones
                 print(f"🎯 Generando recomendaciones (tipo: {rec_type}, género: {genre_filter}) para {len(recent_tracks)} tracks y {len(top_artists)} artistas...")
                 recommendations = await self.ai.generate_recommendations(
                     user_profile, 
-                    limit=5,
+                    limit=recommendation_limit,
                     recommendation_type=rec_type,
                     genre_filter=genre_filter
                 )
@@ -340,11 +352,19 @@ Ahora puedes escribirme directamente sin usar comandos:
             await update.message.reply_text(text, reply_markup=reply_markup, parse_mode='Markdown')
             print("✅ Recomendaciones enviadas correctamente")
             
+            # Limpiar el límite personalizado del contexto
+            if hasattr(context, 'bot_data') and context.bot_data and 'recommendation_limit' in context.bot_data:
+                del context.bot_data['recommendation_limit']
+            
         except Exception as e:
             print(f"❌ Error en recommend_command: {type(e).__name__}: {str(e)}")
             import traceback
             traceback.print_exc()
             await update.message.reply_text(f"❌ Error generando recomendaciones: {str(e)}")
+            
+            # Limpiar el límite personalizado incluso si hay error
+            if hasattr(context, 'bot_data') and context.bot_data and 'recommendation_limit' in context.bot_data:
+                del context.bot_data['recommendation_limit']
     
     async def library_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Comando /library - Mostrar biblioteca"""
@@ -834,7 +854,11 @@ Mensaje del usuario: "{user_message}"
 
 Acciones disponibles:
 1. "recommend" - Para recomendar música, álbumes, artistas o canciones
-   - Parámetros: rec_type (general/album/artist/track), genre_filter (opcional)
+   - Parámetros: 
+     * rec_type (general/album/artist/track)
+     * genre_filter (opcional, solo para géneros musicales)
+     * similar_to (opcional, nombre de artista/álbum para buscar similares)
+     * limit (número de resultados: 1, 3, 5, etc. Por defecto 5)
 2. "search" - Para buscar música específica en su biblioteca
    - Parámetros: search_term (término de búsqueda)
 3. "stats" - Para ver estadísticas de escucha
@@ -842,11 +866,20 @@ Acciones disponibles:
 5. "question" - Para responder preguntas sobre música en general
    - Parámetros: question (la pregunta del usuario)
 
+IMPORTANTE:
+- Si el usuario menciona un artista/álbum específico como referencia (ej: "como Pink Floyd", "similar a", "parecido a"), usa "similar_to" con el nombre del artista
+- Si pide "un disco" (singular) usa limit=1, si pide "discos" o "varios" usa limit=5
+- Si menciona un género musical (rock, jazz, etc) SIN referencia específica, usa "genre_filter"
+- Si menciona una referencia específica (artista/álbum), NO uses genre_filter, usa "similar_to"
+
 Responde SOLO con un objeto JSON en este formato exacto (sin markdown, sin explicaciones):
 {{"action": "nombre_accion", "params": {{"parametro": "valor"}}}}
 
 Ejemplos:
-- "recomiéndame un disco" → {{"action": "recommend", "params": {{"rec_type": "album"}}}}
+- "recomiéndame un disco" → {{"action": "recommend", "params": {{"rec_type": "album", "limit": 1}}}}
+- "recomiéndame discos de rock" → {{"action": "recommend", "params": {{"rec_type": "album", "genre_filter": "rock", "limit": 5}}}}
+- "recomiéndame un disco como Dark Side of the Moon de Pink Floyd" → {{"action": "recommend", "params": {{"rec_type": "album", "similar_to": "Pink Floyd", "limit": 1}}}}
+- "artistas similares a Queen" → {{"action": "recommend", "params": {{"rec_type": "artist", "similar_to": "Queen", "limit": 5}}}}
 - "busca Queen" → {{"action": "search", "params": {{"search_term": "Queen"}}}}
 - "¿qué es el jazz?" → {{"action": "question", "params": {{"question": "¿qué es el jazz?"}}}}
 - "mis estadísticas" → {{"action": "stats", "params": {{}}}}
@@ -879,12 +912,26 @@ Responde AHORA con el JSON:"""
                 if action == "recommend":
                     rec_type = params.get("rec_type", "general")
                     genre_filter = params.get("genre_filter")
+                    similar_to = params.get("similar_to")
+                    limit = params.get("limit", 5)
                     
+                    # Construir los argumentos para recommend_command
                     context.args = []
-                    if rec_type and rec_type != "general":
-                        context.args.append(rec_type)
-                    if genre_filter:
-                        context.args.append(genre_filter)
+                    
+                    # Si hay una referencia específica (similar_to), usarla
+                    if similar_to:
+                        context.args.append("similar")
+                        context.args.append(similar_to)
+                    else:
+                        # Si no, usar tipo y género
+                        if rec_type and rec_type != "general":
+                            context.args.append(rec_type)
+                        if genre_filter:
+                            context.args.append(genre_filter)
+                    
+                    # Guardar el límite en el contexto para usarlo después
+                    context.bot_data = context.bot_data or {}
+                    context.bot_data['recommendation_limit'] = limit
                     
                     await self.recommend_command(update, context)
                     
