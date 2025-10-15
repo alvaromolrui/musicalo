@@ -8,19 +8,28 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 ## [1.1.1] - 2025-10-15
 
 ### ✨ Añadido
-- **🔒 Bot Privado**: Nueva funcionalidad de control de acceso por ID de usuario
-  - Variable de entorno `TELEGRAM_ALLOWED_USER_IDS` para especificar usuarios autorizados
-  - Decorador `@_check_authorization` para validar acceso en todos los comandos
-  - Mensaje de acceso denegado con información del ID de usuario
-  - Logs informativos sobre el modo de seguridad configurado
-- **📚 Documentación de Seguridad**: Nueva sección en README sobre configuración de bot privado
+- **🔒 Bot Privado**: Control de acceso por ID de usuario
+  - Variable `TELEGRAM_ALLOWED_USER_IDS` para usuarios autorizados
+  - Decorador `@_check_authorization` en todos los comandos
+  - Mensaje informativo con ID para usuarios no autorizados
+  - Logs de modo de seguridad (público/privado)
+- **📚 Sección de Seguridad**: Guía completa en README
 
 ### 🐛 Corregido
-- Error de sintaxis en `docker-compose.yml`: llaves de cierre faltantes en líneas 14, 17, 18, 25
+- Error de sintaxis en `docker-compose.yml` (llaves faltantes)
+- Error de sintaxis en `docker-compose.production.yml` (llaves faltantes)
 
 ### 🔧 Mejorado
-- Archivos de configuración actualizados con instrucciones detalladas sobre `TELEGRAM_ALLOWED_USER_IDS`
-- README ampliado con guía paso a paso para obtener ID de usuario y configurar acceso privado
+- **Configuración consolidada**: Un solo archivo `env.example` para Docker y manual
+- **README simplificado**: Eliminadas duplicaciones y secciones obsoletas
+- **Documentación clara**: Explicación de archivos docker-compose
+- **Rebranding completo**: "Music Agent" → "Musicalo" en todo el proyecto
+- Archivos bien documentados con comentarios organizados
+
+### 🗑️ Eliminado
+- `env.docker` (consolidado en `env.example`)
+- Referencias a archivos inexistentes
+- Secciones duplicadas en README
 
 ## [1.1.0-alpha] - 2025-10-15
 
