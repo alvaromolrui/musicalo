@@ -814,7 +814,7 @@ Proporciona una respuesta útil, informativa y amigable. Si la pregunta es sobre
             genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
             
             # Usar un modelo simple sin function calling - más robusto
-            model = genai.GenerativeModel('gemini-1.5-flash')
+            model = genai.GenerativeModel('gemini-2.0-flash-exp')
             
             # Obtener contexto del usuario para personalizar
             context_info = ""
