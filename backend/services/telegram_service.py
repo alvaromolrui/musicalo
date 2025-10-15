@@ -883,7 +883,9 @@ Acciones disponibles:
 
 IMPORTANTE:
 - Si el usuario menciona un artista/álbum específico como referencia (ej: "como Pink Floyd", "similar a", "parecido a"), usa "similar_to" con el nombre del artista
-- Si pide "un disco" (singular) usa limit=1, si pide "discos" o "varios" usa limit=5
+- Si pide "un disco" o "álbum" (singular) usa limit=1 y rec_type="album"
+- Si pide "discos" o "álbumes" (plural) usa limit=5 y rec_type="album"
+- "disco" y "álbum" SIEMPRE significan rec_type="album"
 - Si menciona un género musical (rock, jazz, etc) SIN referencia específica, usa "genre_filter"
 - Si menciona una referencia específica (artista/álbum), NO uses genre_filter, usa "similar_to"
 
@@ -894,6 +896,7 @@ Ejemplos:
 - "recomiéndame un disco" → {{"action": "recommend", "params": {{"rec_type": "album", "limit": 1}}}}
 - "recomiéndame discos de rock" → {{"action": "recommend", "params": {{"rec_type": "album", "genre_filter": "rock", "limit": 5}}}}
 - "recomiéndame un disco como Dark Side of the Moon de Pink Floyd" → {{"action": "recommend", "params": {{"rec_type": "album", "similar_to": "Pink Floyd", "limit": 1}}}}
+- "recomiéndame un disco de algún grupo similar a Cala vento" → {{"action": "recommend", "params": {{"rec_type": "album", "similar_to": "Cala vento", "limit": 1}}}}
 - "artistas similares a Queen" → {{"action": "recommend", "params": {{"rec_type": "artist", "similar_to": "Queen", "limit": 5}}}}
 - "busca Queen" → {{"action": "search", "params": {{"search_term": "Queen"}}}}
 - "cuál es mi última canción" → {{"action": "chat", "params": {{"question": "cuál es mi última canción"}}}}
@@ -932,6 +935,11 @@ Responde AHORA con el JSON:"""
                     genre_filter = params.get("genre_filter")
                     similar_to = params.get("similar_to")
                     limit = params.get("limit", 5)
+                    
+                    # Fallback: si el mensaje menciona "disco" o "álbum" y rec_type no está definido, forzar a "album"
+                    if rec_type == "general" and any(word in user_message.lower() for word in ["disco", "discos", "álbum", "album", "albumes", "álbumes"]):
+                        rec_type = "album"
+                        print(f"🔧 Forzando rec_type='album' porque el mensaje menciona disco/álbum")
                     
                     # Construir los argumentos para recommend_command
                     context.args = []
