@@ -161,16 +161,16 @@ Ahora puedes escribirme directamente sin usar comandos:
             args = [arg.lower() for arg in context.args]
             
             # Primero detectar tipo de recomendación (puede estar en cualquier posición)
-                if any(word in args for word in ["album", "disco", "cd", "álbum"]):
-                    rec_type = "album"
-                    args = [a for a in args if a not in ["album", "disco", "cd", "álbum"]]
-                elif any(word in args for word in ["artist", "artista", "banda", "grupo"]):
-                    rec_type = "artist"
-                    args = [a for a in args if a not in ["artist", "artista", "banda", "grupo"]]
-                elif any(word in args for word in ["track", "song", "cancion", "canción", "tema"]):
-                    rec_type = "track"
-                    args = [a for a in args if a not in ["track", "song", "cancion", "canción", "tema"]]
-                
+            if any(word in args for word in ["album", "disco", "cd", "álbum"]):
+                rec_type = "album"
+                args = [a for a in args if a not in ["album", "disco", "cd", "álbum"]]
+            elif any(word in args for word in ["artist", "artista", "banda", "grupo"]):
+                rec_type = "artist"
+                args = [a for a in args if a not in ["artist", "artista", "banda", "grupo"]]
+            elif any(word in args for word in ["track", "song", "cancion", "canción", "tema"]):
+                rec_type = "track"
+                args = [a for a in args if a not in ["track", "song", "cancion", "canción", "tema"]]
+            
             # Luego detectar búsquedas "similar a..." o "como..."
             if "similar" in args or "like" in args or "como" in args or "parecido" in args:
                 # Encontrar el índice de la palabra clave
