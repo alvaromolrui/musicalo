@@ -208,13 +208,23 @@ Ahora puedes escribirme directamente sin usar comandos:
                 if self.lastfm:
                     print(f"🔍 Buscando similares a '{similar_to}' en Last.fm (tipo: {rec_type})...")
                     # Buscar más artistas de los necesarios por si algunos no tienen álbumes/tracks
-                    search_limit = max(20, recommendation_limit * 3)
+                    search_limit = max(30, recommendation_limit * 5)
                     similar_artists = await self.lastfm.get_similar_artists(similar_to, limit=search_limit)
                     
                     if similar_artists:
+                        # Añadir variedad: mezclar los resultados para no siempre mostrar los mismos
+                        import random
+                        # Mantener los top 5 pero mezclar el resto
+                        top_artists = similar_artists[:5]
+                        rest_artists = similar_artists[5:]
+                        random.shuffle(rest_artists)
+                        mixed_artists = top_artists + rest_artists
+                        
+                        print(f"🎲 Mezclando artistas para variedad (total: {len(mixed_artists)})")
+                        
                         # Crear recomendaciones de los artistas similares
                         # Continuar hasta tener suficientes recomendaciones
-                        for similar_artist in similar_artists:
+                        for similar_artist in mixed_artists:
                             if len(recommendations) >= recommendation_limit:
                                 break  # Ya tenemos suficientes recomendaciones
                             from models.schemas import Track
@@ -650,6 +660,94 @@ Proporciona una respuesta útil, informativa y amigable. Si la pregunta es sobre
                 "Verifica que la API de Gemini esté configurada correctamente."
             )
     
+    async def _handle_conversational_query(self, update: Update, user_message: str):
+        """Manejar consultas conversacionales de forma inteligente usando IA y APIs"""
+        try:
+            import google.generativeai as genai
+            import random
+            
+            genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+            
+            # Obtener TODOS los datos disponibles del usuario
+            recent_tracks = []
+            top_artists = []
+            user_stats = {}
+            
+            if self.music_service:
+                try:
+                    recent_tracks = await self.music_service.get_recent_tracks(limit=20)
+                    top_artists = await self.music_service.get_top_artists(limit=10)
+                    if hasattr(self.music_service, 'get_user_stats'):
+                        user_stats = await self.music_service.get_user_stats()
+                except Exception as e:
+                    print(f"Error obteniendo datos del usuario: {e}")
+            
+            # Construir contexto rico con TODOS los datos
+            context_data = "DATOS DISPONIBLES DEL USUARIO:\n\n"
+            
+            if recent_tracks:
+                context_data += "Últimas 20 canciones escuchadas:\n"
+                for i, track in enumerate(recent_tracks, 1):
+                    context_data += f"{i}. {track.artist} - {track.name}\n"
+                context_data += "\n"
+            
+            if top_artists:
+                context_data += "Top 10 artistas favoritos:\n"
+                for i, artist in enumerate(top_artists, 1):
+                    context_data += f"{i}. {artist.name} ({artist.playcount} escuchas)\n"
+                context_data += "\n"
+            
+            if user_stats:
+                context_data += "Estadísticas globales:\n"
+                context_data += f"- Total de escuchas: {user_stats.get('total_listens', 'N/A')}\n"
+                context_data += f"- Artistas únicos: {user_stats.get('total_artists', 'N/A')}\n"
+                context_data += f"- Álbumes únicos: {user_stats.get('total_albums', 'N/A')}\n"
+                context_data += f"- Canciones únicas: {user_stats.get('total_tracks', 'N/A')}\n"
+            
+            # Prompt conversacional INTELIGENTE
+            chat_prompt = f"""Eres un asistente musical inteligente y conversacional. 
+
+El usuario te preguntó: "{user_message}"
+
+Tienes acceso a estos datos reales del usuario:
+
+{context_data}
+
+INSTRUCCIONES:
+1. Analiza la pregunta del usuario y responde de forma natural y conversacional
+2. USA LOS DATOS REALES proporcionados arriba para responder
+3. Si preguntan por recomendaciones similares a un artista, busca en sus top artistas o escuchas recientes para dar contexto
+4. Si preguntan por "discos" o "álbumes", menciona álbumes específicos de los artistas que escucha
+5. Sé específico, usa nombres reales de artistas y canciones de los datos
+6. Si no tienes la información exacta pero tienes datos relacionados, ofrece alternativas útiles
+7. Responde en español, de forma amigable y directa
+8. NO uses formatos de lista largos si la pregunta es específica
+9. Si preguntan por algo similar a un artista que NO está en los datos, sugiere artistas que SÍ escucha que podrían ser similares
+
+Respuesta natural y conversacional:"""
+            
+            model = genai.GenerativeModel('gemini-2.0-flash-exp')
+            response = model.generate_content(chat_prompt)
+            
+            response_text = response.text.strip()
+            
+            # Enviar respuesta conversacional
+            await update.message.reply_text(f"🎵 {response_text}")
+            print(f"✅ Respuesta conversacional enviada")
+            
+        except Exception as e:
+            print(f"❌ Error en conversación: {type(e).__name__}: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            await update.message.reply_text(
+                f"🤔 No pude procesar tu mensaje de forma conversacional.\n\n"
+                f"💡 Puedes usar:\n"
+                f"• /recommend - Para recomendaciones\n"
+                f"• /search <término> - Para buscar\n"
+                f"• /stats - Para estadísticas\n"
+                f"• /help - Para ver todos los comandos"
+            )
+    
     async def button_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Manejar callbacks de botones inline"""
         query = update.callback_query
@@ -883,12 +981,14 @@ Acciones disponibles:
    - Parámetros: search_term (término de búsqueda)
 3. "stats" - Para ver estadísticas de escucha completas (mensaje largo)
 4. "library" - Para explorar su biblioteca musical completa (mensaje largo)
-5. "chat" - Para responder conversacionalmente preguntas ESPECÍFICAS del usuario sobre SU música
-   - Usar cuando pregunte: "cuál es mi última canción", "qué he escuchado hoy", "mi artista favorito"
+5. "chat" - Para CUALQUIER pregunta conversacional sobre música del usuario o recomendaciones complejas
+   - Usar cuando pregunte: "cuál es mi última canción", "recomiéndame algo como...", "qué álbumes tengo de..."
    - Parámetros: question (la pregunta del usuario)
-6. "question" - Para responder preguntas GENERALES sobre música, teoría, géneros, historia
-   - Usar cuando pregunte: "qué es el jazz", "quién inventó el rock", "diferencia entre blues y jazz"
+6. "question" - Para responder preguntas GENERALES sobre teoría musical, historia, géneros
+   - Usar cuando pregunte: "qué es el jazz", "quién inventó el rock"
    - Parámetros: question (la pregunta del usuario)
+7. "unknown" - Cuando NO sepas qué acción tomar o el mensaje sea muy complejo/ambiguo
+   - Se manejará conversacionalmente con todos los datos del usuario
 
 IMPORTANTE:
 - Si el usuario menciona un artista/álbum específico como referencia (ej: "como Pink Floyd", "similar a", "parecido a"), usa "similar_to" con el nombre del artista
@@ -988,68 +1088,11 @@ Responde AHORA con el JSON:"""
                     
                 elif action == "chat":
                     # Respuesta conversacional sobre la música del usuario
-                    question = params.get("question", user_message)
+                    await self._handle_conversational_query(update, user_message)
                     
-                    try:
-                        # Obtener datos del usuario
-                        recent_tracks = []
-                        top_artists = []
-                        user_stats = {}
-                        
-                        if self.music_service:
-                            try:
-                                recent_tracks = await self.music_service.get_recent_tracks(limit=10)
-                                top_artists = await self.music_service.get_top_artists(limit=5)
-                                if hasattr(self.music_service, 'get_user_stats'):
-                                    user_stats = await self.music_service.get_user_stats()
-                            except Exception as e:
-                                print(f"Error obteniendo datos: {e}")
-                        
-                        # Construir contexto con datos reales
-                        context_data = ""
-                        if recent_tracks:
-                            context_data += f"\nÚltimas canciones escuchadas:\n"
-                            for i, track in enumerate(recent_tracks[:5], 1):
-                                context_data += f"{i}. {track.artist} - {track.name}\n"
-                        
-                        if top_artists:
-                            context_data += f"\nArtistas favoritos:\n"
-                            for i, artist in enumerate(top_artists[:5], 1):
-                                context_data += f"{i}. {artist.name} ({artist.playcount} escuchas)\n"
-                        
-                        if user_stats:
-                            context_data += f"\nEstadísticas:\n"
-                            context_data += f"- Total escuchas: {user_stats.get('total_listens', 'N/A')}\n"
-                            context_data += f"- Artistas únicos: {user_stats.get('total_artists', 'N/A')}\n"
-                        
-                        # Pedir a Gemini que responda conversacionalmente
-                        chat_prompt = f"""Eres un asistente musical conversacional. El usuario te preguntó:
-
-"{question}"
-
-Aquí están los datos de su actividad musical:
-{context_data}
-
-Responde de forma natural y conversacional, directamente con la información que pidió. 
-NO uses formato largo de reporte, solo responde la pregunta específica.
-Sé amigable y directo.
-
-Respuesta:"""
-                        
-                        import google.generativeai as genai
-                        genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-                        chat_model = genai.GenerativeModel('gemini-2.0-flash-exp')
-                        chat_response = chat_model.generate_content(chat_prompt)
-                        
-                        response_text = chat_response.text.strip()
-                        await update.message.reply_text(f"🎵 {response_text}")
-                        
-                    except Exception as e:
-                        print(f"Error en chat: {e}")
-                        await update.message.reply_text(
-                            f"No pude obtener esa información en este momento.\n"
-                            f"Usa /stats para ver tus estadísticas completas."
-                        )
+                elif action == "unknown" or not action:
+                    # Si la IA no sabe qué hacer, intentar respuesta conversacional
+                    await self._handle_conversational_query(update, user_message)
                     
                 elif action == "question":
                     question = params.get("question", user_message)
