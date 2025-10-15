@@ -60,14 +60,10 @@ if [ ! -z "$NAVIDROME_URL" ]; then
     fi
 fi
 
-# Configurar webhook si está especificado
+# El webhook se configura automáticamente dentro de bot.py
+# Esto evita problemas de rate limiting si el contenedor se reinicia varias veces
 if [ ! -z "$TELEGRAM_WEBHOOK_URL" ]; then
-    log "🔗 Configurando webhook de Telegram..."
-    curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook" \
-         -H "Content-Type: application/json" \
-         -d "{\"url\": \"${TELEGRAM_WEBHOOK_URL}/webhook\"}" \
-         | tee -a /app/logs/bot.log
-    log "✅ Webhook configurado"
+    log "🔗 Webhook configurado para: ${TELEGRAM_WEBHOOK_URL}/webhook"
 else
     log "📡 Usando modo polling"
 fi
