@@ -1,5 +1,5 @@
 """
-Music Agent - API para webhooks de Telegram (opcional)
+Musicalo - API para webhooks de Telegram (opcional)
 
 Este archivo es opcional y solo se usa si quieres manejar webhooks de Telegram
 a través de una API REST. Para uso normal, ejecuta directamente bot.py
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 app = FastAPI(
-    title="Music Agent Webhook API",
+    title="Musicalo Webhook API",
     description="API para manejar webhooks de Telegram Bot",
     version="1.0.0"
 )
@@ -36,7 +36,7 @@ app.add_middleware(
 @app.get("/")
 async def root():
     return {
-        "message": "Music Agent Webhook API está funcionando",
+        "message": "Musicalo Webhook API está funcionando",
         "status": "active",
         "bot": "Usa /start en Telegram para comenzar"
     }
@@ -66,7 +66,7 @@ async def telegram_webhook(request: Request):
 async def bot_info():
     """Información del bot"""
     return {
-        "bot_name": "Music Agent Bot",
+        "bot_name": "Musicalo",
         "description": "Bot de Telegram para recomendaciones musicales con IA",
         "commands": [
             "/start - Iniciar bot",

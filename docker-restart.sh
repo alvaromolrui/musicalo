@@ -1,9 +1,9 @@
 #!/bin/bash
 
-echo "🔄 Reiniciando Music Agent Bot..."
+echo "🔄 Reiniciando Musicalo..."
 
 # Reiniciar el servicio
-docker-compose restart music-agent-bot
+docker-compose restart musicalo
 
 echo "✅ Bot reiniciado correctamente!"
 echo ""

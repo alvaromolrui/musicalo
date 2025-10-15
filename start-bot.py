@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Music Agent Bot - Script de inicio
+Musicalo - Script de inicio
 
 Ejecuta el bot de Telegram con la configuración apropiada.
 """
@@ -20,7 +20,7 @@ os.chdir(backend_dir)
 from bot import main
 
 if __name__ == "__main__":
-    print("🎵 Iniciando Music Agent Bot...")
+    print("🎵 Iniciando Musicalo...")
     print("📱 Busca tu bot en Telegram y escribe /start para comenzar")
     print("🛑 Presiona Ctrl+C para detener el bot")
     print("-" * 50)

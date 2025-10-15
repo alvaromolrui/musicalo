@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "🎵 Iniciando Music Agent Bot con Docker Compose..."
+echo "🎵 Iniciando Musicalo con Docker Compose..."
 
 # Verificar si Docker está instalado
 if ! command -v docker &> /dev/null; then

@@ -83,7 +83,7 @@ class TelegramService:
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Comando /start - Bienvenida del bot"""
         welcome_text = """
-🎵 **¡Bienvenido a Music Agent!**
+🎵 **¡Bienvenido a Musicalo!**
 
 Soy tu asistente personal de música con IA que entiende lenguaje natural. Puedes hablarme directamente o usar comandos.
 
@@ -127,7 +127,7 @@ Analizo tu actividad en Last.fm/ListenBrainz y tu biblioteca de Navidrome para s
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Comando /help - Ayuda detallada"""
         help_text = """
-🎵 **Music Agent - Guía de Comandos**
+🎵 **Musicalo - Guía de Comandos**
 
 **✨ Lenguaje Natural (NUEVO):**
 Ahora puedes escribirme directamente sin usar comandos:

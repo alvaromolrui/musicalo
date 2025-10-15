@@ -5,7 +5,7 @@
 
 set -e
 
-echo "🚀 Music Agent Bot - Deploy Rápido"
+echo "🚀 Musicalo - Deploy Rápido"
 echo "=================================="
 echo ""
 
@@ -39,7 +39,7 @@ echo "📥 Descargando última imagen de Docker Hub..."
 docker pull alvaromolrui/musicalo:latest
 
 echo ""
-echo "🚀 Iniciando Music Agent Bot..."
+echo "🚀 Iniciando Musicalo..."
 
 # Usar docker-compose de producción
 docker-compose -f docker-compose.production.yml up -d

@@ -1,4 +1,4 @@
-# Music Agent Bot 🎵🤖
+# Musicalo 🎵🤖
 
 [![Version](https://img.shields.io/badge/Version-1.1.1-green.svg)](VERSION)
 [![Docker Hub](https://img.shields.io/badge/Docker%20Hub-alvaromolrui%2Fmusicalo-blue?logo=docker)](https://hub.docker.com/r/alvaromolrui/musicalo)
@@ -432,4 +432,4 @@ docker-compose down
 
 ---
 
-**Music Agent Bot** - Descubre nueva música con el poder de la IA y la simplicidad de Telegram 🎵🤖
+**Musicalo** - Descubre nueva música con el poder de la IA y la simplicidad de Telegram 🎵🤖

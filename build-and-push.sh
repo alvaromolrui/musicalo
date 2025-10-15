@@ -11,7 +11,7 @@ IMAGE_NAME="musicalo"
 VERSION=${1:-latest}
 FULL_IMAGE_NAME="$DOCKER_USERNAME/$IMAGE_NAME:$VERSION"
 
-echo "🎵 Music Agent Bot - Build and Push"
+echo "🎵 Musicalo - Build and Push"
 echo "=================================="
 echo ""
 
@@ -54,7 +54,7 @@ echo "✅ ¡Imagen subida correctamente!"
 echo ""
 echo "🐳 Para usar la imagen:"
 echo "   docker pull $FULL_IMAGE_NAME"
-echo "   docker run -d --name music-agent-bot $FULL_IMAGE_NAME"
+echo "   docker run -d --name musicalo $FULL_IMAGE_NAME"
 echo ""
 echo "📋 O con docker-compose:"
 echo "   docker-compose -f docker-compose.production.yml up -d"

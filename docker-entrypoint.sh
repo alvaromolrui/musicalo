@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-echo "🎵 Iniciando Music Agent Bot..."
+echo "🎵 Iniciando Musicalo..."
 
 # Función para logging
 log() {
@@ -84,7 +84,7 @@ cleanup() {
 trap cleanup SIGTERM SIGINT
 
 # Iniciar el bot
-log "🚀 Iniciando Music Agent Bot..."
+log "🚀 Iniciando Musicalo..."
 log "📱 Busca tu bot en Telegram y escribe /start para comenzar"
 
 # Ejecutar el bot con logging

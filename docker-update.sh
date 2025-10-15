@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "🔄 Actualizando Music Agent Bot..."
+echo "🔄 Actualizando Musicalo..."
 
 # Parar el servicio
 echo "🛑 Deteniendo bot..."
