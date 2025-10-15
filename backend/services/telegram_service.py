@@ -809,85 +809,90 @@ Proporciona una respuesta útil, informativa y amigable. Si la pregunta es sobre
         
         try:
             import google.generativeai as genai
-            from google.generativeai.types import content_types
             
             genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
             
-            # Definir las herramientas disponibles para el bot
+            # Definir las herramientas disponibles para el bot (usando la sintaxis correcta)
+            get_recommendations_tool = {
+                "name": "get_recommendations",
+                "description": "Genera recomendaciones musicales personalizadas para el usuario basadas en sus gustos. Úsala cuando el usuario pida recomendaciones de música, álbumes, artistas o canciones.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "rec_type": {
+                            "type": "string",
+                            "description": "Tipo de recomendación: 'general' para cualquier música, 'album' para álbumes, 'artist' para artistas, 'track' para canciones"
+                        },
+                        "genre_filter": {
+                            "type": "string",
+                            "description": "Filtro de género musical opcional, ej: 'rock', 'jazz', 'metal', 'pop'"
+                        }
+                    },
+                    "required": ["rec_type"]
+                }
+            }
+            
+            search_music_tool = {
+                "name": "search_music",
+                "description": "Busca música en la biblioteca del usuario. Útil para encontrar canciones, álbumes o artistas específicos que el usuario mencione.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "search_term": {
+                            "type": "string",
+                            "description": "Término de búsqueda: nombre de artista, canción o álbum a buscar"
+                        }
+                    },
+                    "required": ["search_term"]
+                }
+            }
+            
+            get_statistics_tool = {
+                "name": "get_statistics",
+                "description": "Muestra estadísticas de escucha del usuario: top artistas, total de escuchas, álbumes favoritos, etc.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }
+            }
+            
+            show_library_tool = {
+                "name": "show_library",
+                "description": "Muestra la biblioteca musical del usuario con canciones, álbumes y artistas disponibles.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }
+            }
+            
+            answer_question_tool = {
+                "name": "answer_question",
+                "description": "Responde preguntas generales sobre música, géneros musicales, artistas, historia de la música, teoría musical, etc. Úsala para preguntas informativas.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "question": {
+                            "type": "string",
+                            "description": "La pregunta del usuario sobre música"
+                        }
+                    },
+                    "required": ["question"]
+                }
+            }
+            
             tools = [
-                genai.protos.Tool(
-                    function_declarations=[
-                        genai.protos.FunctionDeclaration(
-                            name="get_recommendations",
-                            description="Genera recomendaciones musicales personalizadas para el usuario basadas en sus gustos. Úsala cuando el usuario pida recomendaciones de música, álbumes, artistas o canciones.",
-                            parameters=genai.protos.Schema(
-                                type=genai.protos.Type.OBJECT,
-                                properties={
-                                    "rec_type": genai.protos.Schema(
-                                        type=genai.protos.Type.STRING,
-                                        description="Tipo de recomendación: 'general' para cualquier música, 'album' para álbumes, 'artist' para artistas, 'track' para canciones"
-                                    ),
-                                    "genre_filter": genai.protos.Schema(
-                                        type=genai.protos.Type.STRING,
-                                        description="Filtro de género musical opcional, ej: 'rock', 'jazz', 'metal', 'pop'"
-                                    )
-                                },
-                                required=["rec_type"]
-                            )
-                        ),
-                        genai.protos.FunctionDeclaration(
-                            name="search_music",
-                            description="Busca música en la biblioteca del usuario. Útil para encontrar canciones, álbumes o artistas específicos que el usuario mencione.",
-                            parameters=genai.protos.Schema(
-                                type=genai.protos.Type.OBJECT,
-                                properties={
-                                    "search_term": genai.protos.Schema(
-                                        type=genai.protos.Type.STRING,
-                                        description="Término de búsqueda: nombre de artista, canción o álbum a buscar"
-                                    )
-                                },
-                                required=["search_term"]
-                            )
-                        ),
-                        genai.protos.FunctionDeclaration(
-                            name="get_statistics",
-                            description="Muestra estadísticas de escucha del usuario: top artistas, total de escuchas, álbumes favoritos, etc.",
-                            parameters=genai.protos.Schema(
-                                type=genai.protos.Type.OBJECT,
-                                properties={},
-                                required=[]
-                            )
-                        ),
-                        genai.protos.FunctionDeclaration(
-                            name="show_library",
-                            description="Muestra la biblioteca musical del usuario con canciones, álbumes y artistas disponibles.",
-                            parameters=genai.protos.Schema(
-                                type=genai.protos.Type.OBJECT,
-                                properties={},
-                                required=[]
-                            )
-                        ),
-                        genai.protos.FunctionDeclaration(
-                            name="answer_question",
-                            description="Responde preguntas generales sobre música, géneros musicales, artistas, historia de la música, teoría musical, etc. Úsala para preguntas informativas.",
-                            parameters=genai.protos.Schema(
-                                type=genai.protos.Type.OBJECT,
-                                properties={
-                                    "question": genai.protos.Schema(
-                                        type=genai.protos.Type.STRING,
-                                        description="La pregunta del usuario sobre música"
-                                    )
-                                },
-                                required=["question"]
-                            )
-                        )
-                    ]
-                )
+                get_recommendations_tool,
+                search_music_tool,
+                get_statistics_tool,
+                show_library_tool,
+                answer_question_tool
             ]
             
             # Crear modelo con function calling
             model = genai.GenerativeModel(
-                'gemini-2.0-flash-exp',
+                'gemini-1.5-flash',
                 tools=tools
             )
             
