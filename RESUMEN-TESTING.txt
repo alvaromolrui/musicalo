@@ -1,0 +1,91 @@
+═══════════════════════════════════════════════════════════════
+🎉 MUSICALO - VERSIÓN DE TESTING CON IA LENGUAJE NATURAL
+═══════════════════════════════════════════════════════════════
+
+✅ TODO LISTO EN GITHUB: feature/ai-natural-language-interaction
+
+═══════════════════════════════════════════════════════════════
+📦 PASO 1: CONSTRUIR Y SUBIR IMAGEN (donde tengas Docker)
+═══════════════════════════════════════════════════════════════
+
+# Opción A - Con el script:
+git checkout feature/ai-natural-language-interaction
+./build-testing.sh
+
+# Opción B - Manual:
+docker build -t alvaromolrui/musicalo:testing .
+docker login
+docker push alvaromolrui/musicalo:testing
+
+═══════════════════════════════════════════════════════════════
+🚀 PASO 2: PROBAR EN TU SERVIDOR (MUY SIMPLE)
+═══════════════════════════════════════════════════════════════
+
+ssh tu-usuario@tu-servidor
+cd /ruta/a/musicalo
+
+# Editar docker-compose.yml
+nano docker-compose.yml
+
+# Cambiar esta línea:
+  image: alvaromolrui/musicalo:latest
+# Por:
+  image: alvaromolrui/musicalo:testing
+
+# Guardar (Ctrl+O) y salir (Ctrl+X)
+
+# Actualizar y reiniciar
+docker-compose pull
+docker-compose down
+docker-compose up -d
+
+# Ver logs
+docker-compose logs -f
+
+═══════════════════════════════════════════════════════════════
+✨ PROBAR LA NUEVA FUNCIONALIDAD
+═══════════════════════════════════════════════════════════════
+
+Abre tu bot en Telegram y escribe (SIN comandos):
+
+✅ "Recomiéndame música rock"
+✅ "Busca Queen en mi biblioteca"
+✅ "Muéstrame mis estadísticas"
+✅ "¿Qué es el jazz?"
+
+El bot interpretará tu mensaje y ejecutará la acción correcta!
+
+═══════════════════════════════════════════════════════════════
+🔄 VOLVER A PRODUCCIÓN
+═══════════════════════════════════════════════════════════════
+
+# En el servidor, editar docker-compose.yml
+nano docker-compose.yml
+
+# Cambiar de nuevo a:
+  image: alvaromolrui/musicalo:latest
+
+# Reiniciar
+docker-compose pull
+docker-compose down
+docker-compose up -d
+
+═══════════════════════════════════════════════════════════════
+📚 DOCUMENTACIÓN
+═══════════════════════════════════════════════════════════════
+
+- QUICKSTART-TESTING.md     → Inicio rápido
+- BUILD-TESTING-IMAGE.md    → Detalles construcción imagen
+- TESTING.md                → Guía completa (si quieres bot separado)
+
+═══════════════════════════════════════════════════════════════
+💡 NOTA IMPORTANTE
+═══════════════════════════════════════════════════════════════
+
+- Usas el MISMO bot de Telegram (no necesitas crear otro)
+- Usas el MISMO docker-compose.yml (solo cambias "latest" por "testing")
+- Usas las MISMAS variables de entorno (.env)
+- La imagen "testing" está en Docker Hub cuando la construyas
+
+═══════════════════════════════════════════════════════════════
+
