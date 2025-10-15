@@ -35,6 +35,7 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 - Health check del Dockerfile (no aplicable en modo polling)
 - Referencias a webhooks como característica principal
 - Mapeo de puertos en docker-compose (innecesario en modo polling)
+- Variables de entorno no usadas: `DEBUG`, `HOST`, `PORT`, `TELEGRAM_WEBHOOK_URL`
 
 ## [1.1.0-alpha] - 2025-10-15
 
