@@ -35,9 +35,16 @@ class TelegramService:
         welcome_text = """
 🎵 **¡Bienvenido a Music Agent!**
 
-Soy tu asistente personal de música que utiliza IA para recomendarte canciones basadas en tus gustos reales.
+Soy tu asistente personal de música con IA que entiende lenguaje natural. Puedes hablarme directamente o usar comandos.
 
-**Comandos disponibles:**
+**✨ Nuevo: Habla conmigo naturalmente**
+Ya no necesitas recordar comandos. Escribe lo que quieras:
+• "Recomiéndame música rock"
+• "Busca Queen en mi biblioteca"
+• "Muéstrame mis estadísticas"
+• "¿Qué es el jazz?"
+
+**📝 Comandos disponibles:**
 /recommend - Obtener recomendaciones personalizadas
 /library - Explorar tu biblioteca musical
 /stats - Ver estadísticas de escucha
@@ -48,9 +55,7 @@ Soy tu asistente personal de música que utiliza IA para recomendarte canciones 
 **¿Cómo funciona?**
 Analizo tu actividad en Last.fm/ListenBrainz y tu biblioteca de Navidrome para sugerirte música que realmente te gustará.
 
-**Nuevo:** Ahora puedes hacer preguntas directas a la IA con `/ask` o `/prompt` para obtener información sobre música, géneros, artistas y más.
-
-¡Escribe /recommend para empezar o /ask para preguntar algo! 🎶
+¡Simplemente escríbeme lo que necesites! 🎶
         """
         
         keyboard = [
@@ -65,6 +70,14 @@ Analizo tu actividad en Last.fm/ListenBrainz y tu biblioteca de Navidrome para s
         """Comando /help - Ayuda detallada"""
         help_text = """
 🎵 **Music Agent - Guía de Comandos**
+
+**✨ Lenguaje Natural (NUEVO):**
+Ahora puedes escribirme directamente sin usar comandos:
+• "Recomiéndame álbumes de rock"
+• "Busca Queen"
+• "Muéstrame mis estadísticas"
+• "¿Qué artistas tengo en mi biblioteca?"
+• "¿Qué es el blues?"
 
 **Comandos principales:**
 • `/recommend` - Recomendaciones generales
@@ -788,23 +801,210 @@ Proporciona una respuesta útil, informativa y amigable. Si la pregunta es sobre
                 pass
     
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Manejar mensajes de texto del usuario"""
-        text = update.message.text.lower()
+        """Manejar mensajes de texto con IA - Interpreta intención y ejecuta acciones"""
+        user_message = update.message.text
         
-        if "recomendaciones" in text or "recomendar" in text:
-            await self.recommend_command(update, context)
-        elif "biblioteca" in text or "música" in text:
-            await self.library_command(update, context)
-        elif "estadísticas" in text or "stats" in text:
-            await self.stats_command(update, context)
-        elif "buscar" in text or "search" in text:
-            await update.message.reply_text(
-                "🔍 Para buscar música, usa el comando:\n"
-                "`/search <término>`\n\n"
-                "Ejemplo: `/search queen`"
+        # Mensaje de espera
+        waiting_msg = await update.message.reply_text("🤔 Analizando tu mensaje...")
+        
+        try:
+            import google.generativeai as genai
+            from google.generativeai.types import content_types
+            
+            genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+            
+            # Definir las herramientas disponibles para el bot
+            tools = [
+                genai.protos.Tool(
+                    function_declarations=[
+                        genai.protos.FunctionDeclaration(
+                            name="get_recommendations",
+                            description="Genera recomendaciones musicales personalizadas para el usuario basadas en sus gustos. Úsala cuando el usuario pida recomendaciones de música, álbumes, artistas o canciones.",
+                            parameters=genai.protos.Schema(
+                                type=genai.protos.Type.OBJECT,
+                                properties={
+                                    "rec_type": genai.protos.Schema(
+                                        type=genai.protos.Type.STRING,
+                                        description="Tipo de recomendación: 'general' para cualquier música, 'album' para álbumes, 'artist' para artistas, 'track' para canciones"
+                                    ),
+                                    "genre_filter": genai.protos.Schema(
+                                        type=genai.protos.Type.STRING,
+                                        description="Filtro de género musical opcional, ej: 'rock', 'jazz', 'metal', 'pop'"
+                                    )
+                                },
+                                required=["rec_type"]
+                            )
+                        ),
+                        genai.protos.FunctionDeclaration(
+                            name="search_music",
+                            description="Busca música en la biblioteca del usuario. Útil para encontrar canciones, álbumes o artistas específicos que el usuario mencione.",
+                            parameters=genai.protos.Schema(
+                                type=genai.protos.Type.OBJECT,
+                                properties={
+                                    "search_term": genai.protos.Schema(
+                                        type=genai.protos.Type.STRING,
+                                        description="Término de búsqueda: nombre de artista, canción o álbum a buscar"
+                                    )
+                                },
+                                required=["search_term"]
+                            )
+                        ),
+                        genai.protos.FunctionDeclaration(
+                            name="get_statistics",
+                            description="Muestra estadísticas de escucha del usuario: top artistas, total de escuchas, álbumes favoritos, etc.",
+                            parameters=genai.protos.Schema(
+                                type=genai.protos.Type.OBJECT,
+                                properties={},
+                                required=[]
+                            )
+                        ),
+                        genai.protos.FunctionDeclaration(
+                            name="show_library",
+                            description="Muestra la biblioteca musical del usuario con canciones, álbumes y artistas disponibles.",
+                            parameters=genai.protos.Schema(
+                                type=genai.protos.Type.OBJECT,
+                                properties={},
+                                required=[]
+                            )
+                        ),
+                        genai.protos.FunctionDeclaration(
+                            name="answer_question",
+                            description="Responde preguntas generales sobre música, géneros musicales, artistas, historia de la música, teoría musical, etc. Úsala para preguntas informativas.",
+                            parameters=genai.protos.Schema(
+                                type=genai.protos.Type.OBJECT,
+                                properties={
+                                    "question": genai.protos.Schema(
+                                        type=genai.protos.Type.STRING,
+                                        description="La pregunta del usuario sobre música"
+                                    )
+                                },
+                                required=["question"]
+                            )
+                        )
+                    ]
+                )
+            ]
+            
+            # Crear modelo con function calling
+            model = genai.GenerativeModel(
+                'gemini-2.0-flash-exp',
+                tools=tools
             )
-        else:
-            await update.message.reply_text(
-                "🤔 No entendí tu mensaje.\n\n"
-                "Usa /help para ver los comandos disponibles."
-            )
+            
+            # Obtener contexto del usuario para personalizar
+            context_info = ""
+            if self.music_service:
+                try:
+                    top_artists = await self.music_service.get_top_artists(limit=3)
+                    if top_artists:
+                        context_info = f"\n\nContexto: Los artistas favoritos del usuario son: {', '.join([a.name for a in top_artists[:3]])}"
+                except Exception as e:
+                    print(f"⚠️ No se pudo obtener contexto: {e}")
+            
+            # Crear el prompt para la IA
+            prompt = f"""Eres un asistente musical inteligente llamado Music Agent. El usuario te ha escrito:
+
+"{user_message}"
+
+Analiza su mensaje y decide qué herramienta usar para ayudarle de la mejor manera.{context_info}
+
+Herramientas disponibles:
+- get_recommendations: Para recomendar música, álbumes, artistas o canciones
+- search_music: Para buscar música específica en su biblioteca
+- get_statistics: Para ver estadísticas de escucha
+- show_library: Para explorar su biblioteca musical
+- answer_question: Para responder preguntas sobre música en general
+
+IMPORTANTE: Debes llamar a UNA función apropiada. No respondas con texto, elige la función correcta."""
+            
+            # Generar respuesta con function calling
+            print(f"🤖 Usuario escribió: {user_message}")
+            response = model.generate_content(prompt)
+            
+            # Verificar si el modelo quiere llamar una función
+            if response.candidates and response.candidates[0].content.parts:
+                part = response.candidates[0].content.parts[0]
+                
+                if hasattr(part, 'function_call') and part.function_call:
+                    function_call = part.function_call
+                    function_name = function_call.name
+                    function_args = dict(function_call.args)
+                    
+                    print(f"🤖 IA decidió llamar: {function_name} con args: {function_args}")
+                    
+                    # Borrar mensaje de espera
+                    await waiting_msg.delete()
+                    
+                    # Ejecutar la función correspondiente
+                    if function_name == "get_recommendations":
+                        rec_type = function_args.get("rec_type", "general")
+                        genre_filter = function_args.get("genre_filter", None)
+                        
+                        # Simular el context.args para reutilizar recommend_command
+                        context.args = []
+                        if rec_type and rec_type != "general":
+                            context.args.append(rec_type)
+                        if genre_filter:
+                            context.args.append(genre_filter)
+                        
+                        await self.recommend_command(update, context)
+                        
+                    elif function_name == "search_music":
+                        search_term = function_args.get("search_term", "")
+                        if search_term:
+                            context.args = search_term.split()
+                            await self.search_command(update, context)
+                        else:
+                            await update.message.reply_text("❌ No especificaste qué buscar. Por ejemplo: 'busca Queen'")
+                        
+                    elif function_name == "get_statistics":
+                        await self.stats_command(update, context)
+                        
+                    elif function_name == "show_library":
+                        await self.library_command(update, context)
+                        
+                    elif function_name == "answer_question":
+                        question = function_args.get("question", user_message)
+                        # Usar el ask_command existente
+                        context.args = question.split()
+                        await self.ask_command(update, context)
+                    
+                    else:
+                        await update.message.reply_text(f"⚠️ Función no reconocida: {function_name}")
+                        
+                elif hasattr(part, 'text') and part.text:
+                    # Si la IA responde con texto en lugar de function call
+                    await waiting_msg.edit_text(f"🤖 {part.text}\n\n💡 Tip: Puedes usar comandos como /recommend, /search, /stats")
+                else:
+                    await waiting_msg.edit_text(
+                        "🤔 No estoy seguro de cómo ayudarte con eso.\n\n"
+                        "Puedes usar:\n"
+                        "• /recommend - Para recomendaciones\n"
+                        "• /search <término> - Para buscar\n"
+                        "• /stats - Para estadísticas\n"
+                        "• /help - Para ver todos los comandos"
+                    )
+            else:
+                await waiting_msg.edit_text(
+                    "🤔 No pude procesar tu mensaje.\n\n"
+                    "Usa /help para ver los comandos disponibles."
+                )
+                
+        except Exception as e:
+            print(f"❌ Error en handle_message: {type(e).__name__}: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            
+            try:
+                await waiting_msg.edit_text(
+                    f"❌ Error procesando tu mensaje: {str(e)}\n\n"
+                    "💡 Puedes usar comandos directos:\n"
+                    "• /recommend - Recomendaciones\n"
+                    "• /search <término> - Buscar música\n"
+                    "• /stats - Estadísticas\n"
+                    "• /ask <pregunta> - Preguntar sobre música"
+                )
+            except:
+                await update.message.reply_text(
+                    "❌ Hubo un error. Usa /help para ver los comandos disponibles."
+                )
