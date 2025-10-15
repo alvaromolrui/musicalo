@@ -1,66 +1,69 @@
 # 🚀 Inicio Rápido - Testing
 
-## En tu máquina local (para construir la imagen)
+## Paso 1: Construir y Subir Imagen (Local o Servidor)
+
+Donde tengas Docker disponible:
 
 ```bash
-# 1. Asegúrate de estar en la rama correcta
+# Asegúrate de estar en la rama correcta
 git checkout feature/ai-natural-language-interaction
 
-# 2. Construir y subir imagen de testing
+# Construir y subir imagen de testing
 ./build-testing.sh
 ```
 
-## En tu servidor (para desplegar)
+O manualmente:
 
 ```bash
-# 1. Conectar al servidor
-ssh tu-usuario@tu-servidor
-
-# 2. Ir al proyecto
-cd /ruta/a/musicalo
-
-# 3. Actualizar código
-git fetch
-git checkout feature/ai-natural-language-interaction
-git pull
-
-# 4. Configurar variables de entorno
-cp env.testing .env.testing
-nano .env.testing
-# ⚠️ IMPORTANTE: Configurar TELEGRAM_BOT_TOKEN_TESTING
-
-# 5. Iniciar testing
-./docker-testing-start.sh
-
-# 6. Ver logs
-./docker-testing-logs.sh
+docker build -t alvaromolrui/musicalo:testing .
+docker login
+docker push alvaromolrui/musicalo:testing
 ```
 
-## Crear Bot de Telegram para Testing
+## Paso 2: Probar en el Servidor (Método Simple)
 
-1. Abre Telegram
-2. Busca `@BotFather`
-3. Envía `/newbot`
-4. Sigue las instrucciones
-5. Copia el token a `.env.testing`
-
-## Comandos Útiles
+**Opción A - Editando docker-compose.yml (Recomendado)**
 
 ```bash
-# Iniciar
-./docker-testing-start.sh
+ssh tu-usuario@tu-servidor
+cd /ruta/a/musicalo
+
+# Cambiar latest por testing en docker-compose.yml
+nano docker-compose.yml
+# Busca: image: alvaromolrui/musicalo:latest
+# Cambia a: image: alvaromolrui/musicalo:testing
+
+# Actualizar y reiniciar
+docker-compose pull
+docker-compose down
+docker-compose up -d
 
 # Ver logs
-./docker-testing-logs.sh
+docker-compose logs -f
+```
 
-# Detener
-./docker-testing-stop.sh
+**Opción B - Comando rápido (sin editar archivo)**
 
-# Reiniciar
-./docker-testing-restart.sh
+```bash
+ssh tu-usuario@tu-servidor
+cd /ruta/a/musicalo
 
-# Estado
-docker-compose -f docker-compose.testing.yml ps
+# Detener producción temporalmente
+docker-compose down
+
+# Correr imagen de testing
+docker run -d --name musicalo-testing \
+  --env-file .env \
+  -p 8000:8000 \
+  alvaromolrui/musicalo:testing
+
+# Ver logs
+docker logs -f musicalo-testing
+
+# Para volver a producción:
+docker stop musicalo-testing
+docker rm musicalo-testing
+docker-compose up -d
 ```
 
 ## ✨ Probar la Nueva Funcionalidad
