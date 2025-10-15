@@ -142,6 +142,17 @@ Ahora puedes escribirme directamente sin usar comandos:
         rec_type = "general"  # general, album, artist, track
         genre_filter = None
         similar_to = None  # Para búsquedas "similar a..."
+        recommendation_limit = 5  # Por defecto
+        
+        # Extraer límite si está en los args (viene de handle_message)
+        if context.args and any(arg.startswith("__limit=") for arg in context.args):
+            for arg in context.args[:]:
+                if arg.startswith("__limit="):
+                    try:
+                        recommendation_limit = int(arg.split("=")[1])
+                        context.args.remove(arg)
+                    except:
+                        pass
         
         if context.args:
             args = [arg.lower() for arg in context.args]
@@ -183,11 +194,7 @@ Ahora puedes escribirme directamente sin usar comandos:
             
             # Si es una búsqueda "similar a...", usar Last.fm directamente
             if similar_to:
-                # Obtener límite del contexto si está disponible
-                recommendation_limit = 5
-                if hasattr(context, 'bot_data') and context.bot_data and 'recommendation_limit' in context.bot_data:
-                    recommendation_limit = context.bot_data['recommendation_limit']
-                    print(f"🎯 Usando límite personalizado para similares: {recommendation_limit}")
+                print(f"🎯 Usando límite: {recommendation_limit} para similares")
                 
                 if self.lastfm:
                     print(f"🔍 Buscando similares a '{similar_to}' en Last.fm (tipo: {rec_type})...")
@@ -291,13 +298,7 @@ Ahora puedes escribirme directamente sin usar comandos:
                     activity_context=""
                 )
                 
-                # Obtener límite del contexto si está disponible (desde handle_message)
-                recommendation_limit = 5
-                if hasattr(context, 'bot_data') and context.bot_data and 'recommendation_limit' in context.bot_data:
-                    recommendation_limit = context.bot_data['recommendation_limit']
-                    print(f"🎯 Usando límite personalizado: {recommendation_limit}")
-                
-                # Generar recomendaciones
+                # Generar recomendaciones (recommendation_limit ya está definido arriba)
                 print(f"🎯 Generando recomendaciones (tipo: {rec_type}, género: {genre_filter}) para {len(recent_tracks)} tracks y {len(top_artists)} artistas...")
                 recommendations = await self.ai.generate_recommendations(
                     user_profile, 
@@ -352,19 +353,11 @@ Ahora puedes escribirme directamente sin usar comandos:
             await update.message.reply_text(text, reply_markup=reply_markup, parse_mode='Markdown')
             print("✅ Recomendaciones enviadas correctamente")
             
-            # Limpiar el límite personalizado del contexto
-            if hasattr(context, 'bot_data') and context.bot_data and 'recommendation_limit' in context.bot_data:
-                del context.bot_data['recommendation_limit']
-            
         except Exception as e:
             print(f"❌ Error en recommend_command: {type(e).__name__}: {str(e)}")
             import traceback
             traceback.print_exc()
             await update.message.reply_text(f"❌ Error generando recomendaciones: {str(e)}")
-            
-            # Limpiar el límite personalizado incluso si hay error
-            if hasattr(context, 'bot_data') and context.bot_data and 'recommendation_limit' in context.bot_data:
-                del context.bot_data['recommendation_limit']
     
     async def library_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Comando /library - Mostrar biblioteca"""
@@ -861,9 +854,13 @@ Acciones disponibles:
      * limit (número de resultados: 1, 3, 5, etc. Por defecto 5)
 2. "search" - Para buscar música específica en su biblioteca
    - Parámetros: search_term (término de búsqueda)
-3. "stats" - Para ver estadísticas de escucha
-4. "library" - Para explorar su biblioteca musical
-5. "question" - Para responder preguntas sobre música en general
+3. "stats" - Para ver estadísticas de escucha completas (mensaje largo)
+4. "library" - Para explorar su biblioteca musical completa (mensaje largo)
+5. "chat" - Para responder conversacionalmente preguntas ESPECÍFICAS del usuario sobre SU música
+   - Usar cuando pregunte: "cuál es mi última canción", "qué he escuchado hoy", "mi artista favorito"
+   - Parámetros: question (la pregunta del usuario)
+6. "question" - Para responder preguntas GENERALES sobre música, teoría, géneros, historia
+   - Usar cuando pregunte: "qué es el jazz", "quién inventó el rock", "diferencia entre blues y jazz"
    - Parámetros: question (la pregunta del usuario)
 
 IMPORTANTE:
@@ -881,8 +878,11 @@ Ejemplos:
 - "recomiéndame un disco como Dark Side of the Moon de Pink Floyd" → {{"action": "recommend", "params": {{"rec_type": "album", "similar_to": "Pink Floyd", "limit": 1}}}}
 - "artistas similares a Queen" → {{"action": "recommend", "params": {{"rec_type": "artist", "similar_to": "Queen", "limit": 5}}}}
 - "busca Queen" → {{"action": "search", "params": {{"search_term": "Queen"}}}}
-- "¿qué es el jazz?" → {{"action": "question", "params": {{"question": "¿qué es el jazz?"}}}}
+- "cuál es mi última canción" → {{"action": "chat", "params": {{"question": "cuál es mi última canción"}}}}
+- "qué artista he escuchado más" → {{"action": "chat", "params": {{"question": "qué artista he escuchado más"}}}}
 - "mis estadísticas" → {{"action": "stats", "params": {{}}}}
+- "¿qué es el jazz?" → {{"action": "question", "params": {{"question": "¿qué es el jazz?"}}}}
+- "quién inventó el rock" → {{"action": "question", "params": {{"question": "quién inventó el rock"}}}}
 
 Responde AHORA con el JSON:"""
             
@@ -929,9 +929,8 @@ Responde AHORA con el JSON:"""
                         if genre_filter:
                             context.args.append(genre_filter)
                     
-                    # Guardar el límite en el contexto para usarlo después
-                    context.bot_data = context.bot_data or {}
-                    context.bot_data['recommendation_limit'] = limit
+                    # Agregar límite como argumento especial al final
+                    context.args.append(f"__limit={limit}")
                     
                     await self.recommend_command(update, context)
                     
@@ -948,6 +947,71 @@ Responde AHORA con el JSON:"""
                     
                 elif action == "library":
                     await self.library_command(update, context)
+                    
+                elif action == "chat":
+                    # Respuesta conversacional sobre la música del usuario
+                    question = params.get("question", user_message)
+                    
+                    try:
+                        # Obtener datos del usuario
+                        recent_tracks = []
+                        top_artists = []
+                        user_stats = {}
+                        
+                        if self.music_service:
+                            try:
+                                recent_tracks = await self.music_service.get_recent_tracks(limit=10)
+                                top_artists = await self.music_service.get_top_artists(limit=5)
+                                if hasattr(self.music_service, 'get_user_stats'):
+                                    user_stats = await self.music_service.get_user_stats()
+                            except Exception as e:
+                                print(f"Error obteniendo datos: {e}")
+                        
+                        # Construir contexto con datos reales
+                        context_data = ""
+                        if recent_tracks:
+                            context_data += f"\nÚltimas canciones escuchadas:\n"
+                            for i, track in enumerate(recent_tracks[:5], 1):
+                                context_data += f"{i}. {track.artist} - {track.name}\n"
+                        
+                        if top_artists:
+                            context_data += f"\nArtistas favoritos:\n"
+                            for i, artist in enumerate(top_artists[:5], 1):
+                                context_data += f"{i}. {artist.name} ({artist.playcount} escuchas)\n"
+                        
+                        if user_stats:
+                            context_data += f"\nEstadísticas:\n"
+                            context_data += f"- Total escuchas: {user_stats.get('total_listens', 'N/A')}\n"
+                            context_data += f"- Artistas únicos: {user_stats.get('total_artists', 'N/A')}\n"
+                        
+                        # Pedir a Gemini que responda conversacionalmente
+                        chat_prompt = f"""Eres un asistente musical conversacional. El usuario te preguntó:
+
+"{question}"
+
+Aquí están los datos de su actividad musical:
+{context_data}
+
+Responde de forma natural y conversacional, directamente con la información que pidió. 
+NO uses formato largo de reporte, solo responde la pregunta específica.
+Sé amigable y directo.
+
+Respuesta:"""
+                        
+                        import google.generativeai as genai
+                        genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+                        chat_model = genai.GenerativeModel('gemini-2.0-flash-exp')
+                        chat_response = chat_model.generate_content(chat_prompt)
+                        
+                        response_text = chat_response.text.strip()
+                        await update.message.reply_text(f"🎵 {response_text}")
+                        
+                    except Exception as e:
+                        print(f"Error en chat: {e}")
+                        await update.message.reply_text(
+                            f"No pude obtener esa información en este momento.\n"
+                            f"Usa /stats para ver tus estadísticas completas."
+                        )
                     
                 elif action == "question":
                     question = params.get("question", user_message)
