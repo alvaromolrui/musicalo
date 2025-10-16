@@ -129,25 +129,31 @@ Respuesta:"""
         # Detectar palabras clave para optimizar búsquedas
         query_lower = query.lower()
         needs_library_search = any(word in query_lower for word in [
-            "tengo", "biblioteca", "colección", "poseo", "álbum", "disco"
+            "tengo", "biblioteca", "colección", "poseo", "álbum", "disco", "álbumes", "discos"
         ])
         needs_listening_history = any(word in query_lower for word in [
             "escuché", "escuchado", "última", "reciente", "top", "favorito", "estadística"
         ])
         
+        # Extraer término de búsqueda real (eliminar palabras comunes)
+        search_term = self._extract_search_term(query) if needs_library_search else query
+        
         # Datos de biblioteca (Navidrome)
-        if needs_library_search:
+        if needs_library_search and search_term:
             try:
-                print(f"🔍 Buscando en biblioteca: {query}")
-                # Búsqueda en biblioteca
-                search_results = await self.navidrome.search(query, limit=10)
+                print(f"🔍 Buscando en biblioteca: '{search_term}' (query original: '{query}')")
+                # Búsqueda en biblioteca con el término extraído
+                search_results = await self.navidrome.search(search_term, limit=20)
                 data["library"]["search_results"] = search_results
+                data["library"]["search_term"] = search_term
                 
                 # Si la búsqueda devuelve resultados, agregar más contexto
                 if any(search_results.values()):
                     data["library"]["has_content"] = True
+                    print(f"✅ Encontrado en biblioteca: {len(search_results.get('tracks', []))} tracks, {len(search_results.get('albums', []))} álbumes, {len(search_results.get('artists', []))} artistas")
                 else:
                     data["library"]["has_content"] = False
+                    print(f"⚠️ No se encontraron resultados en biblioteca para '{search_term}'")
                     
             except Exception as e:
                 print(f"⚠️ Error obteniendo datos de Navidrome: {e}")
@@ -381,6 +387,69 @@ Respuesta:"""
                 print(f"Error obteniendo info de Last.fm: {e}")
         
         return info
+    
+    def _extract_search_term(self, query: str) -> str:
+        """Extraer el término de búsqueda real de una consulta en lenguaje natural
+        
+        Ejemplos:
+            "¿Qué álbumes de Pink Floyd tengo?" -> "Pink Floyd"
+            "Busca Queen en mi biblioteca" -> "Queen"
+            "Tengo discos de The Beatles?" -> "The Beatles"
+        
+        Args:
+            query: Consulta en lenguaje natural
+            
+        Returns:
+            Término de búsqueda extraído
+        """
+        import re
+        
+        # Palabras a ignorar (stop words en español)
+        stop_words = {
+            'qué', 'que', 'cual', 'cuál', 'cuales', 'cuáles', 'cómo', 'como',
+            'de', 'del', 'la', 'el', 'los', 'las', 'un', 'una', 'unos', 'unas',
+            'tengo', 'tienes', 'tiene', 'en', 'mi', 'tu', 'su',
+            'biblioteca', 'colección', 'álbum', 'álbumes', 'album', 'albums',
+            'disco', 'discos', 'canción', 'canciones', 'cancion',
+            'artista', 'artistas', 'por', 'para', 'con', 'sin',
+            'hay', 'está', 'esta', 'están', 'estan', 'son', 'es',
+            'busca', 'buscar', 'encuentra', 'encontrar', 'dame', 'dime',
+            'muestra', 'mostrar', 'ver', 'a', 'e', 'i', 'o', 'u', 'y'
+        }
+        
+        # Primero, intentar encontrar nombres propios (palabras con mayúsculas)
+        # Patrón: buscar palabras que empiecen con mayúscula
+        capitalized_pattern = r'\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\b'
+        cap_matches = re.findall(capitalized_pattern, query)
+        
+        if cap_matches:
+            # Unir todas las palabras capitalizadas encontradas
+            result = ' '.join(cap_matches)
+            print(f"🔍 Término extraído (mayúsculas): '{result}'")
+            return result
+        
+        # Si no hay mayúsculas, buscar patrón "de [artista]"
+        de_pattern = r'de\s+([a-zA-Z][a-zA-Z\s]+?)(?:\s+tengo|\s+en|\?|$)'
+        de_match = re.search(de_pattern, query, re.IGNORECASE)
+        if de_match:
+            result = de_match.group(1).strip()
+            print(f"🔍 Término extraído (patrón 'de'): '{result}'")
+            return result
+        
+        # Limpiar la query de signos de puntuación
+        query_clean = re.sub(r'[¿?¡!.,;:]', '', query.lower())
+        
+        # Dividir en palabras
+        words = query_clean.split()
+        
+        # Filtrar stop words
+        meaningful_words = [w for w in words if w not in stop_words and len(w) > 2]
+        
+        # Unir las palabras significativas
+        result = ' '.join(meaningful_words)
+        
+        print(f"🔍 Término extraído (filtrado): '{result}'")
+        return result if result else query
     
     async def close(self):
         """Cerrar todas las conexiones"""

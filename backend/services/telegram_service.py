@@ -782,8 +782,25 @@ Proporciona una respuesta útil, informativa y amigable. Si la pregunta es sobre
         await update.message.reply_text(f"🎵 Creando playlist: _{description}_...", parse_mode='Markdown')
         
         try:
-            # 1. Generar recomendaciones basadas en la descripción
-            if self.music_service:
+            # 1. Intentar generar playlist PRIMERO desde la biblioteca local
+            print(f"🎵 Generando playlist con: {description}")
+            print(f"📚 PASO 1: Intentando generar desde biblioteca local...")
+            
+            library_recommendations = await self.ai.generate_library_playlist(
+                description,
+                limit=15
+            )
+            
+            recommendations = library_recommendations
+            library_count = len(library_recommendations)
+            external_count = 0
+            
+            print(f"✅ Obtenidas {library_count} recomendaciones de biblioteca")
+            
+            # 2. Si no hay suficientes de la biblioteca, complementar con Last.fm
+            if len(recommendations) < 10 and self.music_service:
+                print(f"📡 PASO 2: Complementando con música de Last.fm...")
+                
                 recent_tracks = await self.music_service.get_recent_tracks(limit=20)
                 top_artists = await self.music_service.get_top_artists(limit=10)
                 
@@ -796,61 +813,82 @@ Proporciona una respuesta útil, informativa y amigable. Si la pregunta es sobre
                     activity_context=""
                 )
                 
-                # Generar recomendaciones con el prompt personalizado
-                print(f"🎵 Generando playlist con: {description}")
-                recommendations = await self.ai.generate_recommendations(
+                # Generar recomendaciones adicionales
+                remaining = 15 - len(recommendations)
+                external_recommendations = await self.ai.generate_recommendations(
                     user_profile,
-                    limit=15,  # Playlist más larga
+                    limit=remaining,
                     custom_prompt=description
                 )
                 
-                if not recommendations:
-                    await update.message.reply_text("😔 No pude generar playlist con esos criterios.")
-                    return
+                # Filtrar solo las que NO sean de biblioteca (externas)
+                for rec in external_recommendations:
+                    if rec.source != "biblioteca" and not rec.track.id.startswith('subsonic'):
+                        recommendations.append(rec)
+                        external_count += 1
                 
-                # 2. Crear archivo M3U
-                playlist_name = f"Musicalo - {description[:50]}"
-                m3u_content = self.playlist_service.create_playlist_from_recommendations(
-                    recommendations, 
-                    playlist_name,
-                    description
+                print(f"✅ Agregadas {external_count} recomendaciones externas")
+            
+            if not recommendations:
+                await update.message.reply_text("😔 No pude generar playlist con esos criterios.")
+                return
+            
+            print(f"🎵 TOTAL: {len(recommendations)} canciones ({library_count} de biblioteca, {external_count} externas)")
+            
+            # 3. Crear archivo M3U
+            playlist_name = f"Musicalo - {description[:50]}"
+            m3u_content = self.playlist_service.create_playlist_from_recommendations(
+                recommendations, 
+                playlist_name,
+                description
+            )
+            
+            # 4. Guardar archivo
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            filename = f"playlist_{update.effective_user.id}_{timestamp}"
+            filepath = self.playlist_service.save_playlist(m3u_content, filename)
+            
+            # 5. Mostrar preview con indicador de origen
+            tracks = [rec.track for rec in recommendations]
+            text = f"🎵 **Playlist creada:** {playlist_name}\n\n"
+            text += f"📝 {description}\n\n"
+            
+            # Agregar estadísticas de origen
+            if library_count > 0 or external_count > 0:
+                text += f"📊 **Composición:** "
+                if library_count > 0:
+                    text += f"📚 {library_count} de tu biblioteca"
+                if external_count > 0:
+                    if library_count > 0:
+                        text += f" + "
+                    text += f"🌍 {external_count} externas"
+                text += "\n\n"
+            
+            text += f"🎼 **Canciones ({len(tracks)}):**\n"
+            
+            for i, rec in enumerate(recommendations[:10], 1):
+                track = rec.track
+                # Indicar si es de biblioteca o externa
+                source_icon = "📚" if rec.source == "biblioteca" else "🌍"
+                text += f"{i}. {source_icon} {track.artist} - {track.title}\n"
+                if track.path and "last.fm" in str(track.path):
+                    text += f"   🌐 [Last.fm]({track.path})\n"
+            
+            if len(tracks) > 10:
+                text += f"\n...y {len(tracks) - 10} más\n"
+            
+            # Enviar archivo M3U
+            with open(filepath, 'rb') as f:
+                await update.message.reply_document(
+                    document=f,
+                    filename=f"{playlist_name}.m3u",
+                    caption=text,
+                    parse_mode='Markdown'
                 )
-                
-                # 3. Guardar archivo
-                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                filename = f"playlist_{update.effective_user.id}_{timestamp}"
-                filepath = self.playlist_service.save_playlist(m3u_content, filename)
-                
-                # 4. Mostrar preview
-                tracks = [rec.track for rec in recommendations]
-                text = f"🎵 **Playlist creada:** {playlist_name}\n\n"
-                text += f"📝 {description}\n\n"
-                text += f"🎼 **Canciones ({len(tracks)}):**\n"
-                
-                for i, rec in enumerate(recommendations[:10], 1):
-                    track = rec.track
-                    text += f"{i}. {track.artist} - {track.title}\n"
-                    if track.path and "last.fm" in str(track.path):
-                        text += f"   🌐 [Last.fm]({track.path})\n"
-                
-                if len(tracks) > 10:
-                    text += f"\n...y {len(tracks) - 10} más\n"
-                
-                # Enviar archivo M3U
-                with open(filepath, 'rb') as f:
-                    await update.message.reply_document(
-                        document=f,
-                        filename=f"{playlist_name}.m3u",
-                        caption=text,
-                        parse_mode='Markdown'
-                    )
-                
-                # Limpiar archivo temporal
-                os.remove(filepath)
-                print(f"✅ Playlist enviada y archivo temporal eliminado")
-                
-            else:
-                await update.message.reply_text("⚠️ Necesitas configurar Last.fm o ListenBrainz para crear playlists.")
+            
+            # Limpiar archivo temporal
+            os.remove(filepath)
+            print(f"✅ Playlist enviada y archivo temporal eliminado")
         
         except Exception as e:
             print(f"❌ Error creando playlist: {e}")

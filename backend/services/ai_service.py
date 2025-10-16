@@ -669,3 +669,162 @@ Genera las {limit} recomendaciones ahora:"""
         
         track_genre = await self._extract_genre(track.artist, track.title)
         return track_genre in user_genres
+    
+    async def generate_library_playlist(
+        self,
+        description: str,
+        limit: int = 15
+    ) -> List[Recommendation]:
+        """Generar playlist SOLO de la biblioteca local
+        
+        Args:
+            description: Descripción de lo que busca el usuario
+            limit: Número de canciones
+            
+        Returns:
+            Lista de recomendaciones de la biblioteca
+        """
+        try:
+            print(f"📚 Generando playlist de biblioteca: {description}")
+            
+            # Extraer palabras clave de la descripción
+            keywords = self._extract_keywords(description)
+            print(f"🔑 Palabras clave extraídas: {keywords}")
+            
+            # Buscar en biblioteca usando keywords
+            all_tracks = []
+            seen_ids = set()
+            
+            for keyword in keywords[:3]:  # Usar hasta 3 keywords
+                results = await self.navidrome.search(keyword, limit=50)
+                for track in results.get('tracks', []):
+                    if track.id not in seen_ids:
+                        all_tracks.append(track)
+                        seen_ids.add(track.id)
+            
+            # Si no se encontraron suficientes canciones con keywords, obtener aleatorias
+            if len(all_tracks) < limit:
+                print(f"⚠️ Solo {len(all_tracks)} canciones encontradas con keywords, obteniendo más de la biblioteca...")
+                random_tracks = await self.navidrome.get_tracks(limit=100)
+                for track in random_tracks:
+                    if track.id not in seen_ids and len(all_tracks) < 100:
+                        all_tracks.append(track)
+                        seen_ids.add(track.id)
+            
+            print(f"📊 Total de canciones disponibles: {len(all_tracks)}")
+            
+            if not all_tracks:
+                print("❌ No se encontraron canciones en la biblioteca")
+                return []
+            
+            # Usar IA para seleccionar las mejores coincidencias
+            tracks_formatted = self._format_tracks_for_ai(all_tracks[:50])  # Limitar a 50 para no saturar la IA
+            
+            prompt = f"""Eres un curador musical experto. De esta lista de canciones, selecciona las {limit} que mejor coincidan con: "{description}"
+
+Canciones disponibles de la biblioteca:
+{tracks_formatted}
+
+INSTRUCCIONES:
+1. Selecciona las canciones que mejor se ajusten a la descripción
+2. Prioriza variedad de artistas (no más de 2-3 canciones del mismo artista)
+3. Considera el género, estilo, época según la descripción
+4. Responde SOLO con los números de las canciones seleccionadas, separados por comas
+5. Ejemplo de respuesta: 1,5,8,12,15,20,23,27,30,35
+
+Selecciona {limit} canciones ahora:"""
+
+            response = self.model.generate_content(prompt)
+            selected_indices = self._parse_selection(response.text)
+            
+            print(f"✅ IA seleccionó {len(selected_indices)} índices: {selected_indices[:10]}...")
+            
+            # Crear recomendaciones
+            recommendations = []
+            for idx in selected_indices[:limit]:
+                if idx < len(all_tracks):
+                    track = all_tracks[idx]
+                    rec = Recommendation(
+                        track=track,
+                        reason=f"De tu biblioteca: coincide con '{description}'",
+                        confidence=0.90,  # Alta confianza porque es de la biblioteca
+                        source="biblioteca",
+                        tags=["local", "biblioteca"]
+                    )
+                    recommendations.append(rec)
+            
+            print(f"🎵 Generadas {len(recommendations)} recomendaciones de biblioteca")
+            return recommendations
+            
+        except Exception as e:
+            print(f"❌ Error generando playlist de biblioteca: {e}")
+            import traceback
+            traceback.print_exc()
+            return []
+    
+    def _extract_keywords(self, text: str) -> List[str]:
+        """Extraer palabras clave de una descripción
+        
+        Args:
+            text: Texto del que extraer keywords
+            
+        Returns:
+            Lista de palabras clave
+        """
+        import re
+        
+        # Remover palabras comunes (stop words en español)
+        stop_words = {
+            'de', 'la', 'el', 'para', 'con', 'los', 'las', 'un', 'una',
+            'del', 'al', 'y', 'o', 'en', 'a', 'por', 'que', 'es', 'su',
+            'música', 'canciones', 'canción', 'playlist', 'lista'
+        }
+        
+        # Extraer palabras
+        words = re.findall(r'\w+', text.lower())
+        
+        # Filtrar stop words y palabras muy cortas
+        keywords = [w for w in words if w not in stop_words and len(w) > 3]
+        
+        # Limitar a las primeras 5 palabras clave más relevantes
+        return keywords[:5]
+    
+    def _format_tracks_for_ai(self, tracks: List[Track]) -> str:
+        """Formatear tracks para que la IA los pueda leer y seleccionar
+        
+        Args:
+            tracks: Lista de tracks
+            
+        Returns:
+            String formateado con la lista de tracks
+        """
+        formatted = ""
+        for i, track in enumerate(tracks):
+            formatted += f"{i}. {track.artist} - {track.title}"
+            if track.album:
+                formatted += f" (Álbum: {track.album})"
+            if track.genre:
+                formatted += f" [Género: {track.genre}]"
+            if track.year:
+                formatted += f" ({track.year})"
+            formatted += "\n"
+        return formatted
+    
+    def _parse_selection(self, text: str) -> List[int]:
+        """Parsear la selección de índices de la IA
+        
+        Args:
+            text: Texto de respuesta de la IA
+            
+        Returns:
+            Lista de índices seleccionados
+        """
+        import re
+        
+        # Buscar todos los números en el texto
+        numbers = re.findall(r'\d+', text)
+        
+        # Convertir a enteros
+        indices = [int(n) for n in numbers if int(n) < 1000]  # Filtrar números muy grandes
+        
+        return indices
