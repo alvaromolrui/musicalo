@@ -71,34 +71,37 @@ DATOS DE LA BIBLIOTECA DEL USUARIO:
 
 REGLAS ESTRICTAS:
 1. Si hay datos de BIBLIOTECA (📚), úsalos PRIMERO y de forma PRIORITARIA
-2. NUNCA digas "no tengo información" si hay datos de biblioteca disponibles
+2. VERIFICA que el artista coincida EXACTAMENTE - no asumas que un álbum es del artista solo porque tiene palabras similares
 3. Responde SOLO basándote en los datos mostrados arriba
 4. Si preguntan "qué tengo" o "qué álbumes tengo", lista EXACTAMENTE lo que aparece en la sección de BIBLIOTECA
 5. Sé DIRECTO y ESPECÍFICO - no des alternativas si tienes la información
-6. Si NO hay datos de biblioteca para lo que preguntan, entonces puedes mencionar estadísticas de Last.fm
+6. Si NO hay datos de biblioteca para lo que preguntan, sé HONESTO y di que no tienes ese artista/álbum
+7. NUNCA inventes información - si no estás seguro, di que no tienes datos
 
 IMPORTANTE - "Recomiéndame un álbum/disco DE [artista]":
 - Si preguntan por "álbum de [artista]" o "disco de [artista]", busca álbumes DEL MISMO ARTISTA
-- NO sugieras artistas SIMILARES a menos que NO haya ningún álbum del artista solicitado
-- Si tienes álbumes del artista en BIBLIOTECA, recomienda UNO de esos
-- Si no tienes en biblioteca pero conoces álbumes del artista, menciónalo
-- SOLO si no hay NADA del artista, entonces sugiere artistas similares de tus favoritos
+- VERIFICA que el artista del álbum coincida con el artista solicitado
+- Si en BIBLIOTECA hay álbumes donde el nombre del artista es EXACTAMENTE o MUY SIMILAR al solicitado, recomienda esos
+- Si NO hay álbumes del artista solicitado en biblioteca, di: "No tienes álbumes de [artista] en tu biblioteca"
+- NO recomiendes álbumes que solo contengan palabras similares pero sean de otro artista
+- Ejemplo MALO: Usuario pide "Tobogán Andaluz", encuentras "El Perro Andaluz" de OTRO artista → NO lo recomiendes
+- Ejemplo BUENO: Usuario pide "Pink Floyd", encuentras "The Wall" de "Pink Floyd" → Recomiéndalo
 
 IMPORTANTE - "Playlist con música DE [artistas]":
 - Si piden "playlist de/con [lista de artistas]", busca canciones de ESOS ARTISTAS ESPECÍFICOS
 - Ejemplo: "música de mujeres, vera fauna y cala vento" → busca canciones de esos 3 artistas
-- Si tienes canciones de esos artistas en BIBLIOTECA, úsalas para crear la playlist
+- VERIFICA que cada canción sea del artista correcto
 - Si NO tienes algunos artistas, menciona cuáles SÍ tienes y cuáles NO
 
 FORMATO DE RESPUESTA:
-- Si hay álbumes en biblioteca → Lista los álbumes directamente y recomienda el mejor
+- Si hay álbumes en biblioteca DEL ARTISTA CORRECTO → Lista y recomienda
 - Si hay artistas en biblioteca → Lista los artistas directamente
-- Si piden "recomiéndame álbum de X" → Recomienda 1 álbum específico del artista X
-- Si piden "playlist con X, Y, Z" → Crea playlist con canciones de X, Y, Z que tengas
-- Si NO hay nada en biblioteca → Indica claramente "No tienes [artista/álbum] en tu biblioteca"
+- Si piden "recomiéndame álbum de X" y NO tienes de X → "No tienes álbumes de X en tu biblioteca"
+- Si piden "playlist con X, Y, Z" → Lista qué artistas SÍ tienes y cuáles NO
+- NUNCA inventes álbumes o artistas que no aparecen en los datos
 - Usa emojis: 📀 para álbumes, 🎤 para artistas, 🎵 para canciones
 
-Responde ahora de forma DIRECTA:"""
+Responde ahora de forma DIRECTA y HONESTA:"""
         
         # 3. Generar respuesta con IA
         try:
@@ -158,16 +161,20 @@ Responde ahora de forma DIRECTA:"""
                 print(f"🔍 Buscando en biblioteca: '{search_term}' (query original: '{query}')")
                 # Búsqueda en biblioteca con el término extraído
                 search_results = await self.navidrome.search(search_term, limit=20)
-                data["library"]["search_results"] = search_results
+                
+                # FILTRAR resultados para mantener solo los que realmente coincidan con el artista
+                filtered_results = self._filter_relevant_results(search_results, search_term)
+                
+                data["library"]["search_results"] = filtered_results
                 data["library"]["search_term"] = search_term
                 
                 # Si la búsqueda devuelve resultados, agregar más contexto
-                if any(search_results.values()):
+                if any(filtered_results.values()):
                     data["library"]["has_content"] = True
-                    print(f"✅ Encontrado en biblioteca: {len(search_results.get('tracks', []))} tracks, {len(search_results.get('albums', []))} álbumes, {len(search_results.get('artists', []))} artistas")
+                    print(f"✅ Encontrado en biblioteca (después de filtrar): {len(filtered_results.get('tracks', []))} tracks, {len(filtered_results.get('albums', []))} álbumes, {len(filtered_results.get('artists', []))} artistas")
                 else:
                     data["library"]["has_content"] = False
-                    print(f"⚠️ No se encontraron resultados en biblioteca para '{search_term}'")
+                    print(f"⚠️ No se encontraron resultados relevantes en biblioteca para '{search_term}'")
                     
             except Exception as e:
                 print(f"⚠️ Error obteniendo datos de Navidrome: {e}")
@@ -236,9 +243,10 @@ Responde ahora de forma DIRECTA:"""
                 # Priorizar álbumes si existen
                 if results.get("albums"):
                     formatted += f"\n📚 === BIBLIOTECA LOCAL === \n"
-                    formatted += f"📀 ÁLBUMES QUE TIENES DE '{search_term.upper()}' ({len(results['albums'])}):\n"
+                    formatted += f"📀 ÁLBUMES ENCONTRADOS PARA '{search_term.upper()}' ({len(results['albums'])}):\n"
+                    formatted += f"⚠️ IMPORTANTE: Verifica que el ARTISTA coincida con lo solicitado\n\n"
                     for i, album in enumerate(results["albums"][:15], 1):
-                        formatted += f"  {i}. 📀 {album.name}"
+                        formatted += f"  {i}. ARTISTA: {album.artist} | ÁLBUM: {album.name}"
                         if album.year:
                             formatted += f" ({album.year})"
                         if album.track_count:
@@ -250,11 +258,12 @@ Responde ahora de forma DIRECTA:"""
                 if results.get("artists"):
                     if not results.get("albums"):  # Solo mostrar si no hay álbumes
                         formatted += f"\n📚 === BIBLIOTECA LOCAL === \n"
-                    formatted += f"🎤 ARTISTAS EN TU BIBLIOTECA ({len(results['artists'])}):\n"
+                    formatted += f"🎤 ARTISTAS ENCONTRADOS EN BIBLIOTECA ({len(results['artists'])}):\n"
+                    formatted += f"⚠️ Verifica que el nombre coincida con lo que pidió el usuario\n\n"
                     for i, artist in enumerate(results["artists"][:10], 1):
-                        formatted += f"  {i}. 🎤 {artist.name}"
+                        formatted += f"  {i}. ARTISTA: {artist.name}"
                         if artist.album_count:
-                            formatted += f" ({artist.album_count} álbumes)"
+                            formatted += f" | {artist.album_count} álbumes disponibles"
                         formatted += "\n"
                     formatted += "\n"
                 
@@ -262,11 +271,12 @@ Responde ahora de forma DIRECTA:"""
                 if results.get("tracks"):
                     if not results.get("albums") and not results.get("artists"):
                         formatted += f"\n📚 === BIBLIOTECA LOCAL === \n"
-                    formatted += f"🎵 CANCIONES EN TU BIBLIOTECA ({len(results['tracks'])}):\n"
+                    formatted += f"🎵 CANCIONES ENCONTRADAS EN BIBLIOTECA ({len(results['tracks'])}):\n"
+                    formatted += f"⚠️ Verifica que el ARTISTA coincida\n\n"
                     for i, track in enumerate(results["tracks"][:10], 1):
-                        formatted += f"  {i}. {track.artist} - {track.title}"
+                        formatted += f"  {i}. ARTISTA: {track.artist} | CANCIÓN: {track.title}"
                         if track.album:
-                            formatted += f" (Álbum: {track.album})"
+                            formatted += f" | ÁLBUM: {track.album}"
                         if track.year:
                             formatted += f" [{track.year}]"
                         formatted += "\n"
@@ -398,6 +408,69 @@ Responde ahora de forma DIRECTA:"""
                 print(f"Error obteniendo info de Last.fm: {e}")
         
         return info
+    
+    def _filter_relevant_results(self, results: Dict[str, List], search_term: str) -> Dict[str, List]:
+        """Filtrar resultados de búsqueda para mantener solo los relevantes
+        
+        Elimina resultados que claramente NO coincidan con el artista buscado.
+        Ej: Si buscas "Tobogán Andaluz", elimina "El Perro Andaluz"
+        
+        Args:
+            results: Resultados de búsqueda de Navidrome
+            search_term: Término que el usuario buscó
+            
+        Returns:
+            Resultados filtrados
+        """
+        from difflib import SequenceMatcher
+        
+        def similarity_ratio(a: str, b: str) -> float:
+            """Calcular similitud entre dos strings"""
+            return SequenceMatcher(None, a.lower(), b.lower()).ratio()
+        
+        # Umbral de similitud (0.6 = 60% similar)
+        SIMILARITY_THRESHOLD = 0.6
+        
+        filtered = {
+            "tracks": [],
+            "albums": [],
+            "artists": []
+        }
+        
+        search_lower = search_term.lower()
+        
+        # Filtrar álbumes
+        for album in results.get("albums", []):
+            artist_similarity = similarity_ratio(album.artist, search_term)
+            album_similarity = similarity_ratio(album.name, search_term)
+            
+            # Mantener si el artista es similar o si el álbum contiene el término de búsqueda
+            if artist_similarity >= SIMILARITY_THRESHOLD or search_lower in album.artist.lower():
+                filtered["albums"].append(album)
+                print(f"   ✓ Álbum mantenido: {album.artist} - {album.name} (similitud artista: {artist_similarity:.2f})")
+            else:
+                print(f"   ✗ Álbum filtrado: {album.artist} - {album.name} (similitud artista: {artist_similarity:.2f} < {SIMILARITY_THRESHOLD})")
+        
+        # Filtrar artistas
+        for artist in results.get("artists", []):
+            artist_similarity = similarity_ratio(artist.name, search_term)
+            
+            if artist_similarity >= SIMILARITY_THRESHOLD or search_lower in artist.name.lower():
+                filtered["artists"].append(artist)
+                print(f"   ✓ Artista mantenido: {artist.name} (similitud: {artist_similarity:.2f})")
+            else:
+                print(f"   ✗ Artista filtrado: {artist.name} (similitud: {artist_similarity:.2f} < {SIMILARITY_THRESHOLD})")
+        
+        # Filtrar canciones
+        for track in results.get("tracks", []):
+            artist_similarity = similarity_ratio(track.artist, search_term)
+            
+            if artist_similarity >= SIMILARITY_THRESHOLD or search_lower in track.artist.lower():
+                filtered["tracks"].append(track)
+            else:
+                print(f"   ✗ Canción filtrada: {track.artist} - {track.title}")
+        
+        return filtered
     
     def _extract_search_term(self, query: str) -> str:
         """Extraer el término de búsqueda real de una consulta en lenguaje natural
