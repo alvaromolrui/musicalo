@@ -10,13 +10,18 @@ from services.navidrome_service import NavidromeService
 from services.listenbrainz_service import ListenBrainzService
 from services.lastfm_service import LastFMService
 from services.ai_service import MusicRecommendationService
+from services.playlist_service import PlaylistService
+from services.music_agent_service import MusicAgentService
 from functools import wraps
+from datetime import datetime
 
 class TelegramService:
     def __init__(self):
         self.navidrome = NavidromeService()
         self.listenbrainz = ListenBrainzService()
         self.ai = MusicRecommendationService()
+        self.playlist_service = PlaylistService()
+        self.agent = MusicAgentService()
         
         # Configurar lista de usuarios permitidos
         allowed_ids_str = os.getenv("TELEGRAM_ALLOWED_USER_IDS", "")
@@ -103,6 +108,8 @@ Puedes dar todos los detalles que quieras:
 
 **📝 Comandos disponibles:**
 /recommend - Obtener recomendaciones personalizadas
+/playlist <descripción> - Crear playlist M3U 🎵
+/info <artista/álbum> - Información detallada ℹ️
 /library - Explorar tu biblioteca musical
 /stats - Ver estadísticas de escucha
 /search <término> - Buscar música en tu biblioteca
@@ -150,6 +157,8 @@ Sé todo lo detallado que quieras:
 • `/recommend album` - Recomendar álbumes
 • `/recommend artist` - Recomendar artistas
 • `/recommend track` - Recomendar canciones
+• `/playlist <descripción>` - Crear playlist M3U 🎵
+• `/info <artista/álbum>` - Información detallada ℹ️
 • `/library` - Ver tu biblioteca musical
 • `/stats` - Estadísticas de escucha
 • `/search <término>` - Buscar en tu biblioteca
@@ -745,6 +754,180 @@ Proporciona una respuesta útil, informativa y amigable. Si la pregunta es sobre
                 f"❌ Error al procesar tu pregunta: {str(e)}\n\n"
                 "Verifica que la API de Gemini esté configurada correctamente."
             )
+    
+    @_check_authorization
+    async def playlist_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Comando /playlist - Crear playlist M3U
+        
+        Uso:
+        - /playlist rock de los 80s
+        - /playlist música relajante
+        - /playlist similar a Pink Floyd
+        """
+        if not context.args:
+            await update.message.reply_text(
+                "🎵 **Crear Playlist**\n\n"
+                "**Uso:** `/playlist <descripción>`\n\n"
+                "**Ejemplos:**\n"
+                "• `/playlist rock progresivo de los 70s`\n"
+                "• `/playlist música energética para correr`\n"
+                "• `/playlist jazz suave`\n"
+                "• `/playlist similar a Pink Floyd`\n"
+                "• `/playlist 10 canciones de metal melódico`",
+                parse_mode='Markdown'
+            )
+            return
+        
+        description = " ".join(context.args)
+        await update.message.reply_text(f"🎵 Creando playlist: _{description}_...", parse_mode='Markdown')
+        
+        try:
+            # 1. Generar recomendaciones basadas en la descripción
+            if self.music_service:
+                recent_tracks = await self.music_service.get_recent_tracks(limit=20)
+                top_artists = await self.music_service.get_top_artists(limit=10)
+                
+                from models.schemas import UserProfile
+                user_profile = UserProfile(
+                    recent_tracks=recent_tracks,
+                    top_artists=top_artists,
+                    favorite_genres=[],
+                    mood_preference="",
+                    activity_context=""
+                )
+                
+                # Generar recomendaciones con el prompt personalizado
+                print(f"🎵 Generando playlist con: {description}")
+                recommendations = await self.ai.generate_recommendations(
+                    user_profile,
+                    limit=15,  # Playlist más larga
+                    custom_prompt=description
+                )
+                
+                if not recommendations:
+                    await update.message.reply_text("😔 No pude generar playlist con esos criterios.")
+                    return
+                
+                # 2. Crear archivo M3U
+                playlist_name = f"Musicalo - {description[:50]}"
+                m3u_content = self.playlist_service.create_playlist_from_recommendations(
+                    recommendations, 
+                    playlist_name,
+                    description
+                )
+                
+                # 3. Guardar archivo
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                filename = f"playlist_{update.effective_user.id}_{timestamp}"
+                filepath = self.playlist_service.save_playlist(m3u_content, filename)
+                
+                # 4. Mostrar preview
+                tracks = [rec.track for rec in recommendations]
+                text = f"🎵 **Playlist creada:** {playlist_name}\n\n"
+                text += f"📝 {description}\n\n"
+                text += f"🎼 **Canciones ({len(tracks)}):**\n"
+                
+                for i, rec in enumerate(recommendations[:10], 1):
+                    track = rec.track
+                    text += f"{i}. {track.artist} - {track.title}\n"
+                    if track.path and "last.fm" in str(track.path):
+                        text += f"   🌐 [Last.fm]({track.path})\n"
+                
+                if len(tracks) > 10:
+                    text += f"\n...y {len(tracks) - 10} más\n"
+                
+                # Enviar archivo M3U
+                with open(filepath, 'rb') as f:
+                    await update.message.reply_document(
+                        document=f,
+                        filename=f"{playlist_name}.m3u",
+                        caption=text,
+                        parse_mode='Markdown'
+                    )
+                
+                # Limpiar archivo temporal
+                os.remove(filepath)
+                print(f"✅ Playlist enviada y archivo temporal eliminado")
+                
+            else:
+                await update.message.reply_text("⚠️ Necesitas configurar Last.fm o ListenBrainz para crear playlists.")
+        
+        except Exception as e:
+            print(f"❌ Error creando playlist: {e}")
+            import traceback
+            traceback.print_exc()
+            await update.message.reply_text(f"❌ Error creando playlist: {str(e)}")
+    
+    @_check_authorization
+    async def info_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Comando /info - Obtener información detallada sobre artista/álbum/canción
+        
+        Uso:
+        - /info Pink Floyd
+        - /info The Dark Side of the Moon
+        """
+        if not context.args:
+            await update.message.reply_text(
+                "ℹ️ **Información Musical**\n\n"
+                "**Uso:** `/info <artista/álbum/canción>`\n\n"
+                "**Ejemplos:**\n"
+                "• `/info Pink Floyd`\n"
+                "• `/info Dark Side of the Moon`\n"
+                "• `/info Queen Bohemian Rhapsody`",
+                parse_mode='Markdown'
+            )
+            return
+        
+        query = " ".join(context.args)
+        await update.message.reply_text(f"🔍 Buscando información sobre: _{query}_...", parse_mode='Markdown')
+        
+        try:
+            # Usar el agente musical para obtener información completa
+            result = await self.agent.query(
+                f"Dame información detallada sobre {query}",
+                context={"type": "info_query"}
+            )
+            
+            if result.get("success"):
+                answer = result["answer"]
+                
+                # Agregar enlaces si hay
+                links = result.get("links", [])
+                if links:
+                    answer += "\n\n🔗 **Enlaces:**\n"
+                    for link in links[:5]:  # Máximo 5 enlaces
+                        answer += f"• {link}\n"
+                
+                # Telegram tiene límite de 4096 caracteres
+                if len(answer) > 4000:
+                    # Dividir en partes
+                    parts = []
+                    current = ""
+                    for line in answer.split('\n'):
+                        if len(current) + len(line) + 1 > 4000:
+                            parts.append(current)
+                            current = line + '\n'
+                        else:
+                            current += line + '\n'
+                    if current:
+                        parts.append(current)
+                    
+                    # Enviar cada parte
+                    for i, part in enumerate(parts):
+                        if i == 0:
+                            await update.message.reply_text(part, parse_mode='Markdown')
+                        else:
+                            await update.message.reply_text(f"_(continuación)_\n\n{part}", parse_mode='Markdown')
+                else:
+                    await update.message.reply_text(answer, parse_mode='Markdown')
+            else:
+                await update.message.reply_text(f"😔 No pude obtener información sobre '{query}'")
+        
+        except Exception as e:
+            print(f"❌ Error en info_command: {e}")
+            import traceback
+            traceback.print_exc()
+            await update.message.reply_text(f"❌ Error obteniendo información: {str(e)}")
     
     @_check_authorization
     async def _handle_conversational_query(self, update: Update, user_message: str):
