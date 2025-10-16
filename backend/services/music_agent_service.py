@@ -62,30 +62,28 @@ class MusicAgentService:
         data_context = await self._gather_all_data(user_question)
         
         # 2. Construir prompt inteligente para la IA
-        ai_prompt = f"""Eres un asistente musical experto con acceso a múltiples fuentes de datos del usuario.
+        ai_prompt = f"""Eres un asistente musical que ayuda al usuario a consultar su biblioteca de música.
 
-PREGUNTA DEL USUARIO: {user_question}
+PREGUNTA: {user_question}
 
-DATOS DISPONIBLES:
+DATOS DE LA BIBLIOTECA DEL USUARIO:
 {self._format_context_for_ai(data_context)}
 
-INSTRUCCIONES:
-1. Analiza la pregunta y los datos disponibles
-2. Proporciona una respuesta precisa, útil y conversacional
-3. Si hay enlaces a Last.fm disponibles, inclúyelos en formato Markdown: [texto](url)
-4. Si la pregunta implica crear una playlist, sugiere canciones específicas de los datos disponibles
-5. Sé conversacional pero informativo
-6. Usa emojis apropiados para música (🎵, 🎤, 📀, 🎸, etc.)
-7. Si preguntan por estadísticas, proporciona números específicos de los datos
-8. Si preguntan por algo que no está en los datos, dilo claramente y sugiere alternativas
+REGLAS ESTRICTAS:
+1. Si hay datos de BIBLIOTECA (📚), úsalos PRIMERO y de forma PRIORITARIA
+2. NUNCA digas "no tengo información" si hay datos de biblioteca disponibles
+3. Responde SOLO basándote en los datos mostrados arriba
+4. Si preguntan "qué tengo" o "qué álbumes tengo", lista EXACTAMENTE lo que aparece en la sección de BIBLIOTECA
+5. Sé DIRECTO y ESPECÍFICO - no des alternativas si tienes la información
+6. Si NO hay datos de biblioteca para lo que preguntan, entonces puedes mencionar estadísticas de Last.fm
 
-IMPORTANTE:
-- Responde SOLO con información de los datos proporcionados
-- Si algo no está disponible en los datos, dilo honestamente
-- Sé específico con nombres de artistas, álbumes y canciones
-- Si hay múltiples resultados, lista los más relevantes
+FORMATO DE RESPUESTA:
+- Si hay álbumes en biblioteca → Lista los álbumes directamente
+- Si hay artistas en biblioteca → Lista los artistas directamente
+- Si NO hay nada en biblioteca → Indica claramente "No tienes [artista/álbum] en tu biblioteca"
+- Usa emojis: 📀 para álbumes, 🎤 para artistas, 🎵 para canciones
 
-Respuesta:"""
+Responde ahora de forma DIRECTA:"""
         
         # 3. Generar respuesta con IA
         try:
@@ -129,7 +127,8 @@ Respuesta:"""
         # Detectar palabras clave para optimizar búsquedas
         query_lower = query.lower()
         needs_library_search = any(word in query_lower for word in [
-            "tengo", "biblioteca", "colección", "poseo", "álbum", "disco", "álbumes", "discos"
+            "tengo", "teengo", "biblioteca", "colección", "poseo", 
+            "álbum", "album", "disco", "álbumes", "albums", "discos"
         ])
         needs_listening_history = any(word in query_lower for word in [
             "escuché", "escuchado", "última", "reciente", "top", "favorito", "estadística"
@@ -211,15 +210,44 @@ Respuesta:"""
         """
         formatted = ""
         
-        # Biblioteca (Navidrome)
+        # SIEMPRE mostrar primero la biblioteca (si hay búsqueda)
         if data.get("library"):
             lib = data["library"]
+            search_term = lib.get("search_term", "")
             
             if lib.get("search_results"):
                 results = lib["search_results"]
                 
+                # Priorizar álbumes si existen
+                if results.get("albums"):
+                    formatted += f"\n📚 === BIBLIOTECA LOCAL === \n"
+                    formatted += f"📀 ÁLBUMES QUE TIENES DE '{search_term.upper()}' ({len(results['albums'])}):\n"
+                    for i, album in enumerate(results["albums"][:15], 1):
+                        formatted += f"  {i}. 📀 {album.name}"
+                        if album.year:
+                            formatted += f" ({album.year})"
+                        if album.track_count:
+                            formatted += f" - {album.track_count} canciones"
+                        formatted += "\n"
+                    formatted += "\n"
+                
+                # Luego artistas
+                if results.get("artists"):
+                    if not results.get("albums"):  # Solo mostrar si no hay álbumes
+                        formatted += f"\n📚 === BIBLIOTECA LOCAL === \n"
+                    formatted += f"🎤 ARTISTAS EN TU BIBLIOTECA ({len(results['artists'])}):\n"
+                    for i, artist in enumerate(results["artists"][:10], 1):
+                        formatted += f"  {i}. 🎤 {artist.name}"
+                        if artist.album_count:
+                            formatted += f" ({artist.album_count} álbumes)"
+                        formatted += "\n"
+                    formatted += "\n"
+                
+                # Luego canciones
                 if results.get("tracks"):
-                    formatted += f"\n📚 CANCIONES EN BIBLIOTECA ({len(results['tracks'])}):\n"
+                    if not results.get("albums") and not results.get("artists"):
+                        formatted += f"\n📚 === BIBLIOTECA LOCAL === \n"
+                    formatted += f"🎵 CANCIONES EN TU BIBLIOTECA ({len(results['tracks'])}):\n"
                     for i, track in enumerate(results["tracks"][:10], 1):
                         formatted += f"  {i}. {track.artist} - {track.title}"
                         if track.album:
@@ -227,66 +255,34 @@ Respuesta:"""
                         if track.year:
                             formatted += f" [{track.year}]"
                         formatted += "\n"
-                
-                if results.get("albums"):
-                    formatted += f"\n📀 ÁLBUMES EN BIBLIOTECA ({len(results['albums'])}):\n"
-                    for i, album in enumerate(results["albums"][:10], 1):
-                        formatted += f"  {i}. {album.artist} - {album.name}"
-                        if album.year:
-                            formatted += f" ({album.year})"
-                        if album.track_count:
-                            formatted += f" - {album.track_count} canciones"
-                        formatted += "\n"
-                
-                if results.get("artists"):
-                    formatted += f"\n🎤 ARTISTAS EN BIBLIOTECA ({len(results['artists'])}):\n"
-                    for i, artist in enumerate(results["artists"][:10], 1):
-                        formatted += f"  {i}. {artist.name}"
-                        if artist.album_count:
-                            formatted += f" ({artist.album_count} álbumes)"
-                        formatted += "\n"
+                    formatted += "\n"
             
+            # Si no se encontró nada, indicarlo claramente
             if lib.get("has_content") == False:
-                formatted += "\n⚠️ No se encontraron resultados en la biblioteca de Navidrome\n"
+                formatted += f"\n📚 === BIBLIOTECA LOCAL === \n"
+                formatted += f"⚠️ NO TIENES '{search_term.upper()}' EN TU BIBLIOTECA\n\n"
         
-        # Historial de escucha (Last.fm o ListenBrainz)
+        # Historial de escucha (Last.fm o ListenBrainz) - SOLO SI ES RELEVANTE
         if data.get("listening_history"):
             hist = data["listening_history"]
             
+            # Solo mostrar estadísticas de Last.fm si NO hay datos de biblioteca
+            # o si específicamente pidieron estadísticas
             if hist.get("stats"):
                 stats = hist["stats"]
-                formatted += f"\n📊 ESTADÍSTICAS DE ESCUCHA:\n"
+                formatted += f"\n📊 === ESTADÍSTICAS DE LAST.FM (NO ES TU BIBLIOTECA) ===\n"
                 formatted += f"  • Total de escuchas: {stats.get('total_listens', 'N/A')}\n"
                 formatted += f"  • Artistas únicos: {stats.get('total_artists', 'N/A')}\n"
                 formatted += f"  • Álbumes únicos: {stats.get('total_albums', 'N/A')}\n"
-                formatted += f"  • Canciones únicas: {stats.get('total_tracks', 'N/A')}\n"
-            
-            if hist.get("recent_tracks"):
-                formatted += f"\n⏰ ÚLTIMAS ESCUCHAS:\n"
-                for i, track in enumerate(hist["recent_tracks"][:10], 1):
-                    url_info = f" - {track.url}" if track.url else ""
-                    formatted += f"  {i}. {track.artist} - {track.name}"
-                    if track.album:
-                        formatted += f" ({track.album})"
-                    formatted += url_info + "\n"
+                formatted += f"  • Canciones únicas: {stats.get('total_tracks', 'N/A')}\n\n"
             
             if hist.get("top_artists"):
-                formatted += f"\n🏆 TOP ARTISTAS:\n"
-                for i, artist in enumerate(hist["top_artists"][:10], 1):
-                    url_info = f" - {artist.url}" if artist.url else ""
+                formatted += f"\n🏆 TUS TOP ARTISTAS MÁS ESCUCHADOS (Last.fm):\n"
+                for i, artist in enumerate(hist["top_artists"][:5], 1):  # Reducido a 5
                     formatted += f"  {i}. {artist.name}"
                     if artist.playcount:
                         formatted += f" ({artist.playcount} escuchas)"
-                    formatted += url_info + "\n"
-            
-            if hist.get("top_tracks"):
-                formatted += f"\n🎵 TOP CANCIONES:\n"
-                for i, track in enumerate(hist["top_tracks"][:10], 1):
-                    url_info = f" - {track.url}" if track.url else ""
-                    formatted += f"  {i}. {track.artist} - {track.name}"
-                    if track.playcount:
-                        formatted += f" ({track.playcount} escuchas)"
-                    formatted += url_info + "\n"
+                    formatted += "\n"
         
         # Contenido similar
         if data.get("similar_content"):
@@ -417,8 +413,7 @@ Respuesta:"""
             'muestra', 'mostrar', 'ver', 'a', 'e', 'i', 'o', 'u', 'y'
         }
         
-        # Primero, intentar encontrar nombres propios (palabras con mayúsculas)
-        # Patrón: buscar palabras que empiecen con mayúscula
+        # ESTRATEGIA 1: Buscar nombres propios (palabras con mayúsculas)
         capitalized_pattern = r'\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\b'
         cap_matches = re.findall(capitalized_pattern, query)
         
@@ -428,13 +423,32 @@ Respuesta:"""
             print(f"🔍 Término extraído (mayúsculas): '{result}'")
             return result
         
-        # Si no hay mayúsculas, buscar patrón "de [artista]"
-        de_pattern = r'de\s+([a-zA-Z][a-zA-Z\s]+?)(?:\s+tengo|\s+en|\?|$)'
+        # ESTRATEGIA 2: Buscar patrón "de [artista]" (más flexible)
+        # Acepta variaciones: "de oasis", "de Pink Floyd", etc.
+        de_pattern = r'de\s+([a-zA-Z][a-zA-Z\s]+?)(?:\s+tengo|\s+teengo|\s+en|\?|$)'
         de_match = re.search(de_pattern, query, re.IGNORECASE)
         if de_match:
             result = de_match.group(1).strip()
+            # Limpiar palabras comunes al final
+            result = re.sub(r'\s+(tengo|teengo|en|mi|tu|biblioteca)$', '', result, flags=re.IGNORECASE)
             print(f"🔍 Término extraído (patrón 'de'): '{result}'")
             return result
+        
+        # ESTRATEGIA 3: Buscar después de palabras clave específicas
+        keywords_patterns = [
+            r'(?:discos?|álbumes?|albums?)\s+(?:de\s+)?([a-zA-Z][a-zA-Z\s]+?)(?:\s+tengo|\s+teengo|\?|$)',
+            r'(?:tengo|teengo)\s+(?:de\s+)?([a-zA-Z][a-zA-Z\s]+?)(?:\s+en|\?|$)',
+        ]
+        
+        for pattern in keywords_patterns:
+            match = re.search(pattern, query, re.IGNORECASE)
+            if match:
+                result = match.group(1).strip()
+                # Limpiar stop words
+                result = re.sub(r'\s+(de|en|mi|tu|la|el|los|las)$', '', result, flags=re.IGNORECASE)
+                if result and len(result) > 2:
+                    print(f"🔍 Término extraído (keywords): '{result}'")
+                    return result
         
         # Limpiar la query de signos de puntuación
         query_clean = re.sub(r'[¿?¡!.,;:]', '', query.lower())
