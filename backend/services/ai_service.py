@@ -687,24 +687,53 @@ Genera las {limit} recomendaciones ahora:"""
         try:
             print(f"📚 Generando playlist de biblioteca: {description}")
             
-            # Extraer palabras clave de la descripción
-            keywords = self._extract_keywords(description)
-            print(f"🔑 Palabras clave extraídas: {keywords}")
-            
-            # Buscar en biblioteca usando keywords
+            # PASO 1: Intentar detectar nombres de artistas específicos
+            artist_names = self._extract_artist_names(description)
             all_tracks = []
             seen_ids = set()
             
-            for keyword in keywords[:3]:  # Usar hasta 3 keywords
-                results = await self.navidrome.search(keyword, limit=50)
-                for track in results.get('tracks', []):
-                    if track.id not in seen_ids:
-                        all_tracks.append(track)
-                        seen_ids.add(track.id)
+            if artist_names:
+                print(f"🎤 Artistas detectados: {artist_names}")
+                # Buscar canciones específicas de esos artistas
+                for artist_name in artist_names:
+                    print(f"   🔍 Buscando canciones de '{artist_name}'...")
+                    results = await self.navidrome.search(artist_name, limit=50)
+                    
+                    # Priorizar tracks del artista exacto
+                    for track in results.get('tracks', []):
+                        if track.id not in seen_ids:
+                            # Verificar si es del artista (coincidencia flexible)
+                            if artist_name.lower() in track.artist.lower():
+                                all_tracks.append(track)
+                                seen_ids.add(track.id)
+                    
+                    # También agregar de álbumes
+                    for album in results.get('albums', []):
+                        if artist_name.lower() in album.artist.lower():
+                            # Buscar tracks del álbum
+                            album_tracks = await self.navidrome.search(f"{album.artist} {album.name}", limit=20)
+                            for track in album_tracks.get('tracks', []):
+                                if track.id not in seen_ids:
+                                    all_tracks.append(track)
+                                    seen_ids.add(track.id)
+                
+                print(f"✅ Encontradas {len(all_tracks)} canciones de los artistas especificados")
             
-            # Si no se encontraron suficientes canciones con keywords, obtener aleatorias
+            # PASO 2: Si no hay artistas específicos o no se encontraron suficientes, usar keywords
             if len(all_tracks) < limit:
-                print(f"⚠️ Solo {len(all_tracks)} canciones encontradas con keywords, obteniendo más de la biblioteca...")
+                keywords = self._extract_keywords(description)
+                print(f"🔑 Palabras clave extraídas: {keywords}")
+                
+                for keyword in keywords[:3]:  # Usar hasta 3 keywords
+                    results = await self.navidrome.search(keyword, limit=50)
+                    for track in results.get('tracks', []):
+                        if track.id not in seen_ids:
+                            all_tracks.append(track)
+                            seen_ids.add(track.id)
+            
+            # PASO 3: Si aún no hay suficientes, obtener aleatorias
+            if len(all_tracks) < limit:
+                print(f"⚠️ Solo {len(all_tracks)} canciones encontradas, obteniendo más de la biblioteca...")
                 random_tracks = await self.navidrome.get_tracks(limit=100)
                 for track in random_tracks:
                     if track.id not in seen_ids and len(all_tracks) < 100:
@@ -762,6 +791,73 @@ Selecciona {limit} canciones ahora:"""
             traceback.print_exc()
             return []
     
+    def _extract_artist_names(self, text: str) -> List[str]:
+        """Extraer nombres de artistas de una descripción
+        
+        Detecta nombres de artistas en formatos como:
+        - "música de mujeres, vera fauna y cala vento"
+        - "playlist con Pink Floyd, Queen y The Beatles"
+        - "canciones de Extremoduro"
+        
+        Args:
+            text: Texto con posibles nombres de artistas
+            
+        Returns:
+            Lista de nombres de artistas detectados
+        """
+        import re
+        
+        artists = []
+        
+        # Palabras que indican que lo siguiente es un artista
+        artist_indicators = ['de', 'con', 'música de', 'canciones de', 'temas de']
+        
+        # ESTRATEGIA 1: Detectar listas separadas por comas
+        # "mujeres, vera fauna y cala vento" → ["mujeres", "vera fauna", "cala vento"]
+        # Buscar patrones después de palabras indicadoras
+        for indicator in artist_indicators:
+            pattern = rf'{indicator}\s+(.+?)(?:\s+para|\s+de\s+los|\.|$)'
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                artists_text = match.group(1)
+                # Dividir por comas, "y", "&"
+                parts = re.split(r',|\s+y\s+|\s+&\s+', artists_text)
+                for part in parts:
+                    # Limpiar espacios
+                    part = part.strip()
+                    # Remover palabras comunes al inicio/final
+                    part = re.sub(r'^(la|el|los|las|un|una)\s+', '', part, flags=re.IGNORECASE)
+                    part = re.sub(r'\s+(para|con|de)$', '', part, flags=re.IGNORECASE)
+                    if part and len(part) > 2:
+                        artists.append(part)
+        
+        # ESTRATEGIA 2: Detectar nombres propios (palabras con mayúscula)
+        # Solo si no se encontraron artistas por la estrategia 1
+        if not artists:
+            # Buscar secuencias de palabras que empiezan con mayúscula
+            capitalized_pattern = r'\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\b'
+            cap_matches = re.findall(capitalized_pattern, text)
+            
+            # Filtrar palabras comunes que suelen ir con mayúscula
+            common_words = {'Playlist', 'Lista', 'Música', 'Canciones', 'Album', 'Disco'}
+            for match in cap_matches:
+                if match not in common_words and len(match) > 2:
+                    artists.append(match)
+        
+        # Eliminar duplicados manteniendo orden
+        seen = set()
+        unique_artists = []
+        for artist in artists:
+            artist_lower = artist.lower()
+            if artist_lower not in seen:
+                seen.add(artist_lower)
+                unique_artists.append(artist)
+        
+        if unique_artists:
+            print(f"🎤 Nombres de artistas extraídos: {unique_artists}")
+        
+        return unique_artists
+    
     def _extract_keywords(self, text: str) -> List[str]:
         """Extraer palabras clave de una descripción
         
@@ -777,7 +873,7 @@ Selecciona {limit} canciones ahora:"""
         stop_words = {
             'de', 'la', 'el', 'para', 'con', 'los', 'las', 'un', 'una',
             'del', 'al', 'y', 'o', 'en', 'a', 'por', 'que', 'es', 'su',
-            'música', 'canciones', 'canción', 'playlist', 'lista'
+            'música', 'canciones', 'canción', 'playlist', 'lista', 'haz', 'hacer'
         }
         
         # Extraer palabras
