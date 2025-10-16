@@ -4,6 +4,23 @@
 
 Se ha implementado un sistema completo de conversación natural que permite al usuario interactuar con el bot **sin necesidad de recordar comandos específicos**. El bot ahora entiende lenguaje natural y mantiene contexto entre mensajes.
 
+### 🆕 Actualización v2.1 - Simplificación Radical (2025-01-16)
+
+**Problema Resuelto:** El sistema detectaba incorrectamente intenciones (ej: "últimos 3 artistas" iba a `stats` en lugar de responder la pregunta específica).
+
+**Solución:** Simplificar `IntentDetector` de 9 intenciones a solo 5:
+- **De 9 intenciones → 5 intenciones**
+- **Filosofía nueva:** Solo detectar intenciones MUY obvias (palabras clave)
+- **Default:** 95% de casos van a `conversacion` (el agente es inteligente)
+- **Resultado:** El bot responde correctamente a preguntas específicas sin mostrar dashboard completo
+
+**Intenciones v2.1:**
+1. `playlist` - Solo si dice "haz/crea playlist"
+2. `buscar` - Solo si dice "busca/buscar"
+3. `recomendar` - Solo si dice "similar a [artista]"
+4. `referencia` - Solo si dice "más de eso" sin artista
+5. `conversacion` - **TODO LO DEMÁS** ← Este es el poder del sistema
+
 ---
 
 ## 📦 Nuevos Componentes
@@ -44,16 +61,14 @@ conversation_manager.clear_session(user_id)
 
 **Propósito:** Detectar la intención del usuario usando Gemini LLM.
 
-**Intenciones Soportadas:**
-- `recomendar` - Recomendaciones de música
-- `playlist` - Crear playlist M3U
-- `buscar` - Buscar en biblioteca
-- `info` - Información de artista/álbum
-- `stats` - Ver estadísticas
-- `biblioteca` - Explorar biblioteca
-- `pregunta_general` - Preguntas teóricas sobre música
-- `conversacion` - Conversación general
-- `referencia` - Referencias a mensajes anteriores
+**Intenciones Soportadas (SOLO 5 - Simplificado v2.1):**
+- `playlist` - SOLO cuando pide explícitamente "haz/crea playlist"
+- `buscar` - SOLO cuando usa palabra "busca/buscar"
+- `recomendar` - SOLO cuando dice "similar a [artista]"
+- `referencia` - SOLO cuando dice "más de eso" sin mencionar artista
+- `conversacion` - **TODO LO DEMÁS** (95% de casos, por defecto)
+
+**Filosofía:** El `IntentDetector` es ultra-conservador y solo detecta intenciones MUY obvias. El agente conversacional es lo suficientemente inteligente para manejar cualquier consulta, por lo que todo lo que no sea obvio va a `conversacion` por defecto.
 
 **Ejemplo de Uso:**
 ```python
@@ -153,41 +168,45 @@ Se guarda en historial conversacional
 ### Ejemplo 1: Conversación Natural Simple
 ```
 Usuario: "recomiéndame un disco"
-Bot: [Detecta: recomendar, type=album, count=1]
-     "📀 Te recomiendo 'OK Computer' de Radiohead..."
+Bot: [Detecta: conversacion (no es obvio que sea 'recomendar')]
+     [Agente procesa] "📀 Te recomiendo 'OK Computer' de Radiohead..."
 
 Usuario: "ponme otro"
 Bot: [Detecta: referencia, usa última recomendación]
      "🎵 Similar a Radiohead, te va a gustar 'The Bends'..."
 ```
 
-### Ejemplo 2: Consulta con Contexto
+### Ejemplo 2: Consulta con Contexto (FIX v2.1)
 ```
-Usuario: "qué he escuchado hoy"
-Bot: [Detecta: stats, timeframe=today]
-     "📊 Hoy has escuchado:
-      1. Pink Floyd - Comfortably Numb
-      2. Queen - Bohemian Rhapsody..."
+Usuario: "¿cuáles son los últimos 3 artistas que escuché?"
+Bot: [Detecta: conversacion (pregunta específica)]
+     [Agente responde específicamente]
+     "Los últimos 3 artistas que has escuchado son:
+      1. Childish Gambino
+      2. Bestia Bebé
+      3. Extremoduro"
 ```
 
 ### Ejemplo 3: Petición Específica
 ```
 Usuario: "rock progresivo de los 70s con sintetizadores"
-Bot: [Detecta: recomendar, description="rock progresivo...", time_period="70s"]
+Bot: [Detecta: conversacion (no usa 'similar a')]
+     [Agente procesa criterios]
      "🎸 Perfecto, te recomiendo:
       • Yes - Close to the Edge
       • Emerson, Lake & Palmer - Tarkus..."
 ```
 
-### Ejemplo 4: Referencias Anafóricas
+### Ejemplo 4: Palabra Clave Específica
 ```
 Usuario: "busca Pink Floyd"
-Bot: "🔍 Encontré 3 álbumes de Pink Floyd en tu biblioteca..."
+Bot: [Detecta: buscar (palabra clave "busca")]
+     "🔍 Encontré 3 álbumes de Pink Floyd en tu biblioteca..."
 
-Usuario: "dame info de eso"
-Bot: [Usa contexto: última búsqueda fue Pink Floyd]
-     "📚 Pink Floyd en tu biblioteca:
-      📀 The Dark Side of the Moon (1973)..."
+Usuario: "similar a Pink Floyd"
+Bot: [Detecta: recomendar (palabra clave "similar a")]
+     "🎸 Te recomiendo artistas similares:
+      • King Crimson, Yes, Genesis..."
 ```
 
 ---
@@ -230,18 +249,25 @@ python backend/bot.py
 
 ## 📊 Métricas de Mejora
 
-### Antes
+### Antes (v1.0)
 - ~800 líneas de código complejo en `telegram_service.py`
 - Sistema de regex frágil y difícil de mantener
 - Sin memoria entre mensajes
 - Usuario debe adaptarse a comandos específicos
 
-### Después
+### v2.0 (Sistema Conversacional)
 - ~500 líneas de código más limpio
-- Detección de intenciones robusta con LLM
+- Detección de intenciones con LLM (9 intenciones)
 - Memoria conversacional completa
 - Usuario habla naturalmente
-- +3 nuevos módulos especializados y reutilizables
+- +3 nuevos módulos especializados
+
+### v2.1 (Simplificación) - ACTUAL
+- ~450 líneas de código ultra-limpio
+- Solo 5 intenciones (ultra-conservador)
+- 95% de casos van a conversación por defecto
+- Agente conversacional hace el trabajo pesado
+- **Fix:** Preguntas específicas responden correctamente
 
 ---
 
