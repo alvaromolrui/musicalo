@@ -1280,16 +1280,26 @@ REGLAS BÁSICAS:
 - Si es SOLO similar a un artista → usa similar_to
 - Si tiene MÚLTIPLES criterios o características específicas → usa custom_prompt con TODO el contexto
 
+MUY IMPORTANTE - Distinguir "DE" vs "SIMILAR A":
+- "álbum DE [artista]" o "disco DE [artista]" → usa "chat" para buscar en biblioteca
+- "similar A [artista]" o "parecido A [artista]" → usa similar_to
+- Ejemplos:
+  * "álbum de Tote King" → {{"action": "chat", "params": {{"question": "recomiéndame un álbum de Tote King"}}}}
+  * "similar a Tote King" → {{"action": "recommend", "params": {{"similar_to": "Tote King"}}}}
+
 Responde SOLO con un objeto JSON en este formato exacto (sin markdown, sin explicaciones):
 {{"action": "nombre_accion", "params": {{"parametro": "valor"}}}}
 
 Ejemplos:
 - "recomiéndame un disco" → {{"action": "recommend", "params": {{"rec_type": "album", "limit": 1}}}}
+- "recomiéndame un álbum de Tote King" → {{"action": "chat", "params": {{"question": "recomiéndame un álbum de Tote King"}}}}
+- "recomiéndame discos de Oasis" → {{"action": "chat", "params": {{"question": "recomiéndame discos de Oasis"}}}}
 - "recomiéndame discos de rock" → {{"action": "recommend", "params": {{"rec_type": "album", "genre_filter": "rock", "limit": 5}}}}
 - "recomiéndame rock progresivo de los 70s con sintetizadores" → {{"action": "recommend", "params": {{"rec_type": "general", "custom_prompt": "rock progresivo de los 70s con sintetizadores", "limit": 5}}}}
 - "álbumes de metal melódico con voces limpias" → {{"action": "recommend", "params": {{"rec_type": "album", "custom_prompt": "metal melódico con voces limpias", "limit": 5}}}}
 - "música energética para hacer ejercicio" → {{"action": "recommend", "params": {{"rec_type": "general", "custom_prompt": "música energética para hacer ejercicio", "limit": 5}}}}
 - "similar a Pink Floyd" → {{"action": "recommend", "params": {{"rec_type": "general", "similar_to": "Pink Floyd", "limit": 5}}}}
+- "parecido a Queen" → {{"action": "recommend", "params": {{"rec_type": "general", "similar_to": "Queen", "limit": 5}}}}
 - "busca Queen" → {{"action": "search", "params": {{"search_term": "Queen"}}}}
 - "cuál es mi última canción" → {{"action": "chat", "params": {{"question": "cuál es mi última canción"}}}}
 - "mis estadísticas" → {{"action": "stats", "params": {{}}}}
