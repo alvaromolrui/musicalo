@@ -86,6 +86,10 @@ class IntentDetector:
     ) -> str:
         """Construir prompt para detección de intención
         
+        FILOSOFÍA: El agente conversacional es inteligente y puede manejar CUALQUIER consulta.
+        Solo detectamos intenciones MUY OBVIAS que requieren acciones específicas.
+        Cuando hay duda, usamos 'conversacion' y dejamos que el agente lo maneje.
+        
         Args:
             user_message: Mensaje del usuario
             session_context: Contexto conversacional
@@ -120,72 +124,86 @@ class IntentDetector:
                 ])
         
         prompt_parts.extend([
-            "INSTRUCCIONES:",
-            "Analiza el mensaje y determina:",
-            "1. La intención principal (intent)",
-            "2. Los parámetros relevantes (params)",
-            "3. Tu nivel de confianza (confidence: 0.0 a 1.0)",
+            "FILOSOFÍA:",
+            "El agente conversacional es MUY inteligente y puede manejar CUALQUIER consulta.",
+            "Tu trabajo es detectar SOLO las intenciones MUY OBVIAS que requieren acciones específicas.",
+            "Cuando tengas duda, usa 'conversacion' y deja que el agente lo maneje.",
             "",
-            "INTENCIONES DISPONIBLES:",
-            "- 'recomendar': Usuario quiere recomendaciones de música (álbumes, artistas, canciones)",
-            "- 'playlist': Usuario quiere crear una playlist M3U con criterios específicos",
-            "- 'buscar': Usuario quiere buscar algo específico en su biblioteca",
-            "- 'info': Usuario pregunta por información de un artista/álbum específico",
-            "- 'stats': Usuario quiere ver sus estadísticas de escucha",
-            "- 'biblioteca': Usuario quiere explorar su biblioteca completa",
-            "- 'pregunta_general': Pregunta teórica sobre música (no relacionada con su biblioteca)",
-            "- 'conversacion': Conversación general, consulta sobre su música personal",
-            "- 'referencia': Usuario hace referencia a algo anterior ('más así', 'otro como ese')",
+            "INTENCIONES DISPONIBLES (solo 5):",
             "",
-            "PARÁMETROS IMPORTANTES:",
-            "- artists: Lista de artistas mencionados específicamente",
-            "- genres: Lista de géneros mencionados",
-            "- type: 'album', 'artist', 'track' (solo para recomendaciones)",
-            "- similar_to: Nombre del artista/álbum para buscar similares",
-            "- reference_to_previous: true si se refiere a algo anterior",
-            "- description: Descripción completa para playlists o criterios específicos",
-            "- search_query: Término de búsqueda específico",
-            "- mood: Estado de ánimo si se menciona (energetic, calm, melancholic, etc.)",
-            "- time_period: Si menciona época ('70s', '90s', 'actual', etc.)",
-            "- count: Número de items solicitados (por defecto 5)",
+            "1. 'playlist' - SOLO cuando pide EXPLÍCITAMENTE crear una playlist M3U",
+            "   Palabras clave: 'haz playlist', 'crea playlist', 'genera playlist'",
+            "   Ejemplo: 'haz playlist de Pink Floyd y Queen'",
             "",
-            "REGLAS CRÍTICAS:",
-            "1. Si pide 'disco DE [artista]' o 'álbum DE [artista]' → intent='info' (busca en SU biblioteca)",
-            "2. Si pide 'similar A [artista]' o 'parecido A [artista]' → intent='recomendar' con similar_to",
-            "3. Si dice 'más de eso', 'otro así', 'parecido' SIN nombre → intent='referencia'",
-            "4. Si pide 'playlist con/de [artistas]' → intent='playlist' con description",
-            "5. Si menciona múltiples características → incluir TODO en description",
-            "6. Si pide 'un' álbum/disco (singular) → count=1, type='album'",
-            "7. Si pregunta '¿qué tengo de...?' → intent='info' o 'conversacion'",
+            "2. 'buscar' - SOLO cuando usa la palabra 'busca' o 'buscar'",
+            "   Palabras clave: 'busca', 'buscar'",
+            "   Ejemplo: 'busca Queen'",
+            "",
+            "3. 'recomendar' - SOLO cuando dice 'similar a' Y menciona artista específico",
+            "   Palabras clave: 'similar a [artista]', 'parecido a [artista]'",
+            "   Ejemplo: 'similar a Pink Floyd'",
+            "   NOTA: 'recomiéndame rock' → usa 'conversacion', NO 'recomendar'",
+            "",
+            "4. 'referencia' - SOLO cuando dice 'más de eso', 'otro así' SIN mencionar artista",
+            "   Palabras clave: 'más de eso', 'otro así', 'ponme otro'",
+            "   Ejemplo: 'ponme más de eso'",
+            "",
+            "5. 'conversacion' - TODO LO DEMÁS (usar por defecto, 95% de los casos)",
+            "   Incluye:",
+            "   - Preguntas: 'mis stats', 'últimos artistas', 'qué escuché', 'qué tengo de X'",
+            "   - Solicitudes: 'recomiéndame rock', 'ponme un disco', 'música tranquila'",
+            "   - Info: '¿qué es el jazz?', 'cuéntame de Queen'",
+            "   - CUALQUIER conversación natural",
+            "",
+            "REGLA DE ORO:",
+            "Si tienes CUALQUIER duda → usa 'conversacion'",
+            "El agente conversacional es experto y puede manejar TODO.",
             "",
             "EJEMPLOS:",
             "",
-            "Usuario: 'recomiéndame un disco'",
-            '{"intent": "recomendar", "params": {"type": "album", "count": 1}, "confidence": 0.95}',
-            "",
-            "Usuario: 'recomiéndame un álbum de Oasis'",
-            '{"intent": "info", "params": {"artists": ["Oasis"], "type": "album"}, "confidence": 0.9}',
-            "",
-            "Usuario: 'música similar a Pink Floyd'",
-            '{"intent": "recomendar", "params": {"similar_to": "Pink Floyd"}, "confidence": 0.95}',
-            "",
-            "Usuario: 'ponme algo parecido' (después de recomendar Queen)",
-            '{"intent": "referencia", "params": {"reference_to_previous": true}, "confidence": 0.85}',
-            "",
             "Usuario: 'haz playlist con Pink Floyd y Queen'",
-            '{"intent": "playlist", "params": {"description": "Pink Floyd y Queen", "artists": ["Pink Floyd", "Queen"]}, "confidence": 0.9}',
-            "",
-            "Usuario: 'rock progresivo de los 70s con sintetizadores'",
-            '{"intent": "recomendar", "params": {"description": "rock progresivo de los 70s con sintetizadores", "genres": ["rock progresivo"], "time_period": "70s"}, "confidence": 0.9}',
-            "",
-            "Usuario: 'qué he escuchado hoy'",
-            '{"intent": "stats", "params": {"timeframe": "today"}, "confidence": 0.95}',
+            '{"intent": "playlist", "params": {"description": "Pink Floyd y Queen"}, "confidence": 0.95}',
             "",
             "Usuario: 'busca Queen'",
             '{"intent": "buscar", "params": {"search_query": "Queen"}, "confidence": 0.95}',
             "",
+            "Usuario: 'similar a Pink Floyd'",
+            '{"intent": "recomendar", "params": {"similar_to": "Pink Floyd"}, "confidence": 0.9}',
+            "",
+            "Usuario: 'ponme más de eso'",
+            '{"intent": "referencia", "params": {"reference_to_previous": true}, "confidence": 0.85}',
+            "",
+            "--- TODO LO DEMÁS ES CONVERSACION ---",
+            "",
+            "Usuario: 'recomiéndame un disco'",
+            '{"intent": "conversacion", "params": {}, "confidence": 0.9}',
+            "",
+            "Usuario: 'recomiéndame rock progresivo'",
+            '{"intent": "conversacion", "params": {}, "confidence": 0.9}',
+            "",
+            "Usuario: '¿cuáles son los últimos 3 artistas que escuché?'",
+            '{"intent": "conversacion", "params": {}, "confidence": 0.95}',
+            "",
+            "Usuario: 'mis estadísticas'",
+            '{"intent": "conversacion", "params": {}, "confidence": 0.95}',
+            "",
+            "Usuario: '¿qué álbumes tengo de Radiohead?'",
+            '{"intent": "conversacion", "params": {}, "confidence": 0.95}',
+            "",
             "Usuario: '¿qué es el jazz?'",
-            '{"intent": "pregunta_general", "params": {"question": "qué es el jazz"}, "confidence": 0.95}',
+            '{"intent": "conversacion", "params": {}, "confidence": 0.95}',
+            "",
+            "Usuario: 'ponme algo tranquilo'",
+            '{"intent": "conversacion", "params": {}, "confidence": 0.9}',
+            "",
+            "Usuario: '¿cuál es mi última canción?'",
+            '{"intent": "conversacion", "params": {}, "confidence": 0.95}',
+            "",
+            "Usuario: 'qué he escuchado hoy'",
+            '{"intent": "conversacion", "params": {}, "confidence": 0.95}',
+            "",
+            "Usuario: 'un disco de Oasis'",
+            '{"intent": "conversacion", "params": {}, "confidence": 0.9}',
             "",
             "RESPONDE SOLO CON JSON (sin markdown, sin explicaciones):",
             '{"intent": "...", "params": {...}, "confidence": 0.0-1.0}'
@@ -207,10 +225,9 @@ class IntentDetector:
         params = intent_data.get("params", {})
         confidence = float(intent_data.get("confidence", 0.5))
         
-        # Normalizar intención
+        # Normalizar intención - SOLO 5 intenciones válidas
         valid_intents = [
-            "recomendar", "playlist", "buscar", "info", "stats", 
-            "biblioteca", "pregunta_general", "conversacion", "referencia"
+            "playlist", "buscar", "recomendar", "referencia", "conversacion"
         ]
         
         if intent not in valid_intents:
@@ -295,16 +312,12 @@ class IntentDetector:
             Descripción en español
         """
         descriptions = {
-            "recomendar": "Recomendaciones de música",
-            "playlist": "Crear playlist personalizada",
+            "playlist": "Crear playlist M3U",
             "buscar": "Buscar en biblioteca",
-            "info": "Información de artista/álbum",
-            "stats": "Ver estadísticas de escucha",
-            "biblioteca": "Explorar biblioteca completa",
-            "pregunta_general": "Pregunta sobre música",
-            "conversacion": "Conversación general",
-            "referencia": "Referencia a algo anterior"
+            "recomendar": "Música similar a artista",
+            "referencia": "Referencia a algo anterior",
+            "conversacion": "Conversación general (maneja TODO lo demás)"
         }
         
-        return descriptions.get(intent, "Acción desconocida")
+        return descriptions.get(intent, "Conversación general")
 

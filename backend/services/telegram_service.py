@@ -1346,43 +1346,16 @@ Proporciona una respuesta útil, informativa y amigable. Si la pregunta es sobre
             session.set_last_action(intent, params)
             
             # Ejecutar acción según la intención detectada
-            if intent == "recomendar":
-                rec_type = params.get("type", "general")
-                genre_filter = params.get("genres", [])
-                if genre_filter:
-                    genre_filter = " ".join(genre_filter) if isinstance(genre_filter, list) else genre_filter
-                similar_to = params.get("similar_to")
-                limit = params.get("count", 5)
-                custom_prompt = params.get("description")
-                
-                # Fallback: forzar 'album' si el mensaje lo menciona
-                if rec_type == "general" and any(word in user_message.lower() for word in ["disco", "discos", "álbum", "album"]):
-                    rec_type = "album"
-                    print(f"🔧 Forzando rec_type='album'")
-                
-                # Construir context.args para recommend_command
-                context.args = []
-                
-                if custom_prompt:
-                    if rec_type != "general":
-                        context.args.append(rec_type)
-                    context.args.append(f"__custom_prompt={custom_prompt}")
-                    print(f"🎨 Custom prompt: {custom_prompt}")
-                elif similar_to:
-                    if rec_type != "general":
-                        context.args.append(rec_type)
-                    context.args.append("similar")
-                    context.args.append(similar_to)
-                else:
-                    if rec_type != "general":
-                        context.args.append(rec_type)
-                    if genre_filter:
-                        context.args.append(genre_filter)
-                
-                context.args.append(f"__limit={limit}")
-                await self.recommend_command(update, context)
+            # SOLO 5 intenciones posibles: playlist, buscar, recomendar, referencia, conversacion
+            
+            if intent == "playlist":
+                # Crear playlist M3U
+                description = params.get("description", user_message)
+                context.args = description.split()
+                await self.playlist_command(update, context)
             
             elif intent == "buscar":
+                # Buscar en biblioteca
                 search_term = params.get("search_query", "")
                 if search_term:
                     context.args = search_term.split()
@@ -1390,30 +1363,19 @@ Proporciona una respuesta útil, informativa y amigable. Si la pregunta es sobre
                 else:
                     await update.message.reply_text("❌ No especificaste qué buscar.")
             
-            elif intent == "stats":
-                await self.stats_command(update, context)
-            
-            elif intent == "biblioteca":
-                await self.library_command(update, context)
-            
-            elif intent == "playlist":
-                description = params.get("description", user_message)
-                context.args = description.split()
-                await self.playlist_command(update, context)
-            
-            elif intent == "info":
-                # Usar conversación para info sobre artistas/álbumes del usuario
-                await self._handle_conversational_query(update, user_message)
-            
-            elif intent == "pregunta_general":
-                question = params.get("question", user_message)
-                context.args = question.split()
-                await self.ask_command(update, context)
+            elif intent == "recomendar":
+                # Recomendaciones con "similar a [artista]"
+                similar_to = params.get("similar_to")
+                if similar_to:
+                    context.args = ["similar", similar_to, "__limit=5"]
+                    await self.recommend_command(update, context)
+                else:
+                    # Fallback a conversación si no hay artista específico
+                    await self._handle_conversational_query(update, user_message)
             
             elif intent == "referencia":
-                # Usuario hace referencia a algo anterior ("más de eso")
+                # Usuario hace referencia a algo anterior ("más de eso", "otro así")
                 if session.last_recommendations:
-                    # Usar último artista/contexto
                     last_artists = session.get_last_artists()
                     if last_artists:
                         await update.message.reply_text(f"🎵 Buscando más música similar a {last_artists[0]}...")
@@ -1427,20 +1389,11 @@ Proporciona una respuesta útil, informativa y amigable. Si la pregunta es sobre
                         "¿Puedes ser más específico?"
                     )
             
-            elif intent == "conversacion" or not intent:
-                # Conversación general - usar agente musical
-                await self._handle_conversational_query(update, user_message)
-            
             else:
-                # Intención no reconocida
-                await update.message.reply_text(
-                    f"🤔 No estoy seguro de cómo ayudarte con eso.\n\n"
-                    f"Puedes usar:\n"
-                    f"• /recommend - Para recomendaciones\n"
-                    f"• /search <término> - Para buscar\n"
-                    f"• /stats - Para estadísticas\n"
-                    f"• /help - Para ver todos los comandos"
-                )
+                # TODO LO DEMÁS va a conversación (DEFAULT)
+                # Esto incluye: preguntas sobre stats, info, recomendaciones generales,
+                # y CUALQUIER consulta natural del usuario
+                await self._handle_conversational_query(update, user_message)
                 
         except Exception as e:
             print(f"❌ Error en handle_message: {type(e).__name__}: {str(e)}")
