@@ -107,23 +107,35 @@ class MusicAgentService:
 === DATOS DISPONIBLES ===
 {self._format_context_for_ai(data_context)}
 
-REGLAS ESTRICTAS:
-1. Si hay datos de BIBLIOTECA (📚), úsalos PRIMERO y de forma PRIORITARIA
-2. VERIFICA que el artista coincida EXACTAMENTE - no asumas que un álbum es del artista solo porque tiene palabras similares
-3. Responde SOLO basándote en los datos mostrados arriba
-4. Si preguntan "qué tengo" o "qué álbumes tengo", lista EXACTAMENTE lo que aparece en la sección de BIBLIOTECA
-5. Sé DIRECTO y ESPECÍFICO - no des alternativas si tienes la información
-6. Si NO hay datos de biblioteca para lo que preguntan, sé HONESTO y di que no tienes ese artista/álbum
-7. NUNCA inventes información - si no estás seguro, di que no tienes datos
+REGLAS CRÍTICAS:
+1. Si preguntan "qué tengo" → USA SOLO BIBLIOTECA (📚)
+2. Si piden "recomienda", "algo nuevo", "otro disco" → USA BIBLIOTECA + LAST.FM (🌍)
+3. NUNCA digas "no puedo" cuando tienes datos de Last.fm disponibles
+4. Si no está en biblioteca pero SÍ en Last.fm → RECOMIÉNDALO igual
+5. Balance: combina lo que tiene (biblioteca) + descubrimiento (Last.fm)
+6. VERIFICA coincidencia exacta de artistas - no mezcles artistas diferentes
+7. Sé PROACTIVO: si piden electrónica y no tienen, busca en Last.fm
 
-IMPORTANTE - "Recomiéndame un álbum/disco DE [artista]":
-- Si preguntan por "álbum de [artista]" o "disco de [artista]", busca álbumes DEL MISMO ARTISTA
-- VERIFICA que el artista del álbum coincida con el artista solicitado
-- Si en BIBLIOTECA hay álbumes donde el nombre del artista es EXACTAMENTE o MUY SIMILAR al solicitado, recomienda esos
-- Si NO hay álbumes del artista solicitado en biblioteca, di: "No tienes álbumes de [artista] en tu biblioteca"
-- NO recomiendes álbumes que solo contengan palabras similares pero sean de otro artista
-- Ejemplo MALO: Usuario pide "Tobogán Andaluz", encuentras "El Perro Andaluz" de OTRO artista → NO lo recomiendes
-- Ejemplo BUENO: Usuario pide "Pink Floyd", encuentras "The Wall" de "Pink Floyd" → Recomiéndalo
+IMPORTANTE - Diferentes tipos de peticiones:
+
+1. "¿Qué álbumes TENGO de [artista]?"
+   → Busca SOLO en BIBLIOTECA
+   → Si no tiene → "No tienes álbumes de [artista] en tu biblioteca"
+
+2. "Recomiéndame un disco DE [artista]"
+   → Busca en BIBLIOTECA primero
+   → Si no tiene → Busca en LAST.FM y recomienda
+   → Ejemplo: "No tienes de [artista] en biblioteca, pero en Last.fm su mejor álbum es X"
+
+3. "Recomiéndame un disco" (sin artista específico)
+   → USA BIBLIOTECA + LAST.FM
+   → Combina: algo de su biblioteca + descubrimientos nuevos
+   → Ejemplo: "De tu biblioteca: X. También te gustará Y (nuevo en Last.fm)"
+
+4. "Recomiéndame algo nuevo / que no tenga"
+   → USA PRINCIPALMENTE LAST.FM
+   → Recomienda música que NO está en biblioteca
+   → Basado en sus gustos pero nuevo contenido
 
 IMPORTANTE - "Playlist con música DE [artistas]":
 - Si piden "playlist de/con [lista de artistas]", busca canciones de ESOS ARTISTAS ESPECÍFICOS
@@ -181,7 +193,8 @@ Responde ahora de forma natural y conversacional:"""
             "library": {},
             "listening_history": {},
             "search_results": {},
-            "similar_content": []
+            "similar_content": [],
+            "new_discoveries": []  # NUEVO: Para música que no está en biblioteca
         }
         
         # Detectar palabras clave para optimizar búsquedas
@@ -191,7 +204,12 @@ Responde ahora de forma natural y conversacional:"""
             "álbum", "album", "disco", "álbumes", "albums", "discos"
         ])
         needs_listening_history = any(word in query_lower for word in [
-            "escuché", "escuchado", "última", "reciente", "top", "favorito", "estadística"
+            "escuché", "escuchado", "última", "reciente", "top", "favorito", "estadística", "últimos"
+        ])
+        # NUEVO: Detectar cuando el usuario pide descubrir música nueva
+        needs_new_music = any(word in query_lower for word in [
+            "nuevo", "nueva", "nuevos", "nuevas", "no tenga", "descubrir", 
+            "recomienda", "recomiéndame", "sugerencia", "otra cosa"
         ])
         
         # Extraer término de búsqueda real (eliminar palabras comunes)
@@ -249,7 +267,6 @@ Responde ahora de forma natural y conversacional:"""
             try:
                 print(f"🔍 Buscando contenido similar")
                 # Extraer nombre de artista/álbum de la query
-                # (Esto es simplificado, en una implementación real sería más sofisticado)
                 words = query.split()
                 for i, word in enumerate(words):
                     if word.lower() in ["similar", "parecido", "como"] and i + 1 < len(words):
@@ -260,6 +277,45 @@ Responde ahora de forma natural y conversacional:"""
                         break
             except Exception as e:
                 print(f"⚠️ Error buscando contenido similar: {e}")
+        
+        # NUEVO: Buscar música nueva activamente cuando lo pidan
+        if needs_new_music and self.music_service:
+            try:
+                print(f"🌍 Buscando música NUEVA basada en gustos del usuario...")
+                
+                # Obtener top artistas del usuario
+                top_artists = await self.music_service.get_top_artists(limit=5)
+                
+                if top_artists and self.lastfm:
+                    # Buscar artistas similares a sus favoritos
+                    new_discoveries = []
+                    for top_artist in top_artists[:3]:  # Solo los top 3
+                        similar = await self.lastfm.get_similar_artists(top_artist.name, limit=3)
+                        for artist in similar:
+                            # Agregar solo si no está duplicado
+                            if artist.name not in [d.get('artist') for d in new_discoveries]:
+                                # Obtener el álbum top del artista para dar recomendación concreta
+                                top_albums = await self.lastfm.get_artist_top_albums(artist.name, limit=1)
+                                
+                                discovery = {
+                                    'artist': artist.name,
+                                    'url': artist.url if hasattr(artist, 'url') else None,
+                                    'top_album': top_albums[0].get('name') if top_albums else None,
+                                    'album_url': top_albums[0].get('url') if top_albums else None,
+                                    'similar_to': top_artist.name  # Para contexto
+                                }
+                                new_discoveries.append(discovery)
+                        
+                        # Limitar a 8 descubrimientos total
+                        if len(new_discoveries) >= 8:
+                            break
+                    
+                    if new_discoveries:
+                        data["new_discoveries"] = new_discoveries[:8]
+                        print(f"✅ Encontrados {len(data['new_discoveries'])} descubrimientos con álbums específicos")
+                
+            except Exception as e:
+                print(f"⚠️ Error buscando música nueva: {e}")
         
         return data
     
@@ -357,6 +413,37 @@ Responde ahora de forma natural y conversacional:"""
             for i, artist in enumerate(data["similar_content"][:5], 1):
                 url_info = f" - {artist.url}" if hasattr(artist, 'url') and artist.url else ""
                 formatted += f"  {i}. {artist.name}{url_info}\n"
+        
+        # NUEVO: Descubrimientos (música que NO está en biblioteca pero puede recomendar)
+        if data.get("new_discoveries"):
+            formatted += f"\n🌍 === MÚSICA NUEVA PARA DESCUBRIR (de Last.fm) ===\n"
+            formatted += f"📌 IMPORTANTE: Estos NO están en tu biblioteca pero PUEDES recomendarlos\n"
+            formatted += f"🎯 Basado en tus gustos, te pueden gustar:\n\n"
+            
+            for i, discovery in enumerate(data["new_discoveries"][:8], 1):
+                # Puede ser dict (nuevo formato) o objeto (formato antiguo)
+                if isinstance(discovery, dict):
+                    artist = discovery.get('artist', 'Unknown')
+                    album = discovery.get('top_album')
+                    similar_to = discovery.get('similar_to', '')
+                    url = discovery.get('url', '')
+                    
+                    formatted += f"  {i}. **{artist}**"
+                    if album:
+                        formatted += f" - Álbum recomendado: **{album}**"
+                    if similar_to:
+                        formatted += f" (similar a {similar_to})"
+                    if url:
+                        formatted += f" - {url}"
+                    formatted += "\n"
+                else:
+                    # Formato antiguo (compatibilidad)
+                    formatted += f"  {i}. {discovery.name}"
+                    if hasattr(discovery, 'url') and discovery.url:
+                        formatted += f" - {discovery.url}"
+                    formatted += "\n"
+            
+            formatted += "\n💡 Recomienda estos álbumes/artistas libremente - son descubrimientos basados en sus gustos\n"
         
         # Si no hay datos
         if not formatted:
