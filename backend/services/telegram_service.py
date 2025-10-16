@@ -920,9 +920,15 @@ Proporciona una respuesta útil, informativa y amigable. Si la pregunta es sobre
         await update.message.reply_text(f"🔍 Buscando información sobre: _{query}_...", parse_mode='Markdown')
         
         try:
+            # Construir query que active búsqueda en biblioteca
+            # En lugar de "Dame información sobre X", usar "¿Qué tengo de X?"
+            search_query = f"¿Qué álbumes y canciones de {query} tengo en mi biblioteca?"
+            
+            print(f"📋 Query construida para agente: {search_query}")
+            
             # Usar el agente musical para obtener información completa
             result = await self.agent.query(
-                f"Dame información detallada sobre {query}",
+                search_query,
                 context={"type": "info_query"}
             )
             
@@ -969,76 +975,34 @@ Proporciona una respuesta útil, informativa y amigable. Si la pregunta es sobre
     
     @_check_authorization
     async def _handle_conversational_query(self, update: Update, user_message: str):
-        """Manejar consultas conversacionales de forma inteligente usando IA y APIs"""
+        """Manejar consultas conversacionales usando el agente musical"""
         try:
-            genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+            print(f"💬 Consulta conversacional: {user_message}")
             
-            # Obtener TODOS los datos disponibles del usuario
-            recent_tracks = []
-            top_artists = []
-            user_stats = {}
+            # USAR EL AGENTE MUSICAL en lugar de llamar a Gemini directamente
+            # El agente buscará en biblioteca + Last.fm automáticamente
+            result = await self.agent.query(
+                user_message,
+                context={"type": "conversational"}
+            )
             
-            if self.music_service:
-                try:
-                    recent_tracks = await self.music_service.get_recent_tracks(limit=20)
-                    top_artists = await self.music_service.get_top_artists(limit=10)
-                    if hasattr(self.music_service, 'get_user_stats'):
-                        user_stats = await self.music_service.get_user_stats()
-                except Exception as e:
-                    print(f"Error obteniendo datos del usuario: {e}")
-            
-            # Construir contexto rico con TODOS los datos
-            context_data = "DATOS DISPONIBLES DEL USUARIO:\n\n"
-            
-            if recent_tracks:
-                context_data += "Últimas 20 canciones escuchadas:\n"
-                for i, track in enumerate(recent_tracks, 1):
-                    context_data += f"{i}. {track.artist} - {track.name}\n"
-                context_data += "\n"
-            
-            if top_artists:
-                context_data += "Top 10 artistas favoritos:\n"
-                for i, artist in enumerate(top_artists, 1):
-                    context_data += f"{i}. {artist.name} ({artist.playcount} escuchas)\n"
-                context_data += "\n"
-            
-            if user_stats:
-                context_data += "Estadísticas globales:\n"
-                context_data += f"- Total de escuchas: {user_stats.get('total_listens', 'N/A')}\n"
-                context_data += f"- Artistas únicos: {user_stats.get('total_artists', 'N/A')}\n"
-                context_data += f"- Álbumes únicos: {user_stats.get('total_albums', 'N/A')}\n"
-                context_data += f"- Canciones únicas: {user_stats.get('total_tracks', 'N/A')}\n"
-            
-            # Prompt conversacional INTELIGENTE
-            chat_prompt = f"""Eres un asistente musical inteligente y conversacional. 
-
-El usuario te preguntó: "{user_message}"
-
-Tienes acceso a estos datos reales del usuario:
-
-{context_data}
-
-INSTRUCCIONES:
-1. Analiza la pregunta del usuario y responde de forma natural y conversacional
-2. USA LOS DATOS REALES proporcionados arriba para responder
-3. Si preguntan por recomendaciones similares a un artista, busca en sus top artistas o escuchas recientes para dar contexto
-4. Si preguntan por "discos" o "álbumes", menciona álbumes específicos de los artistas que escucha
-5. Sé específico, usa nombres reales de artistas y canciones de los datos
-6. Si no tienes la información exacta pero tienes datos relacionados, ofrece alternativas útiles
-7. Responde en español, de forma amigable y directa
-8. NO uses formatos de lista largos si la pregunta es específica
-9. Si preguntan por algo similar a un artista que NO está en los datos, sugiere artistas que SÍ escucha que podrían ser similares
-
-Respuesta natural y conversacional:"""
-            
-            model = genai.GenerativeModel('gemini-2.0-flash-exp')
-            response = model.generate_content(chat_prompt)
-            
-            response_text = response.text.strip()
-            
-            # Enviar respuesta conversacional
-            await update.message.reply_text(f"🎵 {response_text}")
-            print(f"✅ Respuesta conversacional enviada")
+            if result.get("success"):
+                answer = result["answer"]
+                
+                # Agregar enlaces si hay
+                links = result.get("links", [])
+                if links:
+                    answer += "\n\n🔗 **Enlaces relevantes:**\n"
+                    for link in links[:5]:  # Máximo 5 enlaces
+                        answer += f"• {link}\n"
+                
+                await update.message.reply_text(answer)
+                print(f"✅ Respuesta del agente enviada")
+            else:
+                await update.message.reply_text(
+                    "😔 No pude procesar tu consulta en este momento.\n\n"
+                    "Intenta reformular tu pregunta o usa los comandos disponibles."
+                )
             
         except Exception as e:
             print(f"❌ Error en conversación: {type(e).__name__}: {str(e)}")
