@@ -12,6 +12,9 @@ from services.lastfm_service import LastFMService
 from services.ai_service import MusicRecommendationService
 from services.playlist_service import PlaylistService
 from services.music_agent_service import MusicAgentService
+from services.conversation_manager import ConversationManager
+from services.intent_detector import IntentDetector
+from services.system_prompts import SystemPrompts
 from functools import wraps
 from datetime import datetime
 
@@ -22,6 +25,10 @@ class TelegramService:
         self.ai = MusicRecommendationService()
         self.playlist_service = PlaylistService()
         self.agent = MusicAgentService()
+        
+        # Nuevos componentes conversacionales
+        self.conversation_manager = ConversationManager()
+        self.intent_detector = IntentDetector()
         
         # Configurar lista de usuarios permitidos
         allowed_ids_str = os.getenv("TELEGRAM_ALLOWED_USER_IDS", "")
@@ -481,6 +488,11 @@ Sé todo lo detallado que quieras:
             
             await update.message.reply_text(text, reply_markup=reply_markup, parse_mode='Markdown')
             print("✅ Recomendaciones enviadas correctamente")
+            
+            # Guardar recomendaciones en la sesión conversacional
+            user_id = update.effective_user.id
+            session = self.conversation_manager.get_session(user_id)
+            session.set_last_recommendations(recommendations)
             
         except Exception as e:
             print(f"❌ Error en recommend_command: {type(e).__name__}: {str(e)}")
@@ -979,10 +991,13 @@ Proporciona una respuesta útil, informativa y amigable. Si la pregunta es sobre
         try:
             print(f"💬 Consulta conversacional: {user_message}")
             
-            # USAR EL AGENTE MUSICAL en lugar de llamar a Gemini directamente
+            user_id = update.effective_user.id
+            
+            # USAR EL AGENTE MUSICAL con soporte conversacional
             # El agente buscará en biblioteca + Last.fm automáticamente
             result = await self.agent.query(
                 user_message,
+                user_id=user_id,
                 context={"type": "conversational"}
             )
             
@@ -1284,271 +1299,147 @@ Proporciona una respuesta útil, informativa y amigable. Si la pregunta es sobre
     
     @_check_authorization
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Manejar mensajes de texto con IA - Interpreta intención y ejecuta acciones"""
+        """Manejar mensajes de texto con IA - VERSIÓN SIMPLIFICADA CON INTENT DETECTOR"""
         user_message = update.message.text
+        user_id = update.effective_user.id
         
         # Mensaje de espera
         waiting_msg = await update.message.reply_text("🤔 Analizando tu mensaje...")
         
         try:
-            # PASO 0: Intentar detectar intención con regex PRIMERO
-            regex_result = self._detect_intent_with_regex(user_message)
+            print(f"💬 Usuario {user_id}: {user_message}")
             
-            if regex_result:
-                print(f"✅ Intención detectada con regex: {regex_result['action']}")
-                action = regex_result["action"]
-                params = regex_result["params"]
-                
-                # Borrar mensaje de espera
-                await waiting_msg.delete()
-                
-                # Ejecutar acción directamente
-                if action == "chat":
-                    await self._handle_conversational_query(update, user_message)
-                    return
-                elif action == "playlist":
-                    # Llamar directamente al comando de playlist
-                    description = params.get("description", "")
-                    context.args = description.split() if description else []
-                    await self.playlist_command(update, context)
-                    return
-                elif action == "recommend":
-                    # Construir context.args según params
-                    context.args = []
-                    rec_type = params.get("rec_type", "general")
-                    similar_to = params.get("similar_to")
-                    
-                    if rec_type != "general":
-                        context.args.append(rec_type)
-                    if similar_to:
-                        context.args.append("similar")
-                        context.args.append(similar_to)
-                    
-                    limit = params.get("limit", 5)
-                    context.args.append(f"__limit={limit}")
-                    
-                    await self.recommend_command(update, context)
-                    return
+            # Obtener sesión conversacional
+            session = self.conversation_manager.get_session(user_id)
             
-            # PASO 1: Si regex no detectó nada, usar IA para clasificar
-            genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-            
-            # Usar un modelo simple sin function calling - más robusto
-            model = genai.GenerativeModel('gemini-2.0-flash-exp')
-            
-            # Obtener contexto del usuario para personalizar
-            context_info = ""
+            # Obtener estadísticas del usuario para contexto
+            user_stats = None
             if self.music_service:
                 try:
-                    top_artists = await self.music_service.get_top_artists(limit=3)
+                    top_artists = await self.music_service.get_top_artists(limit=5)
                     if top_artists:
-                        context_info = f"\nArtistas favoritos del usuario: {', '.join([a.name for a in top_artists[:3]])}"
+                        user_stats = {
+                            'top_artists': [a.name for a in top_artists]
+                        }
                 except Exception as e:
                     print(f"⚠️ No se pudo obtener contexto: {e}")
             
-            # Crear el prompt para la IA - respuesta en JSON
-            prompt = f"""Eres un asistente musical inteligente. Analiza el siguiente mensaje del usuario y decide qué acción tomar.
+            # Detectar intención usando IntentDetector
+            intent_data = await self.intent_detector.detect_intent(
+                user_message,
+                session_context=session.get_context_for_ai(),
+                user_stats=user_stats
+            )
 
-Mensaje del usuario: "{user_message}"
-{context_info}
-
-Acciones disponibles:
-1. "recommend" - Para recomendar música, álbumes, artistas o canciones
-   - Parámetros: 
-     * rec_type (general/album/artist/track)
-     * genre_filter (opcional, solo para géneros musicales SIMPLES)
-     * similar_to (opcional, nombre de artista/álbum para buscar similares)
-     * limit (número de resultados: 1, 3, 5, etc. Por defecto 5)
-     * custom_prompt (opcional, descripción ESPECÍFICA cuando hay múltiples criterios o características detalladas)
-2. "playlist" - Para crear una playlist M3U con artistas o criterios específicos
-   - Usar cuando pidan: "haz playlist de...", "crea playlist con...", "música de [artistas]"
-   - Parámetros: description (descripción de la playlist)
-3. "search" - Para buscar música específica en su biblioteca
-   - Parámetros: search_term (término de búsqueda)
-4. "stats" - Para ver estadísticas de escucha completas (mensaje largo)
-5. "library" - Para explorar su biblioteca musical completa (mensaje largo)
-6. "chat" - Para CUALQUIER pregunta conversacional sobre música del usuario
-   - Usar cuando pregunte: "cuál es mi última canción", "qué álbumes tengo de...", "recomiéndame disco de [artista específico]"
-   - Parámetros: question (la pregunta del usuario)
-7. "question" - Para responder preguntas GENERALES sobre teoría musical, historia, géneros
-   - Usar cuando pregunte: "qué es el jazz", "quién inventó el rock"
-   - Parámetros: question (la pregunta del usuario)
-8. "unknown" - Cuando NO sepas qué acción tomar o el mensaje sea muy complejo/ambiguo
-   - Se manejará conversacionalmente con todos los datos del usuario
-
-IMPORTANTE - CUÁNDO USAR custom_prompt:
-- USA custom_prompt cuando el usuario especifique MÚLTIPLES CARACTERÍSTICAS o CRITERIOS DETALLADOS
-- Ejemplos que REQUIEREN custom_prompt:
-  * "rock progresivo de los 70s con sintetizadores"
-  * "música energética con buenos solos de guitarra"
-  * "álbumes conceptuales melancólicos"
-  * "rock alternativo español de los 90s"
-  * "jazz suave para estudiar"
-  * "metal melódico con voces limpias"
-- NO uses custom_prompt para peticiones simples:
-  * "discos de rock" → solo genre_filter
-  * "similar a Queen" → solo similar_to
-
-REGLAS BÁSICAS:
-- Si pide "un disco" o "álbum" (singular) usa limit=1 y rec_type="album"
-- Si pide "discos" o "álbumes" (plural) usa limit=5 y rec_type="album"
-- "disco" y "álbum" SIEMPRE significan rec_type="album"
-- Si es SOLO un género simple → usa genre_filter
-- Si es SOLO similar a un artista → usa similar_to
-- Si tiene MÚLTIPLES criterios o características específicas → usa custom_prompt con TODO el contexto
-
-MUY IMPORTANTE - Distinguir "DE" vs "SIMILAR A":
-- "álbum DE [artista]" o "disco DE [artista]" → usa "chat" para buscar en biblioteca
-- "música DE [artista]" o "canciones DE [artista]" → usa "chat" para buscar en biblioteca
-- "playlist con [artistas]" → Si menciona artistas específicos, usa "chat"
-- "similar A [artista]" o "parecido A [artista]" → usa similar_to
-- Ejemplos:
-  * "álbum de Tote King" → {{"action": "chat", "params": {{"question": "recomiéndame un álbum de Tote King"}}}}
-  * "disco de Tobogán Andaluz" → {{"action": "chat", "params": {{"question": "recomiéndame un disco de Tobogán Andaluz"}}}}
-  * "música de mujeres, vera fauna y cala vento" → {{"action": "chat", "params": {{"question": "haz una playlist con música de mujeres, vera fauna y cala vento"}}}}
-  * "similar a Tote King" → {{"action": "recommend", "params": {{"similar_to": "Tote King"}}}}
-
-Responde SOLO con un objeto JSON en este formato exacto (sin markdown, sin explicaciones):
-{{"action": "nombre_accion", "params": {{"parametro": "valor"}}}}
-
-Ejemplos CORRECTOS (estudia estos cuidadosamente):
-- "recomiéndame un disco" → {{"action": "recommend", "params": {{"rec_type": "album", "limit": 1}}}}
-- "recomiéndame un álbum de Tote King" → {{"action": "chat", "params": {{"question": "recomiéndame un álbum de Tote King"}}}}
-- "recomiéndame un disco de Tobogán Andaluz" → {{"action": "chat", "params": {{"question": "recomiéndame un disco de Tobogán Andaluz"}}}}
-- "recomiéndame discos de Oasis" → {{"action": "chat", "params": {{"question": "recomiéndame discos de Oasis"}}}}
-- "haz una playlist con música de mujeres, vera fauna y cala vento" → {{"action": "playlist", "params": {{"description": "música de mujeres, vera fauna y cala vento"}}}}
-- "crea playlist de Pink Floyd, Queen y The Beatles" → {{"action": "playlist", "params": {{"description": "Pink Floyd, Queen y The Beatles"}}}}
-- "recomiéndame discos de rock" → {{"action": "recommend", "params": {{"rec_type": "album", "genre_filter": "rock", "limit": 5}}}}
-- "recomiéndame rock progresivo de los 70s con sintetizadores" → {{"action": "recommend", "params": {{"rec_type": "general", "custom_prompt": "rock progresivo de los 70s con sintetizadores", "limit": 5}}}}
-- "álbumes de metal melódico con voces limpias" → {{"action": "recommend", "params": {{"rec_type": "album", "custom_prompt": "metal melódico con voces limpias", "limit": 5}}}}
-- "música energética para hacer ejercicio" → {{"action": "recommend", "params": {{"rec_type": "general", "custom_prompt": "música energética para hacer ejercicio", "limit": 5}}}}
-- "similar a Pink Floyd" → {{"action": "recommend", "params": {{"rec_type": "general", "similar_to": "Pink Floyd", "limit": 5}}}}
-- "parecido a Queen" → {{"action": "recommend", "params": {{"rec_type": "general", "similar_to": "Queen", "limit": 5}}}}
-- "similar a Tobogán Andaluz" → {{"action": "recommend", "params": {{"rec_type": "general", "similar_to": "Tobogán Andaluz", "limit": 5}}}}
-- "busca Queen" → {{"action": "search", "params": {{"search_term": "Queen"}}}}
-- "cuál es mi última canción" → {{"action": "chat", "params": {{"question": "cuál es mi última canción"}}}}
-- "mis estadísticas" → {{"action": "stats", "params": {{}}}}
-- "¿qué es el jazz?" → {{"action": "question", "params": {{"question": "¿qué es el jazz?"}}}}
-
-Responde AHORA con el JSON:"""
             
-            # Generar respuesta
-            print(f"🤖 Usuario escribió: {user_message}")
-            response = model.generate_content(prompt)
-            response_text = response.text.strip()
+            intent = intent_data.get("intent")
+            params = intent_data.get("params", {})
+            confidence = intent_data.get("confidence", 0.5)
             
-            # Limpiar la respuesta si tiene markdown
-            if response_text.startswith("```"):
-                response_text = response_text.replace("```json", "").replace("```", "").strip()
+            print(f"🎯 Intención detectada: '{intent}' (confianza: {confidence})")
+            print(f"📋 Parámetros: {params}")
             
-            print(f"🤖 Respuesta de IA: {response_text}")
+            # Borrar mensaje de espera
+            await waiting_msg.delete()
             
-            # Parsear JSON
-            try:
-                action_data = json.loads(response_text)
-                action = action_data.get("action", "")
-                params = action_data.get("params", {})
+            # Guardar acción en sesión
+            session.set_last_action(intent, params)
+            
+            # Ejecutar acción según la intención detectada
+            if intent == "recomendar":
+                rec_type = params.get("type", "general")
+                genre_filter = params.get("genres", [])
+                if genre_filter:
+                    genre_filter = " ".join(genre_filter) if isinstance(genre_filter, list) else genre_filter
+                similar_to = params.get("similar_to")
+                limit = params.get("count", 5)
+                custom_prompt = params.get("description")
                 
-                print(f"🤖 Acción detectada: {action} con params: {params}")
+                # Fallback: forzar 'album' si el mensaje lo menciona
+                if rec_type == "general" and any(word in user_message.lower() for word in ["disco", "discos", "álbum", "album"]):
+                    rec_type = "album"
+                    print(f"🔧 Forzando rec_type='album'")
                 
-                # Borrar mensaje de espera
-                await waiting_msg.delete()
+                # Construir context.args para recommend_command
+                context.args = []
                 
-                # Ejecutar la acción correspondiente
-                if action == "recommend":
-                    rec_type = params.get("rec_type", "general")
-                    genre_filter = params.get("genre_filter")
-                    similar_to = params.get("similar_to")
-                    limit = params.get("limit", 5)
-                    custom_prompt = params.get("custom_prompt")
-                    
-                    # Fallback: si el mensaje menciona "disco" o "álbum" y rec_type no está definido, forzar a "album"
-                    if rec_type == "general" and any(word in user_message.lower() for word in ["disco", "discos", "álbum", "album", "albumes", "álbumes"]):
-                        rec_type = "album"
-                        print(f"🔧 Forzando rec_type='album' porque el mensaje menciona disco/álbum")
-                    
-                    # Construir los argumentos para recommend_command
-                    context.args = []
-                    
-                    # Si hay custom_prompt, agregarlo como argumento especial
-                    if custom_prompt:
-                        # Agregar tipo si no es general
-                        if rec_type and rec_type != "general":
-                            context.args.append(rec_type)
-                        # Agregar el custom_prompt como argumento especial
-                        context.args.append(f"__custom_prompt={custom_prompt}")
-                        print(f"🎨 Usando custom_prompt: {custom_prompt}")
-                    # Si hay una referencia específica (similar_to), usarla
-                    elif similar_to:
-                        # IMPORTANTE: Añadir el tipo primero si no es general
-                        if rec_type and rec_type != "general":
-                            context.args.append(rec_type)
-                        context.args.append("similar")
-                        context.args.append(similar_to)
+                if custom_prompt:
+                    if rec_type != "general":
+                        context.args.append(rec_type)
+                    context.args.append(f"__custom_prompt={custom_prompt}")
+                    print(f"🎨 Custom prompt: {custom_prompt}")
+                elif similar_to:
+                    if rec_type != "general":
+                        context.args.append(rec_type)
+                    context.args.append("similar")
+                    context.args.append(similar_to)
+                else:
+                    if rec_type != "general":
+                        context.args.append(rec_type)
+                    if genre_filter:
+                        context.args.append(genre_filter)
+                
+                context.args.append(f"__limit={limit}")
+                await self.recommend_command(update, context)
+            
+            elif intent == "buscar":
+                search_term = params.get("search_query", "")
+                if search_term:
+                    context.args = search_term.split()
+                    await self.search_command(update, context)
+                else:
+                    await update.message.reply_text("❌ No especificaste qué buscar.")
+            
+            elif intent == "stats":
+                await self.stats_command(update, context)
+            
+            elif intent == "biblioteca":
+                await self.library_command(update, context)
+            
+            elif intent == "playlist":
+                description = params.get("description", user_message)
+                context.args = description.split()
+                await self.playlist_command(update, context)
+            
+            elif intent == "info":
+                # Usar conversación para info sobre artistas/álbumes del usuario
+                await self._handle_conversational_query(update, user_message)
+            
+            elif intent == "pregunta_general":
+                question = params.get("question", user_message)
+                context.args = question.split()
+                await self.ask_command(update, context)
+            
+            elif intent == "referencia":
+                # Usuario hace referencia a algo anterior ("más de eso")
+                if session.last_recommendations:
+                    # Usar último artista/contexto
+                    last_artists = session.get_last_artists()
+                    if last_artists:
+                        await update.message.reply_text(f"🎵 Buscando más música similar a {last_artists[0]}...")
+                        context.args = ["similar", last_artists[0], "__limit=5"]
+                        await self.recommend_command(update, context)
                     else:
-                        # Si no, usar tipo y género
-                        if rec_type and rec_type != "general":
-                            context.args.append(rec_type)
-                        if genre_filter:
-                            context.args.append(genre_filter)
-                    
-                    # Agregar límite como argumento especial al final
-                    context.args.append(f"__limit={limit}")
-                    
-                    await self.recommend_command(update, context)
-                    
-                elif action == "search":
-                    search_term = params.get("search_term", "")
-                    if search_term:
-                        context.args = search_term.split()
-                        await self.search_command(update, context)
-                    else:
-                        await update.message.reply_text("❌ No especificaste qué buscar.")
-                    
-                elif action == "stats":
-                    await self.stats_command(update, context)
-                    
-                elif action == "library":
-                    await self.library_command(update, context)
-                    
-                elif action == "playlist":
-                    # Crear playlist con la descripción
-                    description = params.get("description", user_message)
-                    context.args = description.split()
-                    await self.playlist_command(update, context)
-                    
-                elif action == "chat":
-                    # Respuesta conversacional sobre la música del usuario
-                    await self._handle_conversational_query(update, user_message)
-                    
-                elif action == "unknown" or not action:
-                    # Si la IA no sabe qué hacer, intentar respuesta conversacional
-                    await self._handle_conversational_query(update, user_message)
-                    
-                elif action == "question":
-                    question = params.get("question", user_message)
-                    context.args = question.split()
-                    await self.ask_command(update, context)
-                
+                        await self._handle_conversational_query(update, user_message)
                 else:
                     await update.message.reply_text(
-                        f"🤔 No entendí bien tu mensaje.\n\n"
-                        f"Puedes usar:\n"
-                        f"• /recommend - Para recomendaciones\n"
-                        f"• /search <término> - Para buscar\n"
-                        f"• /stats - Para estadísticas\n"
-                        f"• /help - Para ver todos los comandos"
+                        "🤔 No tengo referencia de qué música te gustó antes.\n"
+                        "¿Puedes ser más específico?"
                     )
-                    
-            except json.JSONDecodeError as e:
-                print(f"❌ Error parseando JSON: {e}")
-                print(f"   Respuesta recibida: {response_text}")
-                await waiting_msg.edit_text(
-                    f"🤔 No pude entender tu mensaje correctamente.\n\n"
-                    f"💡 Intenta con:\n"
+            
+            elif intent == "conversacion" or not intent:
+                # Conversación general - usar agente musical
+                await self._handle_conversational_query(update, user_message)
+            
+            else:
+                # Intención no reconocida
+                await update.message.reply_text(
+                    f"🤔 No estoy seguro de cómo ayudarte con eso.\n\n"
+                    f"Puedes usar:\n"
                     f"• /recommend - Para recomendaciones\n"
                     f"• /search <término> - Para buscar\n"
-                    f"• /stats - Para estadísticas"
+                    f"• /stats - Para estadísticas\n"
+                    f"• /help - Para ver todos los comandos"
                 )
                 
         except Exception as e:

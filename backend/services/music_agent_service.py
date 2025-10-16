@@ -4,6 +4,8 @@ from typing import Dict, Any, List, Optional
 from services.lastfm_service import LastFMService
 from services.navidrome_service import NavidromeService
 from services.listenbrainz_service import ListenBrainzService
+from services.conversation_manager import ConversationManager
+from services.system_prompts import SystemPrompts
 
 class MusicAgentService:
     """
@@ -14,6 +16,9 @@ class MusicAgentService:
     def __init__(self):
         genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
         self.model = genai.GenerativeModel('gemini-2.0-flash-exp')
+        
+        # Gestor de conversaciones
+        self.conversation_manager = ConversationManager()
         
         # Inicializar servicios disponibles
         self.lastfm = None
@@ -38,12 +43,19 @@ class MusicAgentService:
         self.music_service = self.lastfm or self.listenbrainz
         self.music_service_name = "Last.fm" if self.lastfm else "ListenBrainz" if self.listenbrainz else None
     
-    async def query(self, user_question: str, context: Optional[Dict] = None) -> Dict[str, Any]:
+    async def query(
+        self, 
+        user_question: str, 
+        user_id: int,
+        context: Optional[Dict] = None
+    ) -> Dict[str, Any]:
         """
         Procesar consulta del usuario usando todas las fuentes disponibles
+        CON SOPORTE CONVERSACIONAL
         
         Args:
             user_question: Pregunta o consulta del usuario
+            user_id: ID del usuario para mantener contexto conversacional
             context: Contexto adicional (opcional)
             
         Returns:
@@ -54,19 +66,45 @@ class MusicAgentService:
             - "Dame información sobre el último artista que escuché"
             - "¿Cuántas veces he escuchado a Queen?"
             - "Dime álbumes similares a The Dark Side of the Moon"
+            - "Ponme algo parecido" (usa contexto de conversación)
         """
         
         print(f"🤖 Agente musical procesando: {user_question}")
         
+        # Obtener sesión conversacional del usuario
+        session = self.conversation_manager.get_session(user_id)
+        session.add_message("user", user_question)
+        
         # 1. Recopilar datos de todas las fuentes
         data_context = await self._gather_all_data(user_question)
         
-        # 2. Construir prompt inteligente para la IA
-        ai_prompt = f"""Eres un asistente musical que ayuda al usuario a consultar su biblioteca de música.
+        # 2. Obtener estadísticas del usuario para personalización
+        user_stats = {}
+        if self.music_service:
+            try:
+                top_artists_data = await self.music_service.get_top_artists(limit=5)
+                user_stats['top_artists'] = [a.name for a in top_artists_data]
+                
+                recent_tracks = await self.music_service.get_recent_tracks(limit=1)
+                if recent_tracks:
+                    user_stats['last_track'] = f"{recent_tracks[0].artist} - {recent_tracks[0].name}"
+            except Exception as e:
+                print(f"⚠️ Error obteniendo stats para contexto: {e}")
+        
+        # 3. Construir prompt inteligente usando SystemPrompts
+        conversation_context = session.get_context_for_ai()
+        system_prompt = SystemPrompts.get_music_assistant_prompt(
+            user_stats=user_stats,
+            conversation_context=conversation_context
+        )
+        
+        # 4. Agregar datos específicos de la query
+        ai_prompt = f"""{system_prompt}
 
-PREGUNTA: {user_question}
+=== CONSULTA ACTUAL ===
+{user_question}
 
-DATOS DE LA BIBLIOTECA DEL USUARIO:
+=== DATOS DISPONIBLES ===
 {self._format_context_for_ai(data_context)}
 
 REGLAS ESTRICTAS:
@@ -101,20 +139,24 @@ FORMATO DE RESPUESTA:
 - NUNCA inventes álbumes o artistas que no aparecen en los datos
 - Usa emojis: 📀 para álbumes, 🎤 para artistas, 🎵 para canciones
 
-Responde ahora de forma DIRECTA y HONESTA:"""
+Responde ahora de forma natural y conversacional:"""
         
-        # 3. Generar respuesta con IA
+        # 5. Generar respuesta con IA
         try:
             response = self.model.generate_content(ai_prompt)
             answer = response.text.strip()
             
             print(f"✅ Agente musical: Respuesta generada ({len(answer)} caracteres)")
             
+            # Guardar respuesta en historial de conversación
+            session.add_message("assistant", answer)
+            
             return {
                 "answer": answer,
                 "data_used": data_context,
                 "links": self._extract_lastfm_links(data_context),
-                "success": True
+                "success": True,
+                "session_id": user_id
             }
         
         except Exception as e:
