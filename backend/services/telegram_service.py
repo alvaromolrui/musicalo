@@ -1208,6 +1208,80 @@ Proporciona una respuesta útil, informativa y amigable. Si la pregunta es sobre
                 print("   ❌ No se pudo enviar mensaje de error")
                 pass
     
+    def _detect_intent_with_regex(self, user_message: str) -> Optional[Dict[str, Any]]:
+        """Detectar intención usando patrones regex ANTES de llamar a la IA
+        
+        Esto hace el sistema más determinista para casos comunes
+        """
+        import re
+        
+        msg_lower = user_message.lower()
+        
+        # PATRÓN 1: "disco/álbum DE [artista]" (no similar)
+        # Ejemplos: "recomiéndame un disco de tobogán andaluz"
+        if not re.search(r'\b(similar|parecido|como)\s+(a\s+)?', msg_lower):
+            # Solo si NO dice "similar"
+            pattern_de = r'(?:disco|álbum|album)\s+de\s+([a-z][a-záéíóúñ\s]+?)(?:\s+para|\s*$|\?)'
+            match = re.search(pattern_de, msg_lower)
+            if match:
+                artist = match.group(1).strip()
+                print(f"🎯 REGEX: Detectado 'disco DE {artist}' → usar chat")
+                return {
+                    "action": "chat",
+                    "params": {"question": user_message}
+                }
+        
+        # PATRÓN 2: "similar a [artista]" o "parecido a [artista]"
+        pattern_similar = r'\b(similar|parecido|como)\s+(a\s+)?([a-z][a-záéíóúñ\s]+?)(?:\s+para|\s*$|\?)'
+        match = re.search(pattern_similar, msg_lower)
+        if match:
+            artist = match.group(3).strip()
+            print(f"🎯 REGEX: Detectado 'similar a {artist}' → usar similar_to")
+            return {
+                "action": "recommend",
+                "params": {"rec_type": "general", "similar_to": artist, "limit": 5}
+            }
+        
+        # PATRÓN 3: "qué tengo de [artista]" o "qué álbumes de [artista]"
+        pattern_tengo = r'(?:qué|que)\s+(?:tengo|teengo|álbumes|albums|discos)\s+de\s+([a-z][a-záéíóúñ\s]+?)(?:\s+tengo|\?|\s*$)'
+        match = re.search(pattern_tengo, msg_lower)
+        if match:
+            artist = match.group(1).strip()
+            print(f"🎯 REGEX: Detectado 'qué tengo de {artist}' → usar chat")
+            return {
+                "action": "chat",
+                "params": {"question": user_message}
+            }
+        
+        # PATRÓN 4: "playlist/música con/de [artistas]" (contiene comas o "y")
+        # Detecta listas de artistas o descripciones de playlist
+        pattern_playlist = r'\b(haz|crea|hacer|dame|genera)\s+(una\s+)?(playlist|lista)\s+(?:con|de)\s+(.+)'
+        match = re.search(pattern_playlist, msg_lower)
+        if match:
+            description = match.group(4).strip()
+            print(f"🎯 REGEX: Detectado petición de playlist: '{description}' → usar playlist")
+            return {
+                "action": "playlist",
+                "params": {"description": description}
+            }
+        
+        # PATRÓN 5: "música/canciones de [artistas]" con múltiples artistas
+        if ',' in user_message or re.search(r'\s+y\s+', msg_lower):
+            pattern_music = r'(?:música|canciones|temas)\s+(?:con|de)\s+(.+)'
+            match = re.search(pattern_music, msg_lower)
+            if match:
+                artists_part = match.group(1)
+                # Verificar si parece una lista de artistas (tiene comas o "y")
+                if ',' in artists_part or ' y ' in artists_part:
+                    print(f"🎯 REGEX: Detectado 'música de lista de artistas' → usar playlist")
+                    return {
+                        "action": "playlist",
+                        "params": {"description": artists_part}
+                    }
+        
+        # No se detectó patrón claro, dejar que la IA lo maneje
+        return None
+    
     @_check_authorization
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Manejar mensajes de texto con IA - Interpreta intención y ejecuta acciones"""
@@ -1217,6 +1291,46 @@ Proporciona una respuesta útil, informativa y amigable. Si la pregunta es sobre
         waiting_msg = await update.message.reply_text("🤔 Analizando tu mensaje...")
         
         try:
+            # PASO 0: Intentar detectar intención con regex PRIMERO
+            regex_result = self._detect_intent_with_regex(user_message)
+            
+            if regex_result:
+                print(f"✅ Intención detectada con regex: {regex_result['action']}")
+                action = regex_result["action"]
+                params = regex_result["params"]
+                
+                # Borrar mensaje de espera
+                await waiting_msg.delete()
+                
+                # Ejecutar acción directamente
+                if action == "chat":
+                    await self._handle_conversational_query(update, user_message)
+                    return
+                elif action == "playlist":
+                    # Llamar directamente al comando de playlist
+                    description = params.get("description", "")
+                    context.args = description.split() if description else []
+                    await self.playlist_command(update, context)
+                    return
+                elif action == "recommend":
+                    # Construir context.args según params
+                    context.args = []
+                    rec_type = params.get("rec_type", "general")
+                    similar_to = params.get("similar_to")
+                    
+                    if rec_type != "general":
+                        context.args.append(rec_type)
+                    if similar_to:
+                        context.args.append("similar")
+                        context.args.append(similar_to)
+                    
+                    limit = params.get("limit", 5)
+                    context.args.append(f"__limit={limit}")
+                    
+                    await self.recommend_command(update, context)
+                    return
+            
+            # PASO 1: Si regex no detectó nada, usar IA para clasificar
             genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
             
             # Usar un modelo simple sin function calling - más robusto
@@ -1246,17 +1360,20 @@ Acciones disponibles:
      * similar_to (opcional, nombre de artista/álbum para buscar similares)
      * limit (número de resultados: 1, 3, 5, etc. Por defecto 5)
      * custom_prompt (opcional, descripción ESPECÍFICA cuando hay múltiples criterios o características detalladas)
-2. "search" - Para buscar música específica en su biblioteca
+2. "playlist" - Para crear una playlist M3U con artistas o criterios específicos
+   - Usar cuando pidan: "haz playlist de...", "crea playlist con...", "música de [artistas]"
+   - Parámetros: description (descripción de la playlist)
+3. "search" - Para buscar música específica en su biblioteca
    - Parámetros: search_term (término de búsqueda)
-3. "stats" - Para ver estadísticas de escucha completas (mensaje largo)
-4. "library" - Para explorar su biblioteca musical completa (mensaje largo)
-5. "chat" - Para CUALQUIER pregunta conversacional sobre música del usuario o recomendaciones complejas
-   - Usar cuando pregunte: "cuál es mi última canción", "qué álbumes tengo de..."
+4. "stats" - Para ver estadísticas de escucha completas (mensaje largo)
+5. "library" - Para explorar su biblioteca musical completa (mensaje largo)
+6. "chat" - Para CUALQUIER pregunta conversacional sobre música del usuario
+   - Usar cuando pregunte: "cuál es mi última canción", "qué álbumes tengo de...", "recomiéndame disco de [artista específico]"
    - Parámetros: question (la pregunta del usuario)
-6. "question" - Para responder preguntas GENERALES sobre teoría musical, historia, géneros
+7. "question" - Para responder preguntas GENERALES sobre teoría musical, historia, géneros
    - Usar cuando pregunte: "qué es el jazz", "quién inventó el rock"
    - Parámetros: question (la pregunta del usuario)
-7. "unknown" - Cuando NO sepas qué acción tomar o el mensaje sea muy complejo/ambiguo
+8. "unknown" - Cuando NO sepas qué acción tomar o el mensaje sea muy complejo/ambiguo
    - Se manejará conversacionalmente con todos los datos del usuario
 
 IMPORTANTE - CUÁNDO USAR custom_prompt:
@@ -1282,24 +1399,32 @@ REGLAS BÁSICAS:
 
 MUY IMPORTANTE - Distinguir "DE" vs "SIMILAR A":
 - "álbum DE [artista]" o "disco DE [artista]" → usa "chat" para buscar en biblioteca
+- "música DE [artista]" o "canciones DE [artista]" → usa "chat" para buscar en biblioteca
+- "playlist con [artistas]" → Si menciona artistas específicos, usa "chat"
 - "similar A [artista]" o "parecido A [artista]" → usa similar_to
 - Ejemplos:
   * "álbum de Tote King" → {{"action": "chat", "params": {{"question": "recomiéndame un álbum de Tote King"}}}}
+  * "disco de Tobogán Andaluz" → {{"action": "chat", "params": {{"question": "recomiéndame un disco de Tobogán Andaluz"}}}}
+  * "música de mujeres, vera fauna y cala vento" → {{"action": "chat", "params": {{"question": "haz una playlist con música de mujeres, vera fauna y cala vento"}}}}
   * "similar a Tote King" → {{"action": "recommend", "params": {{"similar_to": "Tote King"}}}}
 
 Responde SOLO con un objeto JSON en este formato exacto (sin markdown, sin explicaciones):
 {{"action": "nombre_accion", "params": {{"parametro": "valor"}}}}
 
-Ejemplos:
+Ejemplos CORRECTOS (estudia estos cuidadosamente):
 - "recomiéndame un disco" → {{"action": "recommend", "params": {{"rec_type": "album", "limit": 1}}}}
 - "recomiéndame un álbum de Tote King" → {{"action": "chat", "params": {{"question": "recomiéndame un álbum de Tote King"}}}}
+- "recomiéndame un disco de Tobogán Andaluz" → {{"action": "chat", "params": {{"question": "recomiéndame un disco de Tobogán Andaluz"}}}}
 - "recomiéndame discos de Oasis" → {{"action": "chat", "params": {{"question": "recomiéndame discos de Oasis"}}}}
+- "haz una playlist con música de mujeres, vera fauna y cala vento" → {{"action": "playlist", "params": {{"description": "música de mujeres, vera fauna y cala vento"}}}}
+- "crea playlist de Pink Floyd, Queen y The Beatles" → {{"action": "playlist", "params": {{"description": "Pink Floyd, Queen y The Beatles"}}}}
 - "recomiéndame discos de rock" → {{"action": "recommend", "params": {{"rec_type": "album", "genre_filter": "rock", "limit": 5}}}}
 - "recomiéndame rock progresivo de los 70s con sintetizadores" → {{"action": "recommend", "params": {{"rec_type": "general", "custom_prompt": "rock progresivo de los 70s con sintetizadores", "limit": 5}}}}
 - "álbumes de metal melódico con voces limpias" → {{"action": "recommend", "params": {{"rec_type": "album", "custom_prompt": "metal melódico con voces limpias", "limit": 5}}}}
 - "música energética para hacer ejercicio" → {{"action": "recommend", "params": {{"rec_type": "general", "custom_prompt": "música energética para hacer ejercicio", "limit": 5}}}}
 - "similar a Pink Floyd" → {{"action": "recommend", "params": {{"rec_type": "general", "similar_to": "Pink Floyd", "limit": 5}}}}
 - "parecido a Queen" → {{"action": "recommend", "params": {{"rec_type": "general", "similar_to": "Queen", "limit": 5}}}}
+- "similar a Tobogán Andaluz" → {{"action": "recommend", "params": {{"rec_type": "general", "similar_to": "Tobogán Andaluz", "limit": 5}}}}
 - "busca Queen" → {{"action": "search", "params": {{"search_term": "Queen"}}}}
 - "cuál es mi última canción" → {{"action": "chat", "params": {{"question": "cuál es mi última canción"}}}}
 - "mis estadísticas" → {{"action": "stats", "params": {{}}}}
@@ -1385,6 +1510,12 @@ Responde AHORA con el JSON:"""
                     
                 elif action == "library":
                     await self.library_command(update, context)
+                    
+                elif action == "playlist":
+                    # Crear playlist con la descripción
+                    description = params.get("description", user_message)
+                    context.args = description.split()
+                    await self.playlist_command(update, context)
                     
                 elif action == "chat":
                     # Respuesta conversacional sobre la música del usuario
