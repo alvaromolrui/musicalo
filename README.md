@@ -43,7 +43,7 @@ La IA entiende múltiples criterios y genera recomendaciones precisas que cumple
 - **🔘 Botones interactivos**: Me gusta, no me gusta, más recomendaciones
 - **📊 Respuestas contextuales**: La IA usa tus datos reales de escucha
 - **🎵 Recomendaciones variadas**: Diferentes sugerencias cada vez
-- **🔄 Polling Mode**: No requiere configuración de webhooks, SSL ni puertos públicos
+- **🔄 Modo Polling**: Conexión simple y directa con Telegram
 
 ### Backend (Python + Telegram Bot API)
 - **Servicios integrados**: 
@@ -61,8 +61,6 @@ La IA entiende múltiples criterios y genera recomendaciones precisas que cumple
 - Cuenta de **ListenBrainz** o **Last.fm**
 - **API key de Google Gemini** (gratuita)
 - **Token de bot de Telegram**
-
-> **Nota:** El bot usa **polling** para comunicarse con Telegram. No necesitas configurar webhooks, SSL, ni exponer puertos públicos.
 
 ### 🐳 Opción 1: Docker (Recomendado)
 
@@ -96,10 +94,9 @@ docker-compose up -d
 
 **Comandos útiles:**
 ```bash
-./docker-start.sh      # Iniciar
-./docker-logs.sh       # Ver logs
-./docker-restart.sh    # Reiniciar
-./docker-stop.sh       # Detener
+docker-compose logs -f      # Ver logs
+docker-compose restart      # Reiniciar
+docker-compose down         # Detener
 ```
 
 ### 📦 Opción 2: Instalación Manual (Sin Docker)
@@ -139,8 +136,6 @@ El archivo `.env` está completamente documentado con comentarios explicativos p
 - `GEMINI_API_KEY`: API key de Google Gemini (gratuita)
 - `TELEGRAM_BOT_TOKEN`: Token de tu bot de Telegram (REQUERIDO)
 - `TELEGRAM_ALLOWED_USER_IDS`: IDs permitidos para bot privado (RECOMENDADO)
-
-> **Importante:** El bot usa **polling** por defecto. No necesitas configurar `TELEGRAM_WEBHOOK_URL`.
 
 ### Obtener Credenciales
 
@@ -240,13 +235,13 @@ La IA entiende tu intención y responde usando tus datos reales de Last.fm/Liste
 
 ### 🎯 Comandos Tradicionales (también funcionan)
 
-- **`/start`** - Iniciar el bot y ver el menú principal
-- **`/help`** - Mostrar ayuda detallada
-- **`/recommend`** - Obtener recomendaciones personalizadas con IA
-- **`/library`** - Explorar tu biblioteca musical
-- **`/stats`** - Ver estadísticas de escucha
-- **`/search <término>`** - Buscar música en tu biblioteca
-- **`/ask <pregunta>`** - Hacer preguntas sobre música
+- **`/recommend`** - Recomendaciones musicales • Ej: /recommend rock
+- **`/playlist`** - Crear playlist M3U • Ej: /playlist jazz suave
+- **`/library`** - Explorar biblioteca
+- **`/stats`** - Estadísticas en Listenbrainz • Ej: /stats week
+- **`/search`** - Buscar música en la biblioteca • Ej: /search queen
+- **`/start`** - Iniciar el bot
+- **`/help`** - Mostrar ayuda completa
 
 ### Ejemplos con Comandos
 
@@ -295,14 +290,13 @@ El sistema utiliza múltiples enfoques:
 ## 🎨 Tecnologías
 
 ### Backend
-- **python-telegram-bot 20.7**: Framework moderno para bots (modo polling)
+- **python-telegram-bot 20.7**: Framework moderno para bots
 - **Google Gemini**: IA para recomendaciones contextuales
 - **httpx**: Cliente HTTP asíncrono para APIs
 - **Pydantic**: Validación de datos
-- **FastAPI**: API REST (opcional, no usado por defecto)
 
 ### Bot
-- **Polling Mode**: Conexión persistente con Telegram (sin necesidad de webhooks)
+- **Modo Polling**: Conexión persistente con Telegram
 - **Inline Keyboards**: Botones interactivos
 - **Reply Keyboards**: Teclados personalizados
 - **Callback Handlers**: Manejo de interacciones
@@ -329,20 +323,6 @@ El sistema utiliza múltiples enfoques:
 - [ ] **Sincronización múltiple**: Múltiples cuentas de música
 
 ## 👨‍💻 Para Desarrolladores
-
-### 🔧 Build y Push Manual
-
-Si quieres construir y subir la imagen manualmente:
-
-```bash
-# Build y push a Docker Hub
-./build-and-push.sh [version]
-
-# Ejemplos:
-./build-and-push.sh latest
-./build-and-push.sh v1.0.0
-./build-and-push.sh dev
-```
 
 ### 🔄 CI/CD Automático
 
@@ -411,18 +391,7 @@ El proyecto incluye dos configuraciones:
 
 Usa el que prefieras según tus necesidades.
 
-### Scripts de gestión incluidos
-
-```bash
-./docker-start.sh      # Iniciar el bot
-./docker-logs.sh       # Ver logs en tiempo real
-./docker-status.sh     # Ver estado del bot
-./docker-restart.sh    # Reiniciar el bot
-./docker-update.sh     # Actualizar el bot
-./docker-stop.sh       # Detener el bot
-```
-
-### Comandos Docker Compose manuales
+### Comandos Docker Compose
 
 ```bash
 # Con imagen de Docker Hub (producción)

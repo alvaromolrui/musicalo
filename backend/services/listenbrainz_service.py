@@ -8,7 +8,7 @@ class ListenBrainzService:
     def __init__(self):
         self.username = os.getenv("LISTENBRAINZ_USERNAME")
         self.token = os.getenv("LISTENBRAINZ_TOKEN")  # Opcional
-        self.base_url = "https://api.listenbrainz.org/1.0"
+        self.base_url = "https://api.listenbrainz.org/1"  # API v1, no v1.0
         self.client = httpx.AsyncClient(timeout=30.0)
     
     async def _make_request(self, endpoint: str, params: Optional[Dict] = None) -> Dict[str, Any]:
@@ -28,19 +28,22 @@ class ListenBrainzService:
             )
             
             if response.status_code == 404:
-                print(f"Usuario {self.username} no encontrado en ListenBrainz")
-                return {}
+                print(f"⚠️ Usuario {self.username} no encontrado en ListenBrainz")
+                raise ValueError(f"Usuario {self.username} no encontrado en ListenBrainz")
             
             if response.status_code == 410:
-                print(f"Usuario {self.username}: perfil no disponible o privado en ListenBrainz")
-                return {}
+                print(f"⚠️ Usuario {self.username}: perfil no disponible o privado en ListenBrainz")
+                raise ValueError(f"Perfil de {self.username} no disponible en ListenBrainz (privado o deshabilitado)")
             
             response.raise_for_status()
             return response.json()
             
+        except ValueError:
+            # Re-lanzar errores de validación (404, 410)
+            raise
         except Exception as e:
             print(f"Error en petición ListenBrainz: {e}")
-            return {}
+            raise
     
     async def get_recent_tracks(self, limit: int = 50) -> List[LastFMTrack]:
         """Obtener escuchas recientes del usuario"""
@@ -82,29 +85,35 @@ class ListenBrainzService:
             print(f"Error obteniendo tracks recientes: {e}")
             return []
     
-    async def get_top_artists(self, period: str = "all_time", limit: int = 50) -> List[LastFMArtist]:
-        """Obtener artistas más escuchados"""
+    async def get_top_artists(self, period: str = "this_month", limit: int = 50) -> List[LastFMArtist]:
+        """Obtener artistas más escuchados usando la API de estadísticas de ListenBrainz
+        
+        Args:
+            period: Rango de tiempo. Opciones:
+                - this_week, this_month, this_year
+                - last_week, last_month, last_year
+                - all_time (default en la API)
+            limit: Número de artistas a devolver
+        """
         try:
-            # ListenBrainz no tiene endpoint directo para top artists
-            # Vamos a calcularlo desde las escuchas recientes
-            recent_tracks = await self.get_recent_tracks(limit=1000)  # Obtener más datos
+            # Mapear period a formato de ListenBrainz (convertir espacios a guiones bajos)
+            lb_range = period.replace(" ", "_").lower()
             
-            # Contar artistas
-            artist_counts = {}
-            for track in recent_tracks:
-                artist = track.artist
-                if artist:
-                    artist_counts[artist] = artist_counts.get(artist, 0) + 1
+            params = {
+                "range": lb_range,
+                "count": limit
+            }
             
-            # Ordenar por reproducciones
-            sorted_artists = sorted(artist_counts.items(), key=lambda x: x[1], reverse=True)
+            data = await self._make_request(f"stats/user/{self.username}/artists", params)
             
             artists = []
-            for i, (artist_name, count) in enumerate(sorted_artists[:limit]):
+            artist_stats = data.get("payload", {}).get("artists", [])
+            
+            for i, artist_data in enumerate(artist_stats):
                 artist = LastFMArtist(
-                    name=artist_name,
-                    playcount=count,
-                    url=f"https://musicbrainz.org/search?query={artist_name}&type=artist",
+                    name=artist_data.get("artist_name", ""),
+                    playcount=artist_data.get("listen_count", 0),
+                    url=artist_data.get("artist_mbid") and f"https://musicbrainz.org/artist/{artist_data['artist_mbid']}" or "",
                     rank=i + 1
                 )
                 artists.append(artist)
@@ -115,30 +124,40 @@ class ListenBrainzService:
             print(f"Error obteniendo top artistas: {e}")
             return []
     
-    async def get_top_tracks(self, period: str = "all_time", limit: int = 50) -> List[LastFMTrack]:
-        """Obtener canciones más escuchadas"""
+    async def get_top_tracks(self, period: str = "this_month", limit: int = 50) -> List[LastFMTrack]:
+        """Obtener canciones más escuchadas usando la API de estadísticas de ListenBrainz
+        
+        Args:
+            period: Rango de tiempo. Opciones:
+                - this_week, this_month, this_year
+                - last_week, last_month, last_year
+                - all_time
+            limit: Número de canciones a devolver
+        """
         try:
-            # Similar a top artists, calcular desde escuchas recientes
-            recent_tracks = await self.get_recent_tracks(limit=1000)
+            # Mapear period a formato de ListenBrainz
+            lb_range = period.replace(" ", "_").lower()
             
-            # Contar canciones
-            track_counts = {}
-            for track in recent_tracks:
-                key = f"{track.artist} - {track.name}"
-                if key not in track_counts:
-                    track_counts[key] = {
-                        'track': track,
-                        'count': 0
-                    }
-                track_counts[key]['count'] += 1
+            params = {
+                "range": lb_range,
+                "count": limit
+            }
             
-            # Ordenar por reproducciones
-            sorted_tracks = sorted(track_counts.values(), key=lambda x: x['count'], reverse=True)
+            data = await self._make_request(f"stats/user/{self.username}/recordings", params)
             
             tracks = []
-            for item in sorted_tracks[:limit]:
-                track = item['track']
-                track.playcount = item['count']
+            track_stats = data.get("payload", {}).get("recordings", [])
+            
+            for track_data in track_stats:
+                track = LastFMTrack(
+                    name=track_data.get("track_name", ""),
+                    artist=track_data.get("artist_name", ""),
+                    album=track_data.get("release_name"),
+                    playcount=track_data.get("listen_count", 0),
+                    date=None,
+                    url=track_data.get("recording_mbid") and f"https://musicbrainz.org/recording/{track_data['recording_mbid']}" or None,
+                    image_url=None
+                )
                 tracks.append(track)
             
             return tracks
@@ -147,26 +166,77 @@ class ListenBrainzService:
             print(f"Error obteniendo top tracks: {e}")
             return []
     
-    async def get_user_stats(self) -> Dict[str, Any]:
-        """Obtener estadísticas del usuario"""
+    async def get_user_stats(self, period: str = "all_time") -> Dict[str, Any]:
+        """Obtener estadísticas generales del usuario
+        
+        Args:
+            period: Rango de tiempo para las estadísticas (solo afecta contadores si la API lo soporta)
+        """
         try:
-            data = await self._make_request(f"user/{self.username}/stats")
+            # El endpoint de stats generales no acepta parámetros de rango
+            # Obtiene estadísticas de todo el tiempo del usuario
+            data = await self._make_request(f"stats/user/{self.username}/listening-activity")
             
             stats = data.get("payload", {})
             
+            # Calcular totales desde listening-activity
+            listening_activity = stats.get("listening_activity", [])
+            total_listens = sum(item.get("listen_count", 0) for item in listening_activity)
+            
             return {
-                "total_listens": stats.get("total_listens", 0),
-                "total_artists": stats.get("total_artists", 0),
-                "total_albums": stats.get("total_albums", 0),
-                "total_tracks": stats.get("total_tracks", 0),
+                "total_listens": total_listens,
+                "total_artists": None,  # No disponible en este endpoint
+                "total_albums": None,   # No disponible en este endpoint
+                "total_tracks": None,   # No disponible en este endpoint
+                "period": period,
+                "from_ts": stats.get("from_ts"),
+                "to_ts": stats.get("to_ts"),
                 "last_updated": stats.get("last_updated"),
-                "user_id": stats.get("user_id"),
-                "user_name": stats.get("user_name")
+                "user_id": stats.get("user_id")
             }
             
         except Exception as e:
             print(f"Error obteniendo estadísticas: {e}")
             return {}
+    
+    async def get_top_albums(self, period: str = "this_month", limit: int = 50) -> List[Dict[str, Any]]:
+        """Obtener álbumes más escuchados usando la API de estadísticas de ListenBrainz
+        
+        Args:
+            period: Rango de tiempo. Opciones:
+                - this_week, this_month, this_year
+                - last_week, last_month, last_year
+                - all_time
+            limit: Número de álbumes a devolver
+        """
+        try:
+            lb_range = period.replace(" ", "_").lower()
+            
+            params = {
+                "range": lb_range,
+                "count": limit
+            }
+            
+            data = await self._make_request(f"stats/user/{self.username}/releases", params)
+            
+            albums = []
+            release_stats = data.get("payload", {}).get("releases", [])
+            
+            for release_data in release_stats:
+                album = {
+                    "name": release_data.get("release_name", ""),
+                    "artist": release_data.get("artist_name", ""),
+                    "listen_count": release_data.get("listen_count", 0),
+                    "mbid": release_data.get("release_mbid"),
+                    "url": release_data.get("release_mbid") and f"https://musicbrainz.org/release/{release_data['release_mbid']}" or ""
+                }
+                albums.append(album)
+            
+            return albums
+            
+        except Exception as e:
+            print(f"Error obteniendo top álbumes: {e}")
+            return []
     
     async def get_user_info(self) -> Dict[str, Any]:
         """Obtener información básica del usuario"""

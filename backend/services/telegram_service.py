@@ -10,13 +10,25 @@ from services.navidrome_service import NavidromeService
 from services.listenbrainz_service import ListenBrainzService
 from services.lastfm_service import LastFMService
 from services.ai_service import MusicRecommendationService
+from services.playlist_service import PlaylistService
+from services.music_agent_service import MusicAgentService
+from services.conversation_manager import ConversationManager
+from services.intent_detector import IntentDetector
+from services.system_prompts import SystemPrompts
 from functools import wraps
+from datetime import datetime
 
 class TelegramService:
     def __init__(self):
         self.navidrome = NavidromeService()
         self.listenbrainz = ListenBrainzService()
         self.ai = MusicRecommendationService()
+        self.playlist_service = PlaylistService()
+        self.agent = MusicAgentService()
+        
+        # Nuevos componentes conversacionales
+        self.conversation_manager = ConversationManager()
+        self.intent_detector = IntentDetector()
         
         # Configurar lista de usuarios permitidos
         allowed_ids_str = os.getenv("TELEGRAM_ALLOWED_USER_IDS", "")
@@ -34,16 +46,21 @@ class TelegramService:
             print("💡 Para hacerlo privado, configura TELEGRAM_ALLOWED_USER_IDS en .env")
         
         # Detectar qué servicio de scrobbling usar
+        # PRIORIDAD: ListenBrainz > Last.fm (ListenBrainz tiene mejor API y sin límites)
         self.lastfm = None
-        if os.getenv("LASTFM_API_KEY") and os.getenv("LASTFM_USERNAME"):
+        if os.getenv("LISTENBRAINZ_USERNAME"):
+            self.music_service = self.listenbrainz
+            self.music_service_name = "ListenBrainz"
+            print("✅ Usando ListenBrainz para datos de escucha")
+            # Mantener Last.fm disponible para descubrimiento si está configurado
+            if os.getenv("LASTFM_API_KEY") and os.getenv("LASTFM_USERNAME"):
+                self.lastfm = LastFMService()
+                print("✅ Last.fm también disponible para descubrimiento")
+        elif os.getenv("LASTFM_API_KEY") and os.getenv("LASTFM_USERNAME"):
             self.lastfm = LastFMService()
             self.music_service = self.lastfm
             self.music_service_name = "Last.fm"
             print("✅ Usando Last.fm para datos de escucha")
-        elif os.getenv("LISTENBRAINZ_USERNAME"):
-            self.music_service = self.listenbrainz
-            self.music_service_name = "ListenBrainz"
-            print("✅ Usando ListenBrainz para datos de escucha")
         else:
             self.music_service = None
             self.music_service_name = None
@@ -92,7 +109,7 @@ Ya no necesitas recordar comandos. Escribe lo que quieras:
 • "Recomiéndame música rock"
 • "Busca Queen en mi biblioteca"
 • "Muéstrame mis estadísticas"
-• "¿Qué es el jazz?"
+• "¿Qué álbumes tengo de Pink Floyd?"
 
 **🎨 Sé específico en tus peticiones:**
 Puedes dar todos los detalles que quieras:
@@ -103,10 +120,10 @@ Puedes dar todos los detalles que quieras:
 
 **📝 Comandos disponibles:**
 /recommend - Obtener recomendaciones personalizadas
+/playlist <descripción> - Crear playlist M3U 🎵
 /library - Explorar tu biblioteca musical
 /stats - Ver estadísticas de escucha
 /search <término> - Buscar música en tu biblioteca
-/ask <pregunta> - Pregunta directa a la IA 🤖
 /help - Mostrar ayuda
 
 **¿Cómo funciona?**
@@ -135,7 +152,7 @@ Ahora puedes escribirme directamente sin usar comandos:
 • "Busca Queen"
 • "Muéstrame mis estadísticas"
 • "¿Qué artistas tengo en mi biblioteca?"
-• "¿Qué es el blues?"
+• "Crea una playlist de rock progresivo"
 
 **🎨 Peticiones Específicas (NUEVO):**
 Sé todo lo detallado que quieras:
@@ -150,11 +167,10 @@ Sé todo lo detallado que quieras:
 • `/recommend album` - Recomendar álbumes
 • `/recommend artist` - Recomendar artistas
 • `/recommend track` - Recomendar canciones
+• `/playlist <descripción>` - Crear playlist M3U 🎵
 • `/library` - Ver tu biblioteca musical
 • `/stats` - Estadísticas de escucha
 • `/search <término>` - Buscar en tu biblioteca
-• `/ask <pregunta>` - Pregunta directa a la IA
-• `/prompt <texto>` - Enviar prompt personalizado
 
 **Recomendaciones con filtros:**
 • `/recommend rock` - Música de rock
@@ -167,15 +183,14 @@ Sé todo lo detallado que quieras:
 • `/recommend like extremoduro` - Música parecida
 • `/recommend como marea` - Alternativa en español
 
-**Preguntas a la IA:**
-• `/ask ¿Qué es el rock progresivo?`
-• `/prompt Dame ideas para una playlist`
-• `/ask Explícame la historia del jazz`
-• `/prompt Recomienda bandas de metal melódico`
-
 **Búsqueda:**
 • `/search queen` - Buscar Queen
 • `/search bohemian rhapsody` - Buscar canción
+
+**Playlists:**
+• `/playlist rock de los 80s` - Playlist de rock ochentero
+• `/playlist jazz suave` - Música jazz relajante
+• `/playlist 20 canciones de Queen` - Playlist con cantidad específica
 
 **Botones interactivos:**
 • ❤️ Me gusta / 👎 No me gusta
@@ -188,7 +203,7 @@ Sé todo lo detallado que quieras:
 • Navidrome: Tu biblioteca musical
 • Gemini AI: Recomendaciones inteligentes
 
-¿Necesitas ayuda con la configuración? Escribe /setup
+**💡 Tip:** Puedes preguntarme cualquier cosa sobre música directamente, sin usar comandos. ¡Prueba!
         """
         
         await update.message.reply_text(help_text, parse_mode='Markdown')
@@ -473,6 +488,11 @@ Sé todo lo detallado que quieras:
             await update.message.reply_text(text, reply_markup=reply_markup, parse_mode='Markdown')
             print("✅ Recomendaciones enviadas correctamente")
             
+            # Guardar recomendaciones en la sesión conversacional
+            user_id = update.effective_user.id
+            session = self.conversation_manager.get_session(user_id)
+            session.set_last_recommendations(recommendations)
+            
         except Exception as e:
             print(f"❌ Error en recommend_command: {type(e).__name__}: {str(e)}")
             import traceback
@@ -521,8 +541,69 @@ Sé todo lo detallado que quieras:
     
     @_check_authorization
     async def stats_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Comando /stats - Mostrar estadísticas"""
-        await update.message.reply_text("📊 Calculando tus estadísticas musicales...")
+        """Comando /stats - Mostrar estadísticas
+        
+        Uso:
+        - /stats → Estadísticas de este mes (por defecto)
+        - /stats week → Estadísticas de esta semana
+        - /stats month → Estadísticas de este mes
+        - /stats year → Estadísticas de este año
+        - /stats last_week → Estadísticas de la semana pasada
+        - /stats last_month → Estadísticas del mes pasado
+        - /stats last_year → Estadísticas del año pasado
+        - /stats all_time → Estadísticas de todo el tiempo
+        """
+        # Mapeo de argumentos a rangos de ListenBrainz
+        range_mapping = {
+            "week": "this_week",
+            "this_week": "this_week",
+            "month": "this_month",
+            "this_month": "this_month",
+            "year": "this_year",
+            "this_year": "this_year",
+            "last_week": "last_week",
+            "lastweek": "last_week",
+            "last_month": "last_month",
+            "lastmonth": "last_month",
+            "last_year": "last_year",
+            "lastyear": "last_year",
+            "all": "all_time",
+            "all_time": "all_time",
+            "alltime": "all_time"
+        }
+        
+        # Emojis para cada rango
+        range_emojis = {
+            "this_week": "📅",
+            "this_month": "📆",
+            "this_year": "📋",
+            "last_week": "⏮️",
+            "last_month": "⏮️",
+            "last_year": "⏮️",
+            "all_time": "🌟"
+        }
+        
+        # Nombres en español
+        range_names = {
+            "this_week": "Esta Semana",
+            "this_month": "Este Mes",
+            "this_year": "Este Año",
+            "last_week": "Semana Pasada",
+            "last_month": "Mes Pasado",
+            "last_year": "Año Pasado",
+            "all_time": "Todo el Tiempo"
+        }
+        
+        # Detectar rango solicitado
+        period = "this_month"  # Por defecto: mes actual
+        if context.args:
+            arg = context.args[0].lower()
+            period = range_mapping.get(arg, "this_month")
+        
+        emoji = range_emojis.get(period, "📊")
+        range_name = range_names.get(period, "Este Mes")
+        
+        await update.message.reply_text(f"{emoji} Calculando tus estadísticas de **{range_name}**...")
         
         try:
             # Verificar que haya servicio de scrobbling configurado
@@ -533,41 +614,69 @@ Sé todo lo detallado que quieras:
                 )
                 return
             
-            # Obtener estadísticas
-            user_stats = await self.music_service.get_user_stats() if hasattr(self.music_service, 'get_user_stats') else {}
-            recent_tracks = await self.music_service.get_recent_tracks(limit=100)
-            top_artists = await self.music_service.get_top_artists(limit=10)
+            # Obtener estadísticas del periodo especificado
+            top_artists = await self.music_service.get_top_artists(period=period, limit=10)
+            top_tracks = await self.music_service.get_top_tracks(period=period, limit=5) if hasattr(self.music_service, 'get_top_tracks') else []
+            recent_tracks = await self.music_service.get_recent_tracks(limit=5)
             
-            text = "📊 **Tus Estadísticas Musicales**\n\n"
+            # Obtener álbumes si es ListenBrainz
+            top_albums = []
+            if hasattr(self.music_service, 'get_top_albums'):
+                top_albums = await self.music_service.get_top_albums(period=period, limit=5)
             
-            # Estadísticas generales
-            text += f"🎵 **Total de escuchas:** {user_stats.get('total_listens', 'N/A')}\n"
-            text += f"🎤 **Artistas únicos:** {user_stats.get('total_artists', 'N/A')}\n"
-            text += f"📀 **Álbumes únicos:** {user_stats.get('total_albums', 'N/A')}\n"
-            text += f"🎼 **Canciones únicas:** {user_stats.get('total_tracks', 'N/A')}\n\n"
+            text = f"{emoji} **Estadísticas de {range_name}**\n"
+            text += f"_Servicio: {self.music_service_name}_\n\n"
             
             # Top artistas
-            text += f"🏆 **Top 5 Artistas:**\n"
-            for i, artist in enumerate(top_artists[:5], 1):
-                text += f"{i}. {artist.name} ({artist.playcount} escuchas)\n"
+            if top_artists:
+                text += f"🏆 **Top 5 Artistas:**\n"
+                for i, artist in enumerate(top_artists[:5], 1):
+                    text += f"{i}. {artist.name} - {artist.playcount} escuchas\n"
+                text += "\n"
+            
+            # Top álbumes (solo ListenBrainz)
+            if top_albums:
+                text += f"📀 **Top 3 Álbumes:**\n"
+                for i, album in enumerate(top_albums[:3], 1):
+                    text += f"{i}. {album['artist']} - {album['name']} ({album['listen_count']} escuchas)\n"
+                text += "\n"
+            
+            # Top tracks
+            if top_tracks:
+                text += f"🎵 **Top 3 Canciones:**\n"
+                for i, track in enumerate(top_tracks[:3], 1):
+                    text += f"{i}. {track.artist} - {track.name} ({track.playcount} escuchas)\n"
+                text += "\n"
             
             # Actividad reciente
             if recent_tracks:
-                text += f"\n⏰ **Última escucha:**\n"
+                text += f"⏰ **Última escucha:**\n"
                 last_track = recent_tracks[0]
                 text += f"{last_track.artist} - {last_track.name}\n"
             
-            # Botones adicionales
+            # Botones para cambiar de rango
             keyboard = [
-                [InlineKeyboardButton("📈 Actividad diaria", callback_data="daily_activity")],
-                [InlineKeyboardButton("🎯 Géneros favoritos", callback_data="favorite_genres")],
-                [InlineKeyboardButton("🔄 Actualizar", callback_data="refresh_stats")]
+                [
+                    InlineKeyboardButton("📅 Esta Semana", callback_data="stats_this_week"),
+                    InlineKeyboardButton("📆 Este Mes", callback_data="stats_this_month")
+                ],
+                [
+                    InlineKeyboardButton("📋 Este Año", callback_data="stats_this_year"),
+                    InlineKeyboardButton("🌟 Todo el Tiempo", callback_data="stats_all_time")
+                ],
+                [
+                    InlineKeyboardButton("⏮️ Mes Pasado", callback_data="stats_last_month"),
+                    InlineKeyboardButton("⏮️ Año Pasado", callback_data="stats_last_year")
+                ]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             
             await update.message.reply_text(text, reply_markup=reply_markup, parse_mode='Markdown')
             
         except Exception as e:
+            print(f"❌ Error obteniendo estadísticas: {e}")
+            import traceback
+            traceback.print_exc()
             await update.message.reply_text(f"❌ Error obteniendo estadísticas: {str(e)}")
     
     @_check_authorization
@@ -633,191 +742,168 @@ Sé todo lo detallado que quieras:
             await update.message.reply_text(f"❌ Error en la búsqueda: {str(e)}")
     
     @_check_authorization
-    async def ask_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Comando /ask o /prompt - Enviar prompts personalizados a la IA
+    async def playlist_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Comando /playlist - Crear playlist M3U
         
         Uso:
-        - /ask ¿Qué características tiene el rock progresivo?
-        - /prompt Dame ideas para una playlist de estudio
-        - /ask Explícame la diferencia entre jazz y blues
+        - /playlist rock de los 80s
+        - /playlist música relajante
+        - /playlist similar a Pink Floyd
         """
         if not context.args:
             await update.message.reply_text(
-                "🤖 **Uso:** `/ask <tu pregunta o prompt>`\n\n"
-                "También puedes usar `/prompt <tu prompt>`\n\n"
+                "🎵 **Crear Playlist**\n\n"
+                "**Uso:** `/playlist <descripción>`\n\n"
                 "**Ejemplos:**\n"
-                "• `/ask ¿Qué características tiene el rock progresivo?`\n"
-                "• `/prompt Dame ideas para una playlist de estudio`\n"
-                "• `/ask Explícame la historia del punk rock`\n"
-                "• `/prompt Recomiéndame bandas de metal melódico`\n"
-                "• `/ask ¿Cuál es la diferencia entre jazz y blues?`\n\n"
-                "💡 Puedes preguntar sobre música, géneros, artistas, historia musical, o pedirle a la IA que te ayude con cualquier tema relacionado con música.",
+                "• `/playlist rock progresivo de los 70s`\n"
+                "• `/playlist música energética para correr`\n"
+                "• `/playlist jazz suave`\n"
+                "• `/playlist similar a Pink Floyd`\n"
+                "• `/playlist 10 canciones de metal melódico`\n"
+                "• `/playlist 25 temas de mujeres, vera fauna y cala vento`\n"
+                "• `/playlist 30 canciones de Pink Floyd y Queen`\n\n"
+                "💡 **Tip:** Puedes especificar la cantidad de canciones (ej: '20 canciones', '15 temas')",
                 parse_mode='Markdown'
             )
             return
         
-        # Construir el prompt del usuario
-        user_prompt = " ".join(context.args)
-        
-        # Enviar mensaje de espera
-        await update.message.reply_text(f"🤖 Procesando tu pregunta...\n\n_{user_prompt}_", parse_mode='Markdown')
+        description = " ".join(context.args)
+        await update.message.reply_text(f"🎵 Creando playlist: _{description}_...", parse_mode='Markdown')
         
         try:
-            # Opcional: Agregar contexto del usuario si está disponible
-            context_info = ""
-            if self.music_service:
+            # 1. Intentar generar playlist PRIMERO desde la biblioteca local
+            print(f"🎵 Generando playlist con: {description}")
+            print(f"📚 PASO 1: Intentando generar desde biblioteca local...")
+            
+            # El límite será ajustado automáticamente por generate_library_playlist
+            # si detecta una cantidad en la descripción
+            library_recommendations = await self.ai.generate_library_playlist(
+                description,
+                limit=20  # Límite por defecto aumentado de 15 a 20
+            )
+            
+            recommendations = library_recommendations
+            library_count = len(library_recommendations)
+            
+            print(f"✅ Obtenidas {library_count} recomendaciones de biblioteca")
+            
+            # Las playlists SIEMPRE son 100% de tu biblioteca local
+            # No se agregan canciones externas de Last.fm
+            
+            if not recommendations:
+                # Obtener información de debug para ayudar al usuario
                 try:
-                    # Obtener datos del usuario para dar contexto a la IA
-                    recent_tracks = await self.music_service.get_recent_tracks(limit=5)
-                    top_artists = await self.music_service.get_top_artists(limit=5)
+                    # Obtener algunos géneros disponibles para mostrar
+                    sample_tracks = await self.ai.navidrome.get_tracks(limit=50)
+                    available_genres = set()
+                    for track in sample_tracks:
+                        if track.genre:
+                            available_genres.add(track.genre)
                     
-                    if recent_tracks or top_artists:
-                        context_info = "\n\nContexto del usuario para personalizar tu respuesta:\n"
-                        if top_artists:
-                            context_info += f"Top artistas: {', '.join([artist.name for artist in top_artists[:3]])}\n"
-                        if recent_tracks:
-                            context_info += f"Escuchas recientes: {', '.join([f'{track.artist}' for track in recent_tracks[:3]])}\n"
+                    genres_list = list(available_genres)[:10]  # Primeros 10 géneros
+                    genres_text = ", ".join(genres_list) if genres_list else "No detectados"
+                    
+                    await update.message.reply_text(
+                        f"😔 No encontré suficiente música en tu biblioteca que coincida con esos criterios.\n\n"
+                        f"🔍 **Debug info:**\n"
+                        f"• Géneros detectados en tu biblioteca: {genres_text}\n"
+                        f"• Total de canciones en muestra: {len(sample_tracks)}\n\n"
+                        f"💡 **Intenta:**\n"
+                        f"• Hacer la descripción más general\n"
+                        f"• Mencionar artistas que tengas en tu biblioteca\n"
+                        f"• Usar géneros que tengas disponibles\n"
+                        f"• Probar: `/playlist rock` o `/playlist pop`"
+                    )
                 except Exception as e:
-                    print(f"⚠️ No se pudo obtener contexto del usuario: {e}")
-                    context_info = ""
+                    await update.message.reply_text(
+                        "😔 No encontré suficiente música en tu biblioteca que coincida con esos criterios.\n\n"
+                        "💡 Intenta:\n"
+                        "• Hacer la descripción más general\n"
+                        "• Mencionar artistas que tengas en tu biblioteca\n"
+                        "• Usar géneros que tengas disponibles"
+                    )
+                return
             
-            # Enviar prompt a Gemini
-            genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-            model = genai.GenerativeModel('gemini-2.5-flash')
+            print(f"🎵 TOTAL: {len(recommendations)} canciones de tu biblioteca local")
             
-            # Construir prompt completo
-            full_prompt = f"""Eres un experto asistente musical que ayuda a los usuarios con preguntas sobre música, géneros, artistas, historia musical y recomendaciones.
-
-Pregunta del usuario: {user_prompt}
-{context_info}
-
-Proporciona una respuesta útil, informativa y amigable. Si la pregunta es sobre recomendaciones de música específica, intenta ser específico con nombres de artistas, álbumes o canciones."""
+            # 3. Crear playlist directamente en Navidrome
+            playlist_name = f"Musicalo - {description[:50]}"
+            tracks = [rec.track for rec in recommendations]
+            song_ids = [track.id for track in tracks if track.id]
             
-            print(f"🤖 Enviando prompt a Gemini: {user_prompt}")
-            
-            # Generar respuesta
-            response = model.generate_content(full_prompt)
-            ai_response = response.text
-            
-            print(f"✅ Respuesta de Gemini recibida (longitud: {len(ai_response)})")
-            
-            # Si la respuesta es muy larga, dividirla en varios mensajes
-            max_length = 4000  # Telegram tiene un límite de ~4096 caracteres
-            
-            if len(ai_response) <= max_length:
-                # Enviar respuesta completa (sin parse_mode para evitar errores de formato)
+            if not song_ids:
                 await update.message.reply_text(
-                    f"🤖 Respuesta:\n\n{ai_response}"
+                    "❌ No se pudieron obtener los IDs de las canciones para crear la playlist."
                 )
-            else:
-                # Dividir la respuesta en partes
-                parts = []
-                current_part = ""
-                
-                for line in ai_response.split('\n'):
-                    if len(current_part) + len(line) + 1 > max_length:
-                        parts.append(current_part)
-                        current_part = line + '\n'
-                    else:
-                        current_part += line + '\n'
-                
-                if current_part:
-                    parts.append(current_part)
-                
-                # Enviar cada parte
-                for i, part in enumerate(parts):
-                    if i == 0:
-                        await update.message.reply_text(
-                            f"🤖 Respuesta (Parte {i+1}/{len(parts)}):\n\n{part}"
-                        )
-                    else:
-                        await update.message.reply_text(
-                            f"Parte {i+1}/{len(parts)}:\n\n{part}"
-                        )
+                return
             
-            print("✅ Respuesta enviada correctamente")
+            # Crear playlist en Navidrome
+            playlist_id = await self.ai.navidrome.create_playlist(playlist_name, song_ids)
             
+            if not playlist_id:
+                await update.message.reply_text(
+                    "❌ Error al crear la playlist en Navidrome."
+                )
+                return
+            
+            # 4. Mostrar preview
+            text = f"🎵 **Playlist creada en Navidrome:** {playlist_name}\n\n"
+            text += f"📝 {description}\n\n"
+            text += f"📚 **{library_count} canciones de tu biblioteca local**\n\n"
+            text += f"🎼 **Canciones ({len(tracks)}):**\n"
+            
+            for i, track in enumerate(tracks[:10], 1):
+                text += f"{i}. {track.artist} - {track.title}\n"
+            
+            if len(tracks) > 10:
+                text += f"\n...y {len(tracks) - 10} más\n"
+            
+            text += f"\n✅ **La playlist está disponible en Navidrome**"
+            text += f"\n🆔 Playlist ID: `{playlist_id}`"
+            
+            # Enviar mensaje con resultado
+            await update.message.reply_text(text, parse_mode='Markdown')
+            print(f"✅ Playlist creada en Navidrome con ID: {playlist_id}")
+        
         except Exception as e:
-            print(f"❌ Error en ask_command: {type(e).__name__}: {str(e)}")
+            print(f"❌ Error creando playlist: {e}")
             import traceback
             traceback.print_exc()
-            await update.message.reply_text(
-                f"❌ Error al procesar tu pregunta: {str(e)}\n\n"
-                "Verifica que la API de Gemini esté configurada correctamente."
-            )
+            await update.message.reply_text(f"❌ Error creando playlist: {str(e)}")
     
     @_check_authorization
     async def _handle_conversational_query(self, update: Update, user_message: str):
-        """Manejar consultas conversacionales de forma inteligente usando IA y APIs"""
+        """Manejar consultas conversacionales usando el agente musical"""
         try:
-            genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+            print(f"💬 Consulta conversacional: {user_message}")
             
-            # Obtener TODOS los datos disponibles del usuario
-            recent_tracks = []
-            top_artists = []
-            user_stats = {}
+            user_id = update.effective_user.id
             
-            if self.music_service:
-                try:
-                    recent_tracks = await self.music_service.get_recent_tracks(limit=20)
-                    top_artists = await self.music_service.get_top_artists(limit=10)
-                    if hasattr(self.music_service, 'get_user_stats'):
-                        user_stats = await self.music_service.get_user_stats()
-                except Exception as e:
-                    print(f"Error obteniendo datos del usuario: {e}")
+            # USAR EL AGENTE MUSICAL con soporte conversacional
+            # El agente buscará en biblioteca + Last.fm automáticamente
+            result = await self.agent.query(
+                user_message,
+                user_id=user_id,
+                context={"type": "conversational"}
+            )
             
-            # Construir contexto rico con TODOS los datos
-            context_data = "DATOS DISPONIBLES DEL USUARIO:\n\n"
-            
-            if recent_tracks:
-                context_data += "Últimas 20 canciones escuchadas:\n"
-                for i, track in enumerate(recent_tracks, 1):
-                    context_data += f"{i}. {track.artist} - {track.name}\n"
-                context_data += "\n"
-            
-            if top_artists:
-                context_data += "Top 10 artistas favoritos:\n"
-                for i, artist in enumerate(top_artists, 1):
-                    context_data += f"{i}. {artist.name} ({artist.playcount} escuchas)\n"
-                context_data += "\n"
-            
-            if user_stats:
-                context_data += "Estadísticas globales:\n"
-                context_data += f"- Total de escuchas: {user_stats.get('total_listens', 'N/A')}\n"
-                context_data += f"- Artistas únicos: {user_stats.get('total_artists', 'N/A')}\n"
-                context_data += f"- Álbumes únicos: {user_stats.get('total_albums', 'N/A')}\n"
-                context_data += f"- Canciones únicas: {user_stats.get('total_tracks', 'N/A')}\n"
-            
-            # Prompt conversacional INTELIGENTE
-            chat_prompt = f"""Eres un asistente musical inteligente y conversacional. 
-
-El usuario te preguntó: "{user_message}"
-
-Tienes acceso a estos datos reales del usuario:
-
-{context_data}
-
-INSTRUCCIONES:
-1. Analiza la pregunta del usuario y responde de forma natural y conversacional
-2. USA LOS DATOS REALES proporcionados arriba para responder
-3. Si preguntan por recomendaciones similares a un artista, busca en sus top artistas o escuchas recientes para dar contexto
-4. Si preguntan por "discos" o "álbumes", menciona álbumes específicos de los artistas que escucha
-5. Sé específico, usa nombres reales de artistas y canciones de los datos
-6. Si no tienes la información exacta pero tienes datos relacionados, ofrece alternativas útiles
-7. Responde en español, de forma amigable y directa
-8. NO uses formatos de lista largos si la pregunta es específica
-9. Si preguntan por algo similar a un artista que NO está en los datos, sugiere artistas que SÍ escucha que podrían ser similares
-
-Respuesta natural y conversacional:"""
-            
-            model = genai.GenerativeModel('gemini-2.0-flash-exp')
-            response = model.generate_content(chat_prompt)
-            
-            response_text = response.text.strip()
-            
-            # Enviar respuesta conversacional
-            await update.message.reply_text(f"🎵 {response_text}")
-            print(f"✅ Respuesta conversacional enviada")
+            if result.get("success"):
+                answer = result["answer"]
+                
+                # Agregar enlaces si hay
+                links = result.get("links", [])
+                if links:
+                    answer += "\n\n🔗 **Enlaces relevantes:**\n"
+                    for link in links[:5]:  # Máximo 5 enlaces
+                        answer += f"• {link}\n"
+                
+                await update.message.reply_text(answer)
+                print(f"✅ Respuesta del agente enviada")
+            else:
+                await update.message.reply_text(
+                    "😔 No pude procesar tu consulta en este momento.\n\n"
+                    "Intenta reformular tu pregunta o usa los comandos disponibles."
+                )
             
         except Exception as e:
             print(f"❌ Error en conversación: {type(e).__name__}: {str(e)}")
@@ -1008,6 +1094,106 @@ Respuesta natural y conversacional:"""
                 term = "_".join(parts[2:])
                 await query.edit_message_text(f"🔍 Mostrando {category} para '{term}'...\n\n⚠️ Funcionalidad en desarrollo")
                 print("   ✅ Search procesado")
+            
+            elif data.startswith("stats_"):
+                print(f"   ➜ Procesando 'stats' con rango")
+                period = data.replace("stats_", "")
+                
+                range_emojis = {
+                    "this_week": "📅",
+                    "this_month": "📆",
+                    "this_year": "📋",
+                    "last_week": "⏮️",
+                    "last_month": "⏮️",
+                    "last_year": "⏮️",
+                    "all_time": "🌟"
+                }
+                
+                range_names = {
+                    "this_week": "Esta Semana",
+                    "this_month": "Este Mes",
+                    "this_year": "Este Año",
+                    "last_week": "Semana Pasada",
+                    "last_month": "Mes Pasado",
+                    "last_year": "Año Pasado",
+                    "all_time": "Todo el Tiempo"
+                }
+                
+                emoji = range_emojis.get(period, "📊")
+                range_name = range_names.get(period, "Este Mes")
+                
+                await query.edit_message_text(f"{emoji} Calculando estadísticas de **{range_name}**...")
+                
+                try:
+                    if self.music_service:
+                        # Obtener estadísticas del periodo
+                        top_artists = await self.music_service.get_top_artists(period=period, limit=10)
+                        top_tracks = await self.music_service.get_top_tracks(period=period, limit=5) if hasattr(self.music_service, 'get_top_tracks') else []
+                        recent_tracks = await self.music_service.get_recent_tracks(limit=5)
+                        
+                        # Obtener álbumes si es ListenBrainz
+                        top_albums = []
+                        if hasattr(self.music_service, 'get_top_albums'):
+                            top_albums = await self.music_service.get_top_albums(period=period, limit=5)
+                        
+                        text = f"{emoji} **Estadísticas de {range_name}**\n"
+                        text += f"_Servicio: {self.music_service_name}_\n\n"
+                        
+                        # Top artistas
+                        if top_artists:
+                            text += f"🏆 **Top 5 Artistas:**\n"
+                            for i, artist in enumerate(top_artists[:5], 1):
+                                text += f"{i}. {artist.name} - {artist.playcount} escuchas\n"
+                            text += "\n"
+                        
+                        # Top álbumes
+                        if top_albums:
+                            text += f"📀 **Top 3 Álbumes:**\n"
+                            for i, album in enumerate(top_albums[:3], 1):
+                                text += f"{i}. {album['artist']} - {album['name']} ({album['listen_count']} escuchas)\n"
+                            text += "\n"
+                        
+                        # Top tracks
+                        if top_tracks:
+                            text += f"🎵 **Top 3 Canciones:**\n"
+                            for i, track in enumerate(top_tracks[:3], 1):
+                                text += f"{i}. {track.artist} - {track.name} ({track.playcount} escuchas)\n"
+                            text += "\n"
+                        
+                        # Actividad reciente
+                        if recent_tracks:
+                            text += f"⏰ **Última escucha:**\n"
+                            last_track = recent_tracks[0]
+                            text += f"{last_track.artist} - {last_track.name}\n"
+                        
+                        # Botones para cambiar de rango
+                        keyboard = [
+                            [
+                                InlineKeyboardButton("📅 Esta Semana", callback_data="stats_this_week"),
+                                InlineKeyboardButton("📆 Este Mes", callback_data="stats_this_month")
+                            ],
+                            [
+                                InlineKeyboardButton("📋 Este Año", callback_data="stats_this_year"),
+                                InlineKeyboardButton("🌟 Todo el Tiempo", callback_data="stats_all_time")
+                            ],
+                            [
+                                InlineKeyboardButton("⏮️ Mes Pasado", callback_data="stats_last_month"),
+                                InlineKeyboardButton("⏮️ Año Pasado", callback_data="stats_last_year")
+                            ]
+                        ]
+                        reply_markup = InlineKeyboardMarkup(keyboard)
+                        
+                        await query.edit_message_text(text, reply_markup=reply_markup, parse_mode='Markdown')
+                    else:
+                        await query.edit_message_text("⚠️ No hay servicio de scrobbling configurado")
+                    
+                    print(f"   ✅ Stats de {period} procesado")
+                    
+                except Exception as e:
+                    print(f"   ❌ Error obteniendo estadísticas: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    await query.edit_message_text(f"❌ Error obteniendo estadísticas de {range_name}")
                 
             else:
                 print(f"   ⚠️ Callback no reconocido: {data}")
@@ -1023,207 +1209,177 @@ Respuesta natural y conversacional:"""
                 print("   ❌ No se pudo enviar mensaje de error")
                 pass
     
+    def _detect_intent_with_regex(self, user_message: str) -> Optional[Dict[str, Any]]:
+        """Detectar intención usando patrones regex ANTES de llamar a la IA
+        
+        Esto hace el sistema más determinista para casos comunes
+        """
+        import re
+        
+        msg_lower = user_message.lower()
+        
+        # PATRÓN 1: "disco/álbum DE [artista]" (no similar)
+        # Ejemplos: "recomiéndame un disco de tobogán andaluz"
+        if not re.search(r'\b(similar|parecido|como)\s+(a\s+)?', msg_lower):
+            # Solo si NO dice "similar"
+            pattern_de = r'(?:disco|álbum|album)\s+de\s+([a-z][a-záéíóúñ\s]+?)(?:\s+para|\s*$|\?)'
+            match = re.search(pattern_de, msg_lower)
+            if match:
+                artist = match.group(1).strip()
+                print(f"🎯 REGEX: Detectado 'disco DE {artist}' → usar chat")
+                return {
+                    "action": "chat",
+                    "params": {"question": user_message}
+                }
+        
+        # PATRÓN 2: "similar a [artista]" o "parecido a [artista]"
+        pattern_similar = r'\b(similar|parecido|como)\s+(a\s+)?([a-z][a-záéíóúñ\s]+?)(?:\s+para|\s*$|\?)'
+        match = re.search(pattern_similar, msg_lower)
+        if match:
+            artist = match.group(3).strip()
+            print(f"🎯 REGEX: Detectado 'similar a {artist}' → usar similar_to")
+            return {
+                "action": "recommend",
+                "params": {"rec_type": "general", "similar_to": artist, "limit": 5}
+            }
+        
+        # PATRÓN 3: "qué tengo de [artista]" o "qué álbumes de [artista]"
+        pattern_tengo = r'(?:qué|que)\s+(?:tengo|teengo|álbumes|albums|discos)\s+de\s+([a-z][a-záéíóúñ\s]+?)(?:\s+tengo|\?|\s*$)'
+        match = re.search(pattern_tengo, msg_lower)
+        if match:
+            artist = match.group(1).strip()
+            print(f"🎯 REGEX: Detectado 'qué tengo de {artist}' → usar chat")
+            return {
+                "action": "chat",
+                "params": {"question": user_message}
+            }
+        
+        # PATRÓN 4: "playlist/música con/de [artistas]" (contiene comas o "y")
+        # Detecta listas de artistas o descripciones de playlist
+        pattern_playlist = r'\b(haz|crea|hacer|dame|genera)\s+(una\s+)?(playlist|lista)\s+(?:con|de)\s+(.+)'
+        match = re.search(pattern_playlist, msg_lower)
+        if match:
+            description = match.group(4).strip()
+            print(f"🎯 REGEX: Detectado petición de playlist: '{description}' → usar playlist")
+            return {
+                "action": "playlist",
+                "params": {"description": description}
+            }
+        
+        # PATRÓN 5: "música/canciones de [artistas]" con múltiples artistas
+        if ',' in user_message or re.search(r'\s+y\s+', msg_lower):
+            pattern_music = r'(?:música|canciones|temas)\s+(?:con|de)\s+(.+)'
+            match = re.search(pattern_music, msg_lower)
+            if match:
+                artists_part = match.group(1)
+                # Verificar si parece una lista de artistas (tiene comas o "y")
+                if ',' in artists_part or ' y ' in artists_part:
+                    print(f"🎯 REGEX: Detectado 'música de lista de artistas' → usar playlist")
+                    return {
+                        "action": "playlist",
+                        "params": {"description": artists_part}
+                    }
+        
+        # No se detectó patrón claro, dejar que la IA lo maneje
+        return None
+    
     @_check_authorization
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Manejar mensajes de texto con IA - Interpreta intención y ejecuta acciones"""
+        """Manejar mensajes de texto con IA - VERSIÓN SIMPLIFICADA CON INTENT DETECTOR"""
         user_message = update.message.text
+        user_id = update.effective_user.id
         
         # Mensaje de espera
         waiting_msg = await update.message.reply_text("🤔 Analizando tu mensaje...")
         
         try:
-            genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+            print(f"💬 Usuario {user_id}: {user_message}")
             
-            # Usar un modelo simple sin function calling - más robusto
-            model = genai.GenerativeModel('gemini-2.0-flash-exp')
+            # Obtener sesión conversacional
+            session = self.conversation_manager.get_session(user_id)
             
-            # Obtener contexto del usuario para personalizar
-            context_info = ""
+            # Obtener estadísticas del usuario para contexto
+            user_stats = None
             if self.music_service:
                 try:
-                    top_artists = await self.music_service.get_top_artists(limit=3)
+                    top_artists = await self.music_service.get_top_artists(limit=5)
                     if top_artists:
-                        context_info = f"\nArtistas favoritos del usuario: {', '.join([a.name for a in top_artists[:3]])}"
+                        user_stats = {
+                            'top_artists': [a.name for a in top_artists]
+                        }
                 except Exception as e:
                     print(f"⚠️ No se pudo obtener contexto: {e}")
             
-            # Crear el prompt para la IA - respuesta en JSON
-            prompt = f"""Eres un asistente musical inteligente. Analiza el siguiente mensaje del usuario y decide qué acción tomar.
+            # Detectar intención usando IntentDetector
+            intent_data = await self.intent_detector.detect_intent(
+                user_message,
+                session_context=session.get_context_for_ai(),
+                user_stats=user_stats
+            )
 
-Mensaje del usuario: "{user_message}"
-{context_info}
-
-Acciones disponibles:
-1. "recommend" - Para recomendar música, álbumes, artistas o canciones
-   - Parámetros: 
-     * rec_type (general/album/artist/track)
-     * genre_filter (opcional, solo para géneros musicales SIMPLES)
-     * similar_to (opcional, nombre de artista/álbum para buscar similares)
-     * limit (número de resultados: 1, 3, 5, etc. Por defecto 5)
-     * custom_prompt (opcional, descripción ESPECÍFICA cuando hay múltiples criterios o características detalladas)
-2. "search" - Para buscar música específica en su biblioteca
-   - Parámetros: search_term (término de búsqueda)
-3. "stats" - Para ver estadísticas de escucha completas (mensaje largo)
-4. "library" - Para explorar su biblioteca musical completa (mensaje largo)
-5. "chat" - Para CUALQUIER pregunta conversacional sobre música del usuario o recomendaciones complejas
-   - Usar cuando pregunte: "cuál es mi última canción", "qué álbumes tengo de..."
-   - Parámetros: question (la pregunta del usuario)
-6. "question" - Para responder preguntas GENERALES sobre teoría musical, historia, géneros
-   - Usar cuando pregunte: "qué es el jazz", "quién inventó el rock"
-   - Parámetros: question (la pregunta del usuario)
-7. "unknown" - Cuando NO sepas qué acción tomar o el mensaje sea muy complejo/ambiguo
-   - Se manejará conversacionalmente con todos los datos del usuario
-
-IMPORTANTE - CUÁNDO USAR custom_prompt:
-- USA custom_prompt cuando el usuario especifique MÚLTIPLES CARACTERÍSTICAS o CRITERIOS DETALLADOS
-- Ejemplos que REQUIEREN custom_prompt:
-  * "rock progresivo de los 70s con sintetizadores"
-  * "música energética con buenos solos de guitarra"
-  * "álbumes conceptuales melancólicos"
-  * "rock alternativo español de los 90s"
-  * "jazz suave para estudiar"
-  * "metal melódico con voces limpias"
-- NO uses custom_prompt para peticiones simples:
-  * "discos de rock" → solo genre_filter
-  * "similar a Queen" → solo similar_to
-
-REGLAS BÁSICAS:
-- Si pide "un disco" o "álbum" (singular) usa limit=1 y rec_type="album"
-- Si pide "discos" o "álbumes" (plural) usa limit=5 y rec_type="album"
-- "disco" y "álbum" SIEMPRE significan rec_type="album"
-- Si es SOLO un género simple → usa genre_filter
-- Si es SOLO similar a un artista → usa similar_to
-- Si tiene MÚLTIPLES criterios o características específicas → usa custom_prompt con TODO el contexto
-
-Responde SOLO con un objeto JSON en este formato exacto (sin markdown, sin explicaciones):
-{{"action": "nombre_accion", "params": {{"parametro": "valor"}}}}
-
-Ejemplos:
-- "recomiéndame un disco" → {{"action": "recommend", "params": {{"rec_type": "album", "limit": 1}}}}
-- "recomiéndame discos de rock" → {{"action": "recommend", "params": {{"rec_type": "album", "genre_filter": "rock", "limit": 5}}}}
-- "recomiéndame rock progresivo de los 70s con sintetizadores" → {{"action": "recommend", "params": {{"rec_type": "general", "custom_prompt": "rock progresivo de los 70s con sintetizadores", "limit": 5}}}}
-- "álbumes de metal melódico con voces limpias" → {{"action": "recommend", "params": {{"rec_type": "album", "custom_prompt": "metal melódico con voces limpias", "limit": 5}}}}
-- "música energética para hacer ejercicio" → {{"action": "recommend", "params": {{"rec_type": "general", "custom_prompt": "música energética para hacer ejercicio", "limit": 5}}}}
-- "similar a Pink Floyd" → {{"action": "recommend", "params": {{"rec_type": "general", "similar_to": "Pink Floyd", "limit": 5}}}}
-- "busca Queen" → {{"action": "search", "params": {{"search_term": "Queen"}}}}
-- "cuál es mi última canción" → {{"action": "chat", "params": {{"question": "cuál es mi última canción"}}}}
-- "mis estadísticas" → {{"action": "stats", "params": {{}}}}
-- "¿qué es el jazz?" → {{"action": "question", "params": {{"question": "¿qué es el jazz?"}}}}
-
-Responde AHORA con el JSON:"""
             
-            # Generar respuesta
-            print(f"🤖 Usuario escribió: {user_message}")
-            response = model.generate_content(prompt)
-            response_text = response.text.strip()
+            intent = intent_data.get("intent")
+            params = intent_data.get("params", {})
+            confidence = intent_data.get("confidence", 0.5)
             
-            # Limpiar la respuesta si tiene markdown
-            if response_text.startswith("```"):
-                response_text = response_text.replace("```json", "").replace("```", "").strip()
+            print(f"🎯 Intención detectada: '{intent}' (confianza: {confidence})")
+            print(f"📋 Parámetros: {params}")
             
-            print(f"🤖 Respuesta de IA: {response_text}")
+            # Borrar mensaje de espera
+            await waiting_msg.delete()
             
-            # Parsear JSON
-            try:
-                action_data = json.loads(response_text)
-                action = action_data.get("action", "")
-                params = action_data.get("params", {})
-                
-                print(f"🤖 Acción detectada: {action} con params: {params}")
-                
-                # Borrar mensaje de espera
-                await waiting_msg.delete()
-                
-                # Ejecutar la acción correspondiente
-                if action == "recommend":
-                    rec_type = params.get("rec_type", "general")
-                    genre_filter = params.get("genre_filter")
-                    similar_to = params.get("similar_to")
-                    limit = params.get("limit", 5)
-                    custom_prompt = params.get("custom_prompt")
-                    
-                    # Fallback: si el mensaje menciona "disco" o "álbum" y rec_type no está definido, forzar a "album"
-                    if rec_type == "general" and any(word in user_message.lower() for word in ["disco", "discos", "álbum", "album", "albumes", "álbumes"]):
-                        rec_type = "album"
-                        print(f"🔧 Forzando rec_type='album' porque el mensaje menciona disco/álbum")
-                    
-                    # Construir los argumentos para recommend_command
-                    context.args = []
-                    
-                    # Si hay custom_prompt, agregarlo como argumento especial
-                    if custom_prompt:
-                        # Agregar tipo si no es general
-                        if rec_type and rec_type != "general":
-                            context.args.append(rec_type)
-                        # Agregar el custom_prompt como argumento especial
-                        context.args.append(f"__custom_prompt={custom_prompt}")
-                        print(f"🎨 Usando custom_prompt: {custom_prompt}")
-                    # Si hay una referencia específica (similar_to), usarla
-                    elif similar_to:
-                        # IMPORTANTE: Añadir el tipo primero si no es general
-                        if rec_type and rec_type != "general":
-                            context.args.append(rec_type)
-                        context.args.append("similar")
-                        context.args.append(similar_to)
-                    else:
-                        # Si no, usar tipo y género
-                        if rec_type and rec_type != "general":
-                            context.args.append(rec_type)
-                        if genre_filter:
-                            context.args.append(genre_filter)
-                    
-                    # Agregar límite como argumento especial al final
-                    context.args.append(f"__limit={limit}")
-                    
+            # Guardar acción en sesión
+            session.set_last_action(intent, params)
+            
+            # Ejecutar acción según la intención detectada
+            # SOLO 5 intenciones posibles: playlist, buscar, recomendar, referencia, conversacion
+            
+            if intent == "playlist":
+                # Crear playlist M3U
+                description = params.get("description", user_message)
+                context.args = description.split()
+                await self.playlist_command(update, context)
+            
+            elif intent == "buscar":
+                # Buscar en biblioteca
+                search_term = params.get("search_query", "")
+                if search_term:
+                    context.args = search_term.split()
+                    await self.search_command(update, context)
+                else:
+                    await update.message.reply_text("❌ No especificaste qué buscar.")
+            
+            elif intent == "recomendar":
+                # Recomendaciones con "similar a [artista]"
+                similar_to = params.get("similar_to")
+                if similar_to:
+                    context.args = ["similar", similar_to, "__limit=5"]
                     await self.recommend_command(update, context)
-                    
-                elif action == "search":
-                    search_term = params.get("search_term", "")
-                    if search_term:
-                        context.args = search_term.split()
-                        await self.search_command(update, context)
+                else:
+                    # Fallback a conversación si no hay artista específico
+                    await self._handle_conversational_query(update, user_message)
+            
+            elif intent == "referencia":
+                # Usuario hace referencia a algo anterior ("más de eso", "otro así")
+                if session.last_recommendations:
+                    last_artists = session.get_last_artists()
+                    if last_artists:
+                        await update.message.reply_text(f"🎵 Buscando más música similar a {last_artists[0]}...")
+                        context.args = ["similar", last_artists[0], "__limit=5"]
+                        await self.recommend_command(update, context)
                     else:
-                        await update.message.reply_text("❌ No especificaste qué buscar.")
-                    
-                elif action == "stats":
-                    await self.stats_command(update, context)
-                    
-                elif action == "library":
-                    await self.library_command(update, context)
-                    
-                elif action == "chat":
-                    # Respuesta conversacional sobre la música del usuario
-                    await self._handle_conversational_query(update, user_message)
-                    
-                elif action == "unknown" or not action:
-                    # Si la IA no sabe qué hacer, intentar respuesta conversacional
-                    await self._handle_conversational_query(update, user_message)
-                    
-                elif action == "question":
-                    question = params.get("question", user_message)
-                    context.args = question.split()
-                    await self.ask_command(update, context)
-                
+                        await self._handle_conversational_query(update, user_message)
                 else:
                     await update.message.reply_text(
-                        f"🤔 No entendí bien tu mensaje.\n\n"
-                        f"Puedes usar:\n"
-                        f"• /recommend - Para recomendaciones\n"
-                        f"• /search <término> - Para buscar\n"
-                        f"• /stats - Para estadísticas\n"
-                        f"• /help - Para ver todos los comandos"
+                        "🤔 No tengo referencia de qué música te gustó antes.\n"
+                        "¿Puedes ser más específico?"
                     )
-                    
-            except json.JSONDecodeError as e:
-                print(f"❌ Error parseando JSON: {e}")
-                print(f"   Respuesta recibida: {response_text}")
-                await waiting_msg.edit_text(
-                    f"🤔 No pude entender tu mensaje correctamente.\n\n"
-                    f"💡 Intenta con:\n"
-                    f"• /recommend - Para recomendaciones\n"
-                    f"• /search <término> - Para buscar\n"
-                    f"• /stats - Para estadísticas"
-                )
+            
+            else:
+                # TODO LO DEMÁS va a conversación (DEFAULT)
+                # Esto incluye: preguntas sobre stats, info, recomendaciones generales,
+                # y CUALQUIER consulta natural del usuario
+                await self._handle_conversational_query(update, user_message)
                 
         except Exception as e:
             print(f"❌ Error en handle_message: {type(e).__name__}: {str(e)}")
@@ -1237,7 +1393,7 @@ Responde AHORA con el JSON:"""
                     "• /recommend - Recomendaciones\n"
                     "• /search <término> - Buscar música\n"
                     "• /stats - Estadísticas\n"
-                    "• /ask <pregunta> - Preguntar sobre música"
+                    "• /playlist <descripción> - Crear playlist"
                 )
             except:
                 await update.message.reply_text(
