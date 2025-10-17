@@ -541,8 +541,69 @@ Sé todo lo detallado que quieras:
     
     @_check_authorization
     async def stats_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Comando /stats - Mostrar estadísticas"""
-        await update.message.reply_text("📊 Calculando tus estadísticas musicales...")
+        """Comando /stats - Mostrar estadísticas
+        
+        Uso:
+        - /stats → Estadísticas de este mes (por defecto)
+        - /stats week → Estadísticas de esta semana
+        - /stats month → Estadísticas de este mes
+        - /stats year → Estadísticas de este año
+        - /stats last_week → Estadísticas de la semana pasada
+        - /stats last_month → Estadísticas del mes pasado
+        - /stats last_year → Estadísticas del año pasado
+        - /stats all_time → Estadísticas de todo el tiempo
+        """
+        # Mapeo de argumentos a rangos de ListenBrainz
+        range_mapping = {
+            "week": "this_week",
+            "this_week": "this_week",
+            "month": "this_month",
+            "this_month": "this_month",
+            "year": "this_year",
+            "this_year": "this_year",
+            "last_week": "last_week",
+            "lastweek": "last_week",
+            "last_month": "last_month",
+            "lastmonth": "last_month",
+            "last_year": "last_year",
+            "lastyear": "last_year",
+            "all": "all_time",
+            "all_time": "all_time",
+            "alltime": "all_time"
+        }
+        
+        # Emojis para cada rango
+        range_emojis = {
+            "this_week": "📅",
+            "this_month": "📆",
+            "this_year": "📋",
+            "last_week": "⏮️",
+            "last_month": "⏮️",
+            "last_year": "⏮️",
+            "all_time": "🌟"
+        }
+        
+        # Nombres en español
+        range_names = {
+            "this_week": "Esta Semana",
+            "this_month": "Este Mes",
+            "this_year": "Este Año",
+            "last_week": "Semana Pasada",
+            "last_month": "Mes Pasado",
+            "last_year": "Año Pasado",
+            "all_time": "Todo el Tiempo"
+        }
+        
+        # Detectar rango solicitado
+        period = "this_month"  # Por defecto: mes actual
+        if context.args:
+            arg = context.args[0].lower()
+            period = range_mapping.get(arg, "this_month")
+        
+        emoji = range_emojis.get(period, "📊")
+        range_name = range_names.get(period, "Este Mes")
+        
+        await update.message.reply_text(f"{emoji} Calculando tus estadísticas de **{range_name}**...")
         
         try:
             # Verificar que haya servicio de scrobbling configurado
@@ -553,41 +614,69 @@ Sé todo lo detallado que quieras:
                 )
                 return
             
-            # Obtener estadísticas
-            user_stats = await self.music_service.get_user_stats() if hasattr(self.music_service, 'get_user_stats') else {}
-            recent_tracks = await self.music_service.get_recent_tracks(limit=100)
-            top_artists = await self.music_service.get_top_artists(limit=10)
+            # Obtener estadísticas del periodo especificado
+            top_artists = await self.music_service.get_top_artists(period=period, limit=10)
+            top_tracks = await self.music_service.get_top_tracks(period=period, limit=5) if hasattr(self.music_service, 'get_top_tracks') else []
+            recent_tracks = await self.music_service.get_recent_tracks(limit=5)
             
-            text = "📊 **Tus Estadísticas Musicales**\n\n"
+            # Obtener álbumes si es ListenBrainz
+            top_albums = []
+            if hasattr(self.music_service, 'get_top_albums'):
+                top_albums = await self.music_service.get_top_albums(period=period, limit=5)
             
-            # Estadísticas generales
-            text += f"🎵 **Total de escuchas:** {user_stats.get('total_listens', 'N/A')}\n"
-            text += f"🎤 **Artistas únicos:** {user_stats.get('total_artists', 'N/A')}\n"
-            text += f"📀 **Álbumes únicos:** {user_stats.get('total_albums', 'N/A')}\n"
-            text += f"🎼 **Canciones únicas:** {user_stats.get('total_tracks', 'N/A')}\n\n"
+            text = f"{emoji} **Estadísticas de {range_name}**\n"
+            text += f"_Servicio: {self.music_service_name}_\n\n"
             
             # Top artistas
-            text += f"🏆 **Top 5 Artistas:**\n"
-            for i, artist in enumerate(top_artists[:5], 1):
-                text += f"{i}. {artist.name} ({artist.playcount} escuchas)\n"
+            if top_artists:
+                text += f"🏆 **Top 5 Artistas:**\n"
+                for i, artist in enumerate(top_artists[:5], 1):
+                    text += f"{i}. {artist.name} - {artist.playcount} escuchas\n"
+                text += "\n"
+            
+            # Top álbumes (solo ListenBrainz)
+            if top_albums:
+                text += f"📀 **Top 3 Álbumes:**\n"
+                for i, album in enumerate(top_albums[:3], 1):
+                    text += f"{i}. {album['artist']} - {album['name']} ({album['listen_count']} escuchas)\n"
+                text += "\n"
+            
+            # Top tracks
+            if top_tracks:
+                text += f"🎵 **Top 3 Canciones:**\n"
+                for i, track in enumerate(top_tracks[:3], 1):
+                    text += f"{i}. {track.artist} - {track.name} ({track.playcount} escuchas)\n"
+                text += "\n"
             
             # Actividad reciente
             if recent_tracks:
-                text += f"\n⏰ **Última escucha:**\n"
+                text += f"⏰ **Última escucha:**\n"
                 last_track = recent_tracks[0]
                 text += f"{last_track.artist} - {last_track.name}\n"
             
-            # Botones adicionales
+            # Botones para cambiar de rango
             keyboard = [
-                [InlineKeyboardButton("📈 Actividad diaria", callback_data="daily_activity")],
-                [InlineKeyboardButton("🎯 Géneros favoritos", callback_data="favorite_genres")],
-                [InlineKeyboardButton("🔄 Actualizar", callback_data="refresh_stats")]
+                [
+                    InlineKeyboardButton("📅 Esta Semana", callback_data="stats_this_week"),
+                    InlineKeyboardButton("📆 Este Mes", callback_data="stats_this_month")
+                ],
+                [
+                    InlineKeyboardButton("📋 Este Año", callback_data="stats_this_year"),
+                    InlineKeyboardButton("🌟 Todo el Tiempo", callback_data="stats_all_time")
+                ],
+                [
+                    InlineKeyboardButton("⏮️ Mes Pasado", callback_data="stats_last_month"),
+                    InlineKeyboardButton("⏮️ Año Pasado", callback_data="stats_last_year")
+                ]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             
             await update.message.reply_text(text, reply_markup=reply_markup, parse_mode='Markdown')
             
         except Exception as e:
+            print(f"❌ Error obteniendo estadísticas: {e}")
+            import traceback
+            traceback.print_exc()
             await update.message.reply_text(f"❌ Error obteniendo estadísticas: {str(e)}")
     
     @_check_authorization
@@ -1005,6 +1094,106 @@ Sé todo lo detallado que quieras:
                 term = "_".join(parts[2:])
                 await query.edit_message_text(f"🔍 Mostrando {category} para '{term}'...\n\n⚠️ Funcionalidad en desarrollo")
                 print("   ✅ Search procesado")
+            
+            elif data.startswith("stats_"):
+                print(f"   ➜ Procesando 'stats' con rango")
+                period = data.replace("stats_", "")
+                
+                range_emojis = {
+                    "this_week": "📅",
+                    "this_month": "📆",
+                    "this_year": "📋",
+                    "last_week": "⏮️",
+                    "last_month": "⏮️",
+                    "last_year": "⏮️",
+                    "all_time": "🌟"
+                }
+                
+                range_names = {
+                    "this_week": "Esta Semana",
+                    "this_month": "Este Mes",
+                    "this_year": "Este Año",
+                    "last_week": "Semana Pasada",
+                    "last_month": "Mes Pasado",
+                    "last_year": "Año Pasado",
+                    "all_time": "Todo el Tiempo"
+                }
+                
+                emoji = range_emojis.get(period, "📊")
+                range_name = range_names.get(period, "Este Mes")
+                
+                await query.edit_message_text(f"{emoji} Calculando estadísticas de **{range_name}**...")
+                
+                try:
+                    if self.music_service:
+                        # Obtener estadísticas del periodo
+                        top_artists = await self.music_service.get_top_artists(period=period, limit=10)
+                        top_tracks = await self.music_service.get_top_tracks(period=period, limit=5) if hasattr(self.music_service, 'get_top_tracks') else []
+                        recent_tracks = await self.music_service.get_recent_tracks(limit=5)
+                        
+                        # Obtener álbumes si es ListenBrainz
+                        top_albums = []
+                        if hasattr(self.music_service, 'get_top_albums'):
+                            top_albums = await self.music_service.get_top_albums(period=period, limit=5)
+                        
+                        text = f"{emoji} **Estadísticas de {range_name}**\n"
+                        text += f"_Servicio: {self.music_service_name}_\n\n"
+                        
+                        # Top artistas
+                        if top_artists:
+                            text += f"🏆 **Top 5 Artistas:**\n"
+                            for i, artist in enumerate(top_artists[:5], 1):
+                                text += f"{i}. {artist.name} - {artist.playcount} escuchas\n"
+                            text += "\n"
+                        
+                        # Top álbumes
+                        if top_albums:
+                            text += f"📀 **Top 3 Álbumes:**\n"
+                            for i, album in enumerate(top_albums[:3], 1):
+                                text += f"{i}. {album['artist']} - {album['name']} ({album['listen_count']} escuchas)\n"
+                            text += "\n"
+                        
+                        # Top tracks
+                        if top_tracks:
+                            text += f"🎵 **Top 3 Canciones:**\n"
+                            for i, track in enumerate(top_tracks[:3], 1):
+                                text += f"{i}. {track.artist} - {track.name} ({track.playcount} escuchas)\n"
+                            text += "\n"
+                        
+                        # Actividad reciente
+                        if recent_tracks:
+                            text += f"⏰ **Última escucha:**\n"
+                            last_track = recent_tracks[0]
+                            text += f"{last_track.artist} - {last_track.name}\n"
+                        
+                        # Botones para cambiar de rango
+                        keyboard = [
+                            [
+                                InlineKeyboardButton("📅 Esta Semana", callback_data="stats_this_week"),
+                                InlineKeyboardButton("📆 Este Mes", callback_data="stats_this_month")
+                            ],
+                            [
+                                InlineKeyboardButton("📋 Este Año", callback_data="stats_this_year"),
+                                InlineKeyboardButton("🌟 Todo el Tiempo", callback_data="stats_all_time")
+                            ],
+                            [
+                                InlineKeyboardButton("⏮️ Mes Pasado", callback_data="stats_last_month"),
+                                InlineKeyboardButton("⏮️ Año Pasado", callback_data="stats_last_year")
+                            ]
+                        ]
+                        reply_markup = InlineKeyboardMarkup(keyboard)
+                        
+                        await query.edit_message_text(text, reply_markup=reply_markup, parse_mode='Markdown')
+                    else:
+                        await query.edit_message_text("⚠️ No hay servicio de scrobbling configurado")
+                    
+                    print(f"   ✅ Stats de {period} procesado")
+                    
+                except Exception as e:
+                    print(f"   ❌ Error obteniendo estadísticas: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    await query.edit_message_text(f"❌ Error obteniendo estadísticas de {range_name}")
                 
             else:
                 print(f"   ⚠️ Callback no reconocido: {data}")
