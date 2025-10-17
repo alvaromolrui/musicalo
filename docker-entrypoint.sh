@@ -60,22 +60,12 @@ if [ ! -z "$NAVIDROME_URL" ]; then
     fi
 fi
 
-# El webhook se configura automáticamente dentro de bot.py
-# Esto evita problemas de rate limiting si el contenedor se reinicia varias veces
-if [ ! -z "$TELEGRAM_WEBHOOK_URL" ]; then
-    log "🔗 Webhook configurado para: ${TELEGRAM_WEBHOOK_URL}/webhook"
-else
-    log "📡 Usando modo polling"
-fi
+# Bot usa modo polling (no necesita webhooks)
+log "📡 Usando modo polling para comunicación con Telegram"
 
 # Función para manejo de señales
 cleanup() {
     log "🛑 Deteniendo bot..."
-    if [ ! -z "$TELEGRAM_WEBHOOK_URL" ]; then
-        log "🗑️  Removiendo webhook..."
-        curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/deleteWebhook" \
-             | tee -a /app/logs/bot.log
-    fi
     log "✅ Bot detenido correctamente"
     exit 0
 }

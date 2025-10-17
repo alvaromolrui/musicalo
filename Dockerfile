@@ -31,8 +31,5 @@ RUN useradd -m -s /bin/bash bot && \
 # Cambiar a usuario no-root
 USER bot
 
-# Exponer puerto (solo necesario si se usa modo webhook)
-EXPOSE 8000
-
 # Comando por defecto
 CMD ["./docker-entrypoint.sh"]

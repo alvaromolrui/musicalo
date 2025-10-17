@@ -25,15 +25,16 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 - **README simplificado**: Eliminadas duplicaciones y secciones obsoletas
 - **Documentación clara**: Explicación de archivos docker-compose
 - **Rebranding completo**: "Music Agent" → "Musicalo" en todo el proyecto
-- **Modo polling por defecto**: Documentado que webhooks no son necesarios
+- **Solo modo polling**: Eliminado todo código relacionado con webhooks
 - Archivos bien documentados con comentarios organizados
 
 ### 🗑️ Eliminado
+- `backend/main.py` (era solo para webhooks)
 - `env.docker` (consolidado en `env.example`)
 - Referencias a archivos inexistentes
 - Secciones duplicadas en README
 - Health check del Dockerfile (no aplicable en modo polling)
-- Referencias a webhooks como característica principal
+- Todo el código relacionado con webhooks
 - Mapeo de puertos en docker-compose (innecesario en modo polling)
 - Variables de entorno no usadas: `DEBUG`, `HOST`, `PORT`, `TELEGRAM_WEBHOOK_URL`
 

@@ -43,7 +43,7 @@ La IA entiende múltiples criterios y genera recomendaciones precisas que cumple
 - **🔘 Botones interactivos**: Me gusta, no me gusta, más recomendaciones
 - **📊 Respuestas contextuales**: La IA usa tus datos reales de escucha
 - **🎵 Recomendaciones variadas**: Diferentes sugerencias cada vez
-- **🔄 Polling Mode**: No requiere configuración de webhooks, SSL ni puertos públicos
+- **🔄 Modo Polling**: Conexión simple y directa con Telegram
 
 ### Backend (Python + Telegram Bot API)
 - **Servicios integrados**: 
@@ -61,8 +61,6 @@ La IA entiende múltiples criterios y genera recomendaciones precisas que cumple
 - Cuenta de **ListenBrainz** o **Last.fm**
 - **API key de Google Gemini** (gratuita)
 - **Token de bot de Telegram**
-
-> **Nota:** El bot usa **polling** para comunicarse con Telegram. No necesitas configurar webhooks, SSL, ni exponer puertos públicos.
 
 ### 🐳 Opción 1: Docker (Recomendado)
 
@@ -138,8 +136,6 @@ El archivo `.env` está completamente documentado con comentarios explicativos p
 - `GEMINI_API_KEY`: API key de Google Gemini (gratuita)
 - `TELEGRAM_BOT_TOKEN`: Token de tu bot de Telegram (REQUERIDO)
 - `TELEGRAM_ALLOWED_USER_IDS`: IDs permitidos para bot privado (RECOMENDADO)
-
-> **Importante:** El bot usa **polling** por defecto. No necesitas configurar `TELEGRAM_WEBHOOK_URL`.
 
 ### Obtener Credenciales
 
@@ -294,14 +290,13 @@ El sistema utiliza múltiples enfoques:
 ## 🎨 Tecnologías
 
 ### Backend
-- **python-telegram-bot 20.7**: Framework moderno para bots (modo polling)
+- **python-telegram-bot 20.7**: Framework moderno para bots
 - **Google Gemini**: IA para recomendaciones contextuales
 - **httpx**: Cliente HTTP asíncrono para APIs
 - **Pydantic**: Validación de datos
-- **FastAPI**: API REST (opcional, no usado por defecto)
 
 ### Bot
-- **Polling Mode**: Conexión persistente con Telegram (sin necesidad de webhooks)
+- **Modo Polling**: Conexión persistente con Telegram
 - **Inline Keyboards**: Botones interactivos
 - **Reply Keyboards**: Teclados personalizados
 - **Callback Handlers**: Manejo de interacciones
