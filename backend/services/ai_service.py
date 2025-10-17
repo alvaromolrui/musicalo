@@ -679,13 +679,19 @@ Genera las {limit} recomendaciones ahora:"""
         
         Args:
             description: Descripción de lo que busca el usuario
-            limit: Número de canciones
+            limit: Número de canciones (puede ser sobrescrito si se detecta en la descripción)
             
         Returns:
             Lista de recomendaciones de la biblioteca
         """
         try:
             print(f"📚 Generando playlist de biblioteca: {description}")
+            
+            # PASO 0: Detectar cantidad solicitada en la descripción (si existe)
+            detected_count = self._extract_song_count(description)
+            if detected_count:
+                limit = detected_count
+                print(f"✨ Usando cantidad detectada de la descripción: {limit} canciones")
             
             # PASO 1: Intentar detectar nombres de artistas específicos
             artist_names = self._extract_artist_names(description)
@@ -746,41 +752,25 @@ Genera las {limit} recomendaciones ahora:"""
                 print("❌ No se encontraron canciones en la biblioteca")
                 return []
             
-            # Usar IA para seleccionar las mejores coincidencias
-            tracks_formatted = self._format_tracks_for_ai(all_tracks[:50])  # Limitar a 50 para no saturar la IA
-            
-            prompt = f"""Eres un curador musical experto. De esta lista de canciones, selecciona las {limit} que mejor coincidan con: "{description}"
-
-Canciones disponibles de la biblioteca:
-{tracks_formatted}
-
-INSTRUCCIONES:
-1. Selecciona las canciones que mejor se ajusten a la descripción
-2. Prioriza variedad de artistas (no más de 2-3 canciones del mismo artista)
-3. Considera el género, estilo, época según la descripción
-4. Responde SOLO con los números de las canciones seleccionadas, separados por comas
-5. Ejemplo de respuesta: 1,5,8,12,15,20,23,27,30,35
-
-Selecciona {limit} canciones ahora:"""
-
-            response = self.model.generate_content(prompt)
-            selected_indices = self._parse_selection(response.text)
-            
-            print(f"✅ IA seleccionó {len(selected_indices)} índices: {selected_indices[:10]}...")
+            # NUEVO ALGORITMO: Selección con diversidad garantizada de artistas
+            selected_tracks = self._smart_track_selection(
+                all_tracks,
+                artist_names,
+                limit,
+                description
+            )
             
             # Crear recomendaciones
             recommendations = []
-            for idx in selected_indices[:limit]:
-                if idx < len(all_tracks):
-                    track = all_tracks[idx]
-                    rec = Recommendation(
-                        track=track,
-                        reason=f"De tu biblioteca: coincide con '{description}'",
-                        confidence=0.90,  # Alta confianza porque es de la biblioteca
-                        source="biblioteca",
-                        tags=["local", "biblioteca"]
-                    )
-                    recommendations.append(rec)
+            for track in selected_tracks:
+                rec = Recommendation(
+                    track=track,
+                    reason=f"De tu biblioteca: coincide con '{description}'",
+                    confidence=0.90,  # Alta confianza porque es de la biblioteca
+                    source="biblioteca",
+                    tags=["local", "biblioteca"]
+                )
+                recommendations.append(rec)
             
             print(f"🎵 Generadas {len(recommendations)} recomendaciones de biblioteca")
             return recommendations
@@ -790,6 +780,147 @@ Selecciona {limit} canciones ahora:"""
             import traceback
             traceback.print_exc()
             return []
+    
+    def _smart_track_selection(
+        self,
+        all_tracks: List[Track],
+        artist_names: List[str],
+        limit: int,
+        description: str
+    ) -> List[Track]:
+        """Selección inteligente de canciones con garantía de diversidad de artistas
+        
+        Args:
+            all_tracks: Lista completa de canciones disponibles
+            artist_names: Lista de artistas detectados en la descripción
+            limit: Número de canciones a seleccionar
+            description: Descripción original de la playlist
+            
+        Returns:
+            Lista de tracks seleccionadas con buena diversidad
+        """
+        import random
+        from collections import defaultdict
+        
+        print(f"🎯 Seleccionando {limit} canciones con diversidad de artistas...")
+        
+        # Agrupar canciones por artista
+        tracks_by_artist = defaultdict(list)
+        for track in all_tracks:
+            artist_key = track.artist.lower() if track.artist else "unknown"
+            tracks_by_artist[artist_key].append(track)
+        
+        print(f"📊 Canciones agrupadas en {len(tracks_by_artist)} artistas diferentes")
+        
+        # Si hay artistas específicos solicitados, dar prioridad equitativa
+        if artist_names:
+            print(f"🎤 Distribuyendo equitativamente entre {len(artist_names)} artistas: {artist_names}")
+            
+            # Calcular cuántas canciones por artista
+            songs_per_artist = max(1, limit // len(artist_names))
+            remaining = limit % len(artist_names)
+            
+            selected = []
+            artist_count = defaultdict(int)
+            
+            # Primera pasada: asignar songs_per_artist a cada artista
+            for artist_name in artist_names:
+                artist_lower = artist_name.lower()
+                
+                # Buscar el grupo de canciones que coincida con este artista
+                matching_tracks = []
+                for artist_key, tracks in tracks_by_artist.items():
+                    if artist_lower in artist_key or artist_key in artist_lower:
+                        matching_tracks.extend(tracks)
+                
+                if matching_tracks:
+                    # Aleatorizar y tomar songs_per_artist
+                    random.shuffle(matching_tracks)
+                    to_take = min(songs_per_artist, len(matching_tracks))
+                    selected.extend(matching_tracks[:to_take])
+                    artist_count[artist_lower] = to_take
+                    print(f"   ✓ {artist_name}: {to_take} canciones")
+                else:
+                    print(f"   ✗ {artist_name}: no se encontraron canciones")
+            
+            # Segunda pasada: rellenar con canciones adicionales si hay espacio
+            if len(selected) < limit and remaining > 0:
+                # Tomar más canciones de los artistas que tienen más disponibles
+                for artist_name in artist_names:
+                    if len(selected) >= limit:
+                        break
+                    
+                    artist_lower = artist_name.lower()
+                    matching_tracks = []
+                    for artist_key, tracks in tracks_by_artist.items():
+                        if artist_lower in artist_key or artist_key in artist_lower:
+                            # Excluir canciones ya seleccionadas
+                            for track in tracks:
+                                if track not in selected:
+                                    matching_tracks.append(track)
+                    
+                    if matching_tracks:
+                        random.shuffle(matching_tracks)
+                        additional = min(1, len(matching_tracks), limit - len(selected))
+                        selected.extend(matching_tracks[:additional])
+                        print(f"   + {artist_name}: +{additional} adicional(es)")
+            
+            # Aleatorizar el orden final para mezclar mejor
+            random.shuffle(selected)
+            
+            print(f"✅ Seleccionadas {len(selected)} canciones con distribución equitativa")
+            return selected[:limit]
+        
+        else:
+            # No hay artistas específicos: selección por diversidad general
+            print(f"🎲 Selección diversificada sin artistas específicos")
+            
+            # Calcular máximo de canciones por artista (evitar que un artista domine)
+            max_per_artist = max(2, limit // max(5, len(tracks_by_artist) // 3))
+            
+            selected = []
+            artist_usage = defaultdict(int)
+            
+            # Crear lista de todos los artistas disponibles
+            available_artists = list(tracks_by_artist.keys())
+            random.shuffle(available_artists)
+            
+            # Iterar round-robin por los artistas
+            round_num = 0
+            while len(selected) < limit and round_num < 10:  # Max 10 rondas para evitar loop infinito
+                added_this_round = False
+                
+                for artist_key in available_artists:
+                    if len(selected) >= limit:
+                        break
+                    
+                    # Verificar si este artista aún puede aportar canciones
+                    if artist_usage[artist_key] < max_per_artist:
+                        artist_tracks = tracks_by_artist[artist_key]
+                        
+                        # Buscar una canción que no hayamos usado
+                        for track in artist_tracks:
+                            if track not in selected:
+                                selected.append(track)
+                                artist_usage[artist_key] += 1
+                                added_this_round = True
+                                break
+                
+                if not added_this_round:
+                    # No se agregó nada en esta ronda, salir del loop
+                    break
+                
+                round_num += 1
+            
+            # Aleatorizar el orden final
+            random.shuffle(selected)
+            
+            # Mostrar estadísticas
+            artists_used = len([count for count in artist_usage.values() if count > 0])
+            print(f"✅ Seleccionadas {len(selected)} canciones de {artists_used} artistas diferentes")
+            print(f"   Promedio: {len(selected)/artists_used:.1f} canciones por artista")
+            
+            return selected[:limit]
     
     def _extract_artist_names(self, text: str) -> List[str]:
         """Extraer nombres de artistas de una descripción
@@ -857,6 +988,41 @@ Selecciona {limit} canciones ahora:"""
             print(f"🎤 Nombres de artistas extraídos: {unique_artists}")
         
         return unique_artists
+    
+    def _extract_song_count(self, text: str) -> Optional[int]:
+        """Extraer cantidad de canciones solicitada en la descripción
+        
+        Detecta formatos como:
+        - "20 canciones"
+        - "15 temas"
+        - "10 tracks"
+        - "playlist de 25 canciones"
+        
+        Args:
+            text: Texto de la descripción
+            
+        Returns:
+            Número de canciones solicitadas, o None si no se especifica
+        """
+        import re
+        
+        # Patrones para detectar cantidad de canciones
+        patterns = [
+            r'(\d+)\s*(?:canciones|cancion|temas|tema|tracks|track|songs|song)',
+            r'(?:de|con)\s*(\d+)\s*(?:canciones|cancion|temas|tema|tracks|track)',
+            r'playlist\s*(?:de|con)?\s*(\d+)',
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                count = int(match.group(1))
+                # Validar que sea un número razonable (entre 5 y 200)
+                if 5 <= count <= 200:
+                    print(f"🔢 Cantidad detectada: {count} canciones")
+                    return count
+        
+        return None
     
     def _extract_keywords(self, text: str) -> List[str]:
         """Extraer palabras clave de una descripción

@@ -14,46 +14,62 @@ class PlaylistService:
         self, 
         tracks: List[Track], 
         playlist_name: str,
-        description: Optional[str] = None
+        description: Optional[str] = None,
+        simple_format: bool = True
     ) -> str:
-        """Crear playlist en formato M3U Extended
+        """Crear playlist en formato M3U
         
         Args:
             tracks: Lista de canciones para incluir en la playlist
             playlist_name: Nombre de la playlist
             description: Descripción opcional de la playlist
+            simple_format: Si True, usa formato simple (solo rutas). Si False, usa formato extendido
             
         Returns:
             Contenido de la playlist en formato M3U
         """
         
-        m3u_content = "#EXTM3U\n"
-        if description:
-            m3u_content += f"#PLAYLIST:{playlist_name}\n"
-            m3u_content += f"#EXTENC:UTF-8\n"
-            m3u_content += f"#DESCRIPTION:{description}\n"
-        
-        for track in tracks:
-            # Duración en segundos
-            duration = track.duration if track.duration else -1
+        if simple_format:
+            # Formato simple: solo #EXTM3U y rutas de archivos
+            m3u_content = "#EXTM3U\n"
             
-            # Información del track
-            artist_info = track.artist if track.artist else "Unknown Artist"
-            title_info = track.title if track.title else "Unknown Track"
+            for track in tracks:
+                # Solo agregar el path del archivo
+                if track.path:
+                    m3u_content += f"{track.path}\n"
+                elif track.id:
+                    # Si no hay path pero hay ID, usar la URL de streaming de Navidrome
+                    stream_url = f"{self.navidrome_url}/rest/stream.view?id={track.id}&u={self.navidrome_username}"
+                    m3u_content += f"{stream_url}\n"
+        else:
+            # Formato extendido: con metadata (EXTINF, duración, etc)
+            m3u_content = "#EXTM3U\n"
+            if description:
+                m3u_content += f"#PLAYLIST:{playlist_name}\n"
+                m3u_content += f"#EXTENC:UTF-8\n"
+                m3u_content += f"#DESCRIPTION:{description}\n"
             
-            m3u_content += f"#EXTINF:{duration},{artist_info} - {title_info}\n"
-            
-            # URL de streaming de Navidrome/Subsonic
-            if track.id:
-                # Construir URL de stream con autenticación
-                stream_url = f"{self.navidrome_url}/rest/stream.view?id={track.id}&u={self.navidrome_username}"
-                m3u_content += f"{stream_url}\n"
-            elif track.path:
-                # Si no hay ID pero hay path, usar el path
-                m3u_content += f"{track.path}\n"
-            else:
-                # Fallback: comentar que no hay URL disponible
-                m3u_content += f"# No stream URL available for {artist_info} - {title_info}\n"
+            for track in tracks:
+                # Duración en segundos
+                duration = track.duration if track.duration else -1
+                
+                # Información del track
+                artist_info = track.artist if track.artist else "Unknown Artist"
+                title_info = track.title if track.title else "Unknown Track"
+                
+                m3u_content += f"#EXTINF:{duration},{artist_info} - {title_info}\n"
+                
+                # URL de streaming de Navidrome/Subsonic
+                if track.id:
+                    # Construir URL de stream con autenticación
+                    stream_url = f"{self.navidrome_url}/rest/stream.view?id={track.id}&u={self.navidrome_username}"
+                    m3u_content += f"{stream_url}\n"
+                elif track.path:
+                    # Si no hay ID pero hay path, usar el path
+                    m3u_content += f"{track.path}\n"
+                else:
+                    # Fallback: comentar que no hay URL disponible
+                    m3u_content += f"# No stream URL available for {artist_info} - {title_info}\n"
         
         return m3u_content
     
@@ -85,7 +101,8 @@ class PlaylistService:
         self,
         recommendations: List,
         name: str,
-        description: Optional[str] = None
+        description: Optional[str] = None,
+        simple_format: bool = True
     ) -> str:
         """Crear playlist M3U desde una lista de recomendaciones
         
@@ -93,12 +110,13 @@ class PlaylistService:
             recommendations: Lista de objetos Recommendation
             name: Nombre de la playlist
             description: Descripción opcional
+            simple_format: Si True, usa formato simple (solo rutas). Si False, usa formato extendido
             
         Returns:
             Contenido M3U de la playlist
         """
         tracks = [rec.track for rec in recommendations]
-        return self.create_m3u_playlist(tracks, name, description)
+        return self.create_m3u_playlist(tracks, name, description, simple_format)
     
     def validate_playlist(self, m3u_content: str) -> bool:
         """Validar que una playlist M3U tenga formato correcto

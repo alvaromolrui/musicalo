@@ -785,7 +785,10 @@ Proporciona una respuesta útil, informativa y amigable. Si la pregunta es sobre
                 "• `/playlist música energética para correr`\n"
                 "• `/playlist jazz suave`\n"
                 "• `/playlist similar a Pink Floyd`\n"
-                "• `/playlist 10 canciones de metal melódico`",
+                "• `/playlist 10 canciones de metal melódico`\n"
+                "• `/playlist 25 temas de mujeres, vera fauna y cala vento`\n"
+                "• `/playlist 30 canciones de Pink Floyd y Queen`\n\n"
+                "💡 **Tip:** Puedes especificar la cantidad de canciones (ej: '20 canciones', '15 temas')",
                 parse_mode='Markdown'
             )
             return
@@ -798,9 +801,11 @@ Proporciona una respuesta útil, informativa y amigable. Si la pregunta es sobre
             print(f"🎵 Generando playlist con: {description}")
             print(f"📚 PASO 1: Intentando generar desde biblioteca local...")
             
+            # El límite será ajustado automáticamente por generate_library_playlist
+            # si detecta una cantidad en la descripción
             library_recommendations = await self.ai.generate_library_playlist(
                 description,
-                limit=15
+                limit=20  # Límite por defecto aumentado de 15 a 20
             )
             
             recommendations = library_recommendations
