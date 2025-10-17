@@ -917,11 +917,28 @@ Genera las {limit} recomendaciones ahora:"""
                         seen_ids.add(track.id)
                 print(f"✅ Fallback agregó {len(fallback_tracks)} canciones más")
             
-            print(f"📊 Total de canciones disponibles: {len(all_tracks)}")
+            print(f"📊 Total de canciones disponibles antes de filtrado: {len(all_tracks)}")
             
             if not all_tracks:
                 print("❌ No se encontraron canciones en la biblioteca")
                 return []
+            
+            # POST-FILTRADO: Aplicar filtro de idioma si se especificó
+            description_lower = description.lower()
+            if 'español' in description_lower or 'castellano' in description_lower:
+                print(f"🇪🇸 Aplicando filtro de idioma ESPAÑOL...")
+                all_tracks = self._filter_by_language(all_tracks, 'spanish')
+                print(f"   ✅ Quedan {len(all_tracks)} canciones en español")
+            elif 'inglés' in description_lower or 'english' in description_lower:
+                print(f"🇬🇧 Aplicando filtro de idioma INGLÉS...")
+                all_tracks = self._filter_by_language(all_tracks, 'english')
+                print(f"   ✅ Quedan {len(all_tracks)} canciones en inglés")
+            
+            if not all_tracks:
+                print("❌ No quedan canciones después del filtrado de idioma")
+                return []
+            
+            print(f"📊 Total de canciones disponibles después de filtrado: {len(all_tracks)}")
             
             # NUEVO ALGORITMO: Selección con diversidad garantizada de artistas
             selected_tracks = self._smart_track_selection(
@@ -1644,6 +1661,73 @@ Números de artistas que coinciden:"""
             import traceback
             traceback.print_exc()
             return []
+    
+    def _filter_by_language(self, tracks: List[Track], language: str) -> List[Track]:
+        """Filtrar canciones por idioma del artista usando conocimiento de la IA
+        
+        Args:
+            tracks: Lista de canciones a filtrar
+            language: 'spanish' o 'english'
+            
+        Returns:
+            Lista de canciones del idioma solicitado
+        """
+        try:
+            # Extraer artistas únicos
+            artists = list(set([track.artist for track in tracks if track.artist]))
+            
+            if not artists:
+                return tracks
+            
+            print(f"   🎤 Filtrando {len(artists)} artistas por idioma {language}...")
+            
+            # Preparar prompt para la IA
+            artists_text = '\n'.join([f"{i}. {artist}" for i, artist in enumerate(artists[:150])])
+            
+            language_name = "ESPAÑOL" if language == "spanish" else "INGLÉS"
+            reject_examples = "Pink Floyd, The Police, Oasis, Radiohead, The Beatles" if language == "spanish" else "Extremoduro, Vetusta Morla, Los Planetas"
+            
+            prompt = f"""Eres un experto en música mundial. Identifica qué artistas cantan en {language_name}.
+
+ARTISTAS:
+{artists_text}
+
+CRITERIOS:
+- Si {language_name} = ESPAÑOL: Solo artistas de España o Latinoamérica que cantan en español
+- Si {language_name} = INGLÉS: Solo artistas anglosajones o que cantan en inglés
+- RECHAZA completamente: {reject_examples}
+- Usa tu conocimiento sobre la nacionalidad e idioma de cada artista
+
+INSTRUCCIONES:
+Responde SOLO con los números de los artistas que cantan en {language_name}, separados por comas.
+
+Ejemplo: 1,5,8,12,23,34,56,78,90
+
+Números de artistas en {language_name}:"""
+
+            response = self.model.generate_content(prompt)
+            selected_indices = self._parse_selection(response.text)
+            
+            # Crear set de artistas válidos
+            valid_artists = set()
+            for idx in selected_indices:
+                if idx < len(artists):
+                    valid_artists.add(artists[idx].lower())
+            
+            print(f"   ✓ {len(valid_artists)} artistas válidos en {language_name}: {list(valid_artists)[:5]}...")
+            
+            # Filtrar canciones
+            filtered_tracks = []
+            for track in tracks:
+                if track.artist and track.artist.lower() in valid_artists:
+                    filtered_tracks.append(track)
+            
+            return filtered_tracks
+            
+        except Exception as e:
+            print(f"   ⚠️ Error filtrando por idioma: {e}")
+            # Si falla, devolver todas
+            return tracks
     
     def _parse_selection(self, text: str) -> List[int]:
         """Parsear la selección de índices de la IA
