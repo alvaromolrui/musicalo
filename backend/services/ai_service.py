@@ -843,9 +843,24 @@ Genera las {limit} recomendaciones ahora:"""
                                 except Exception as e:
                                     print(f"   ⚠️ Error sin filtro para '{genre}': {e}")
                     else:
-                        print(f"⚠️ Ninguno de los géneros detectados existe en la biblioteca")
+                        print(f"⚠️ Ninguno de los géneros detectados existe literalmente en la biblioteca")
                         print(f"   Detectados: {genres_detected}")
                         print(f"   Disponibles: {list(available_genres)[:10]}...")
+                        
+                        # ESTRATEGIA INTELIGENTE: Usar IA para identificar artistas del género solicitado
+                        print(f"🤖 Usando IA para identificar artistas que coinciden con el género solicitado...")
+                        ai_matched_tracks = await self._ai_match_artists_by_genre(
+                            description, 
+                            genres_detected,
+                            limit=200
+                        )
+                        
+                        for track in ai_matched_tracks:
+                            if track.id not in seen_ids:
+                                all_tracks.append(track)
+                                seen_ids.add(track.id)
+                        
+                        print(f"   ✅ IA identificó {len(ai_matched_tracks)} canciones del género solicitado")
                 
                 # ESTRATEGIA 3: Buscar por keywords generales
                 keywords = self._extract_keywords(description)
@@ -1526,6 +1541,95 @@ Selecciona ahora (máximo {min(target_count, sample_size)} canciones):"""
                 formatted += f" ({track.year})"
             formatted += "\n"
         return formatted
+    
+    async def _ai_match_artists_by_genre(
+        self,
+        description: str,
+        genres: List[str],
+        limit: int = 200
+    ) -> List[Track]:
+        """Usar IA para identificar artistas que coinciden con un género solicitado
+        
+        Cuando el género no existe literalmente en los metadatos, la IA usa su
+        conocimiento musical para identificar qué artistas de la biblioteca
+        pertenecen a ese género.
+        
+        Args:
+            description: Descripción original de la playlist
+            genres: Lista de géneros solicitados
+            limit: Número máximo de canciones a obtener
+            
+        Returns:
+            Lista de tracks de artistas que coinciden con el género
+        """
+        try:
+            # Obtener una muestra grande y diversa de la biblioteca
+            sample_size = min(500, limit * 3)
+            print(f"   📚 Obteniendo muestra de {sample_size} canciones de la biblioteca...")
+            library_tracks = await self.navidrome.get_tracks(limit=sample_size)
+            
+            if not library_tracks:
+                return []
+            
+            # Extraer artistas únicos
+            artists_map = {}
+            for track in library_tracks:
+                artist = track.artist
+                if artist not in artists_map:
+                    artists_map[artist] = []
+                artists_map[artist].append(track)
+            
+            artists_list = list(artists_map.keys())
+            print(f"   🎤 {len(artists_list)} artistas únicos en la muestra")
+            
+            # Crear prompt para la IA
+            genres_text = ', '.join(genres)
+            artists_text = '\n'.join([f"{i}. {artist}" for i, artist in enumerate(artists_list[:100])])
+            
+            prompt = f"""Eres un experto en música con conocimiento enciclopédico de todos los géneros musicales.
+
+TAREA: Identifica qué artistas de esta lista pertenecen a los géneros: {genres_text}
+
+CONTEXTO: El usuario pidió "{description}"
+
+ARTISTAS DISPONIBLES:
+{artists_text}
+
+INSTRUCCIONES:
+1. Analiza cada artista y determina si pertenece a los géneros solicitados
+2. Usa tu conocimiento musical sobre cada artista
+3. Considera sub-géneros y géneros relacionados
+4. Selecciona SOLO los artistas que realmente encajen
+5. Responde SOLO con los números de los artistas seleccionados, separados por comas
+
+EJEMPLO: 5,12,23,34,45,67,89
+
+Números de artistas que coinciden:"""
+
+            # Generar con IA
+            response = self.model.generate_content(prompt)
+            selected_indices = self._parse_selection(response.text)
+            
+            # Construir lista de tracks de los artistas seleccionados
+            matched_tracks = []
+            selected_artists = set()
+            
+            for idx in selected_indices:
+                if idx < len(artists_list):
+                    artist = artists_list[idx]
+                    selected_artists.add(artist)
+                    # Agregar todas las canciones de este artista
+                    matched_tracks.extend(artists_map[artist])
+            
+            print(f"   🎯 IA seleccionó {len(selected_artists)} artistas: {list(selected_artists)[:5]}...")
+            
+            return matched_tracks[:limit]
+            
+        except Exception as e:
+            print(f"   ⚠️ Error en matching por IA: {e}")
+            import traceback
+            traceback.print_exc()
+            return []
     
     def _parse_selection(self, text: str) -> List[int]:
         """Parsear la selección de índices de la IA
