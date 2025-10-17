@@ -33,6 +33,10 @@ class PlaylistService:
             # Formato M3U estándar para Navidrome
             m3u_content = "#EXTM3U\n"
             
+            # Agregar nombre de playlist si está disponible
+            if playlist_name:
+                m3u_content += f"#PLAYLIST:{playlist_name}\n"
+            
             for track in tracks:
                 # Duración en segundos (usar -1 si no está disponible)
                 duration = track.duration if track.duration else -1
@@ -47,24 +51,15 @@ class PlaylistService:
                 
                 # Agregar ruta del archivo
                 if track.path:
-                    # Construir ruta limpia: /music/Artista/Album/Titulo.ext
-                    import os
-                    import re
-                    
-                    # Obtener la extensión del archivo original
-                    _, ext = os.path.splitext(track.path)
-                    
-                    # Construir nombre de archivo limpio sin números de pista
-                    # Usar el título de la canción directamente
-                    clean_filename = f"{title_info}{ext}"
-                    
-                    # Construir ruta completa: /music/Artista/Album/Titulo.ext
-                    if track.artist and track.album:
-                        file_path = f"/music/{track.artist}/{track.album}/{clean_filename}"
-                    else:
-                        # Fallback: usar la ruta original con /music/
-                        file_path = track.path
-                        if not file_path.startswith('/'):
+                    # Usar la ruta tal como viene de Navidrome
+                    # Solo agregar /music/ si no está presente
+                    file_path = track.path
+                    if not file_path.startswith('/music/'):
+                        if file_path.startswith('/'):
+                            # Ya tiene /, solo falta music
+                            file_path = f"/music{file_path}"
+                        else:
+                            # No tiene /, agregar /music/
                             file_path = f"/music/{file_path}"
                     
                     m3u_content += f"{file_path}\n"
