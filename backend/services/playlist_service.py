@@ -30,11 +30,11 @@ class PlaylistService:
         """
         
         if simple_format:
-            # Formato simple: solo #EXTM3U y nombres de archivo
-            m3u_content = "#EXTM3U\n"
+            # Formato ultra simple: SOLO nombres de archivo, nada más
+            m3u_content = ""
             
             for track in tracks:
-                # Solo agregar el nombre del archivo (sin ruta completa)
+                # Solo agregar el nombre del archivo (sin ruta completa, sin metadata)
                 if track.path:
                     # Extraer solo el nombre del archivo de la ruta
                     import os

@@ -831,7 +831,8 @@ Sé todo lo detallado que quieras:
             m3u_content = self.playlist_service.create_playlist_from_recommendations(
                 recommendations, 
                 playlist_name,
-                description
+                description,
+                simple_format=True  # Solo nombres de archivo
             )
             
             # 4. Guardar archivo
