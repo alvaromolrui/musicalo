@@ -693,6 +693,10 @@ Genera las {limit} recomendaciones ahora:"""
                 limit = detected_count
                 print(f"✨ Usando cantidad detectada de la descripción: {limit} canciones")
             
+            # PASO 0.5: Obtener géneros disponibles en la biblioteca para mapeo inteligente
+            available_genres = await self._get_available_genres()
+            print(f"🎭 Géneros disponibles en biblioteca: {len(available_genres)}")
+            
             # PASO 1: Intentar detectar nombres de artistas específicos
             artist_names = self._extract_artist_names(description)
             all_tracks = []
@@ -727,29 +731,51 @@ Genera las {limit} recomendaciones ahora:"""
             
             # PASO 2: Si no hay artistas específicos o no se encontraron suficientes, buscar por género/keywords
             if len(all_tracks) < limit:
-                # Intentar detectar género musical
+                # Intentar detectar género musical con mapeo inteligente
                 genres_detected = self._extract_genres(description)
                 if genres_detected:
                     print(f"🎸 Géneros detectados: {genres_detected}")
-                    for genre in genres_detected:
-                        # Buscar por género en Navidrome
-                        genre_tracks = await self.navidrome.get_tracks(limit=100, genre=genre)
-                        for track in genre_tracks:
-                            if track.id not in seen_ids:
-                                all_tracks.append(track)
-                                seen_ids.add(track.id)
-                        print(f"   ✓ Género '{genre}': {len(genre_tracks)} canciones")
+                    
+                    # Filtrar solo los géneros que realmente existen en la biblioteca
+                    valid_genres = [g for g in genres_detected if g in available_genres]
+                    if valid_genres:
+                        print(f"✅ Géneros válidos en biblioteca: {valid_genres}")
+                        
+                        # Buscar por cada género válido
+                        for genre in valid_genres:
+                            try:
+                                # Buscar por género en Navidrome
+                                genre_tracks = await self.navidrome.get_tracks(limit=100, genre=genre)
+                                added_count = 0
+                                for track in genre_tracks:
+                                    if track.id not in seen_ids:
+                                        all_tracks.append(track)
+                                        seen_ids.add(track.id)
+                                        added_count += 1
+                                print(f"   ✓ Género '{genre}': {added_count} canciones nuevas")
+                            except Exception as e:
+                                print(f"   ⚠️ Error buscando género '{genre}': {e}")
+                    else:
+                        print(f"⚠️ Ninguno de los géneros detectados existe en la biblioteca")
+                        print(f"   Detectados: {genres_detected}")
+                        print(f"   Disponibles: {list(available_genres)[:10]}...")
                 
                 # También buscar por keywords generales
                 keywords = self._extract_keywords(description)
                 print(f"🔑 Palabras clave extraídas: {keywords}")
                 
                 for keyword in keywords[:3]:  # Usar hasta 3 keywords
-                    results = await self.navidrome.search(keyword, limit=50)
-                    for track in results.get('tracks', []):
-                        if track.id not in seen_ids:
-                            all_tracks.append(track)
-                            seen_ids.add(track.id)
+                    try:
+                        results = await self.navidrome.search(keyword, limit=50)
+                        added_count = 0
+                        for track in results.get('tracks', []):
+                            if track.id not in seen_ids:
+                                all_tracks.append(track)
+                                seen_ids.add(track.id)
+                                added_count += 1
+                        print(f"   ✓ Keyword '{keyword}': {added_count} canciones nuevas")
+                    except Exception as e:
+                        print(f"   ⚠️ Error buscando keyword '{keyword}': {e}")
             
             # PASO 3: Si no hay artistas específicos, obtener una muestra grande de la biblioteca
             # para que el algoritmo de selección tenga suficiente material
@@ -1125,7 +1151,7 @@ Selecciona ahora (máximo {min(target_count, sample_size)} canciones):"""
         return None
     
     def _extract_genres(self, text: str) -> List[str]:
-        """Extraer géneros musicales de la descripción
+        """Extraer géneros musicales de la descripción con mapeo inteligente
         
         Args:
             text: Texto de la descripción
@@ -1135,43 +1161,104 @@ Selecciona ahora (máximo {min(target_count, sample_size)} canciones):"""
         """
         text_lower = text.lower()
         
-        # Diccionario de géneros comunes y sus variaciones
-        genre_patterns = {
-            'rock': ['rock', 'rocanrol'],
-            'indie': ['indie', 'independiente'],
-            'pop': ['pop'],
+        # Mapeo inteligente de géneros con relaciones y variaciones
+        # Cada entrada mapea a géneros reales que pueden existir en la biblioteca
+        genre_mappings = {
+            # ROCK y variaciones
+            'rock': [
+                'rock', 'rocanrol', 'alternative & indie', 'alternative', 
+                'alternativ und indie', 'alternatif et indé', 'indie rock'
+            ],
+            
+            # INDIE y variaciones
+            'indie': [
+                'indie', 'independiente', 'alternative & indie', 'alternative',
+                'alternativ und indie', 'alternatif et indé', 'latin indie', 
+                'mexican indie', 'indie rock', 'indie pop'
+            ],
+            
+            # POP
+            'pop': ['pop', 'indie pop'],
+            
+            # JAZZ
             'jazz': ['jazz'],
+            
+            # BLUES
             'blues': ['blues'],
+            
+            # METAL
             'metal': ['metal', 'heavy metal'],
-            'punk': ['punk'],
+            
+            # PUNK
+            'punk': ['punk', 'egg punk'],
+            
+            # FOLK
             'folk': ['folk', 'folclore'],
+            
+            # ELECTRÓNICA
             'electronic': ['electronica', 'electrónica', 'electronic', 'electro'],
-            'hip hop': ['hip hop', 'hiphop', 'rap'],
+            
+            # HIP HOP / RAP (son el mismo género en tu biblioteca)
+            'hip hop': ['hip-hop', 'hip hop', 'hiphop', 'rap'],
+            'rap': ['hip-hop', 'hip hop', 'hiphop', 'rap'],
+            
+            # REGGAE
             'reggae': ['reggae'],
+            
+            # COUNTRY
             'country': ['country'],
+            
+            # CLÁSICA
             'classical': ['clasica', 'clásica', 'classical'],
-            'alternative': ['alternativo', 'alternativa', 'alternative'],
+            
+            # ALTERNATIVO (mapea a varios géneros relacionados)
+            'alternative': [
+                'alternative', 'alternative & indie', 'alternativ und indie', 
+                'alternatif et indé', 'latin alternative'
+            ],
+            
+            # SKA
             'ska': ['ska'],
+            
+            # SOUL
             'soul': ['soul'],
+            
+            # FUNK
             'funk': ['funk'],
+            
+            # DISCO
             'disco': ['disco'],
+            
+            # GRUNGE
             'grunge': ['grunge'],
+            
+            # PROGRESSIVE
             'progressive': ['progresivo', 'progresiva', 'progressive', 'prog'],
+            
+            # FLAMENCO
             'flamenco': ['flamenco'],
-            'latin': ['latina', 'latino', 'latin'],
+            
+            # LATIN (mapea a varios géneros latinos)
+            'latin': ['latin', 'latina', 'latino', 'latin indie', 'latin alternative', 'mexican indie'],
+            
+            # SALSA
             'salsa': ['salsa'],
+            
+            # RUMBA
             'rumba': ['rumba'],
-            'indie rock': ['indie rock'],
-            'indie pop': ['indie pop'],
+            
+            # WORLD MUSIC
+            'world': ['world music', 'world'],
         }
         
         detected_genres = []
         
-        for genre, patterns in genre_patterns.items():
-            for pattern in patterns:
-                if pattern in text_lower:
-                    detected_genres.append(genre)
-                    break  # Solo agregar una vez por género
+        # Buscar coincidencias en el texto
+        for requested_genre, possible_genres in genre_mappings.items():
+            if requested_genre in text_lower:
+                # Agregar todos los géneros relacionados que podrían existir en la biblioteca
+                detected_genres.extend(possible_genres)
+                print(f"🎸 Género '{requested_genre}' detectado → mapea a: {possible_genres}")
         
         # Eliminar duplicados manteniendo orden
         unique_genres = []
@@ -1182,6 +1269,36 @@ Selecciona ahora (máximo {min(target_count, sample_size)} canciones):"""
                 seen.add(genre)
         
         return unique_genres
+    
+    async def _get_available_genres(self) -> set:
+        """Obtener todos los géneros disponibles en la biblioteca
+        
+        Returns:
+            Set con todos los géneros únicos disponibles
+        """
+        try:
+            # Obtener una muestra grande de canciones para extraer géneros
+            tracks = await self.navidrome.get_tracks(limit=500)
+            
+            genres = set()
+            for track in tracks:
+                if track.genre:
+                    # Limpiar y normalizar el género
+                    genre = track.genre.strip()
+                    if genre:
+                        genres.add(genre)
+            
+            print(f"🎭 Encontrados {len(genres)} géneros únicos en biblioteca")
+            return genres
+            
+        except Exception as e:
+            print(f"⚠️ Error obteniendo géneros disponibles: {e}")
+            # Fallback: géneros comunes
+            return {
+                'rock', 'pop', 'jazz', 'blues', 'metal', 'punk', 'folk', 
+                'electronic', 'hip-hop', 'rap', 'reggae', 'country', 
+                'classical', 'alternative', 'indie', 'world music'
+            }
     
     def _extract_keywords(self, text: str) -> List[str]:
         """Extraer palabras clave de una descripción
