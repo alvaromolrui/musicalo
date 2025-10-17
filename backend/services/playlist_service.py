@@ -47,8 +47,12 @@ class PlaylistService:
                 
                 # Agregar ruta del archivo
                 if track.path:
-                    # Usar la ruta completa del archivo
-                    m3u_content += f"{track.path}\n"
+                    # Navidrome espera rutas que empiecen con /music/
+                    # Si la ruta no empieza con /, agregarla
+                    file_path = track.path
+                    if not file_path.startswith('/'):
+                        file_path = f"/music/{file_path}"
+                    m3u_content += f"{file_path}\n"
                 elif track.id:
                     # Si no hay path pero hay ID, usar la URL de streaming de Navidrome
                     stream_url = f"{self.navidrome_url}/rest/stream.view?id={track.id}&u={self.navidrome_username}"
