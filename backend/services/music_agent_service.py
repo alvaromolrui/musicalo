@@ -622,29 +622,44 @@ Responde ahora de forma natural y conversacional:"""
         for album in results.get("albums", []):
             artist_similarity = similarity_ratio(album.artist, search_term)
             album_similarity = similarity_ratio(album.name, search_term)
+            artist_lower = album.artist.lower()
             
-            # Mantener si el artista es similar o si el álbum contiene el término de búsqueda
-            if artist_similarity >= SIMILARITY_THRESHOLD or search_lower in album.artist.lower():
+            # MEJORADO: Mantener si:
+            # 1. El término de búsqueda está CONTENIDO en el nombre del artista
+            # 2. El artista es similar al término de búsqueda (60%+)
+            # 3. El álbum contiene el término de búsqueda
+            if (search_lower in artist_lower or 
+                artist_lower.startswith(search_lower) or
+                artist_similarity >= SIMILARITY_THRESHOLD or 
+                search_lower in album.name.lower()):
                 filtered["albums"].append(album)
-                print(f"   ✓ Álbum mantenido: {album.artist} - {album.name} (similitud artista: {artist_similarity:.2f})")
+                print(f"   ✓ Álbum mantenido: {album.artist} - {album.name} (similitud: {artist_similarity:.2f})")
             else:
-                print(f"   ✗ Álbum filtrado: {album.artist} - {album.name} (similitud artista: {artist_similarity:.2f} < {SIMILARITY_THRESHOLD})")
+                print(f"   ✗ Álbum filtrado: {album.artist} - {album.name} (similitud: {artist_similarity:.2f})")
         
         # Filtrar artistas
         for artist in results.get("artists", []):
             artist_similarity = similarity_ratio(artist.name, search_term)
+            artist_lower = artist.name.lower()
             
-            if artist_similarity >= SIMILARITY_THRESHOLD or search_lower in artist.name.lower():
+            # MEJORADO: Mantener si el término está contenido o el nombre comienza con él
+            if (search_lower in artist_lower or 
+                artist_lower.startswith(search_lower) or
+                artist_similarity >= SIMILARITY_THRESHOLD):
                 filtered["artists"].append(artist)
                 print(f"   ✓ Artista mantenido: {artist.name} (similitud: {artist_similarity:.2f})")
             else:
-                print(f"   ✗ Artista filtrado: {artist.name} (similitud: {artist_similarity:.2f} < {SIMILARITY_THRESHOLD})")
+                print(f"   ✗ Artista filtrado: {artist.name} (similitud: {artist_similarity:.2f})")
         
         # Filtrar canciones
         for track in results.get("tracks", []):
             artist_similarity = similarity_ratio(track.artist, search_term)
+            artist_lower = track.artist.lower()
             
-            if artist_similarity >= SIMILARITY_THRESHOLD or search_lower in track.artist.lower():
+            # MEJORADO: Mantener si el término está contenido en el artista
+            if (search_lower in artist_lower or 
+                artist_lower.startswith(search_lower) or
+                artist_similarity >= SIMILARITY_THRESHOLD):
                 filtered["tracks"].append(track)
             else:
                 print(f"   ✗ Canción filtrada: {track.artist} - {track.title}")
@@ -692,10 +707,12 @@ Responde ahora de forma natural y conversacional:"""
         
         # ESTRATEGIA 2: Buscar patrón "de [artista]" (más flexible)
         # Acepta variaciones: "de oasis", "de Pink Floyd", "mejor disco de X", etc.
-        # MEJORADO: Captura mejor "mejor disco de X", "álbum de X", etc.
+        # MEJORADO: Captura mejor "mejor disco de X", "álbum de X", "de el mató", etc.
         de_patterns = [
-            r'(?:mejor disco|mejor álbum|disco|álbum)\s+de\s+([a-zA-Z][a-zA-Z\s]+?)(?:\s+tengo|\s+teengo|\s+en|\?|$)',
-            r'de\s+([a-zA-Z][a-zA-Z\s]+?)(?:\s+tengo|\s+teengo|\s+en|\?|$)'
+            # Patrón específico para "mejor disco/álbum de X"
+            r'(?:mejor\s+)?(?:disco|álbum|album)\s+de\s+(.+?)(?:\?|$)',
+            # Patrón general "de X"
+            r'\bde\s+([a-zA-Záéíóúñ][a-zA-Záéíóúñ\s]+?)(?:\s+tengo|\s+teengo|\s+en|\?|$)'
         ]
         
         for de_pattern in de_patterns:
@@ -704,8 +721,11 @@ Responde ahora de forma natural y conversacional:"""
                 result = de_match.group(1).strip()
                 # Limpiar palabras comunes al final
                 result = re.sub(r'\s+(tengo|teengo|en|mi|tu|biblioteca)$', '', result, flags=re.IGNORECASE)
-                print(f"🔍 Término extraído (patrón 'de'): '{result}'")
-                return result
+                # Limpiar interrogantes y espacios
+                result = result.rstrip('? ').strip()
+                if result and len(result) > 2:
+                    print(f"🔍 Término extraído (patrón 'de'): '{result}'")
+                    return result
         
         # ESTRATEGIA 3: Buscar después de palabras clave específicas
         keywords_patterns = [

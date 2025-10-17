@@ -162,10 +162,66 @@ Para probar el fix:
 3. **Recomendaciones inteligentes**: Combina posesión personal + popularidad global
 4. **Coherencia**: Mismo comportamiento para preguntas similares
 
+## Cambios Adicionales (Fix v2)
+
+### Problema: El filtro seguía descartando resultados
+
+Después del primer fix, el sistema seguía diciendo "En tu biblioteca no encuentro nada" porque:
+- El término extraído era "el mató"
+- Navidrome devolvía "El Mató a un Policía Motorizado"
+- El filtro de similitud (60%) lo descartaba porque "el mató" vs "El Mató a un Policía Motorizado" tenía baja similitud
+
+### Solución: Filtro mejorado con búsqueda por contenido
+
+**Archivo:** `backend/services/music_agent_service.py`
+
+#### Cambio 1: Filtro de álbumes más permisivo (líneas 621-638)
+```python
+# ANTES: Solo usaba similitud de 60%
+if artist_similarity >= SIMILARITY_THRESHOLD or search_lower in album.artist.lower():
+
+# DESPUÉS: Verifica si el término está CONTENIDO en el nombre
+if (search_lower in artist_lower or 
+    artist_lower.startswith(search_lower) or
+    artist_similarity >= SIMILARITY_THRESHOLD or 
+    search_lower in album.name.lower()):
+```
+
+Ahora mantiene resultados si:
+1. El término de búsqueda está **contenido** en el nombre del artista
+2. El nombre del artista **comienza** con el término
+3. La similitud es ≥ 60%
+4. El término está en el nombre del álbum
+
+#### Cambio 2: Filtro de artistas mejorado (líneas 640-652)
+Similar mejora para artistas: busca por contenido además de similitud.
+
+#### Cambio 3: Filtro de canciones mejorado (líneas 654-665)
+Similar mejora para canciones.
+
+#### Cambio 4: Extracción de términos más robusta (líneas 708-728)
+```python
+# MEJORADO: Captura mejor nombres sin mayúsculas
+de_patterns = [
+    # Patrón específico para "mejor disco/álbum de X"
+    r'(?:mejor\s+)?(?:disco|álbum|album)\s+de\s+(.+?)(?:\?|$)',
+    # Patrón general "de X"
+    r'\bde\s+([a-zA-Záéíóúñ][a-zA-Záéíóúñ\s]+?)(?:\s+tengo|\s+teengo|\s+en|\?|$)'
+]
+```
+
+Ahora:
+- Captura todo después de "disco de" hasta el "?"
+- Soporta caracteres con acentos (áéíóúñ)
+- Más permisivo con nombres en minúsculas
+
 ## Notas Adicionales
 
 - La palabra "mejor" ahora también activa la búsqueda de música nueva (`needs_new_music`)
-- El filtrado de resultados irrelevantes de Navidrome se mantiene (similitud > 60%)
+- El filtrado ahora usa **búsqueda por contenido** además de similitud
+- "el mató" encuentra "El Mató a un Policía Motorizado" ✅
+- "pink" encuentra "Pink Floyd" ✅
+- "radio" encuentra "Radiohead" ✅
 - El sistema sigue priorizando la biblioteca sobre fuentes externas
 - Las conversaciones mantienen el contexto entre mensajes
 
