@@ -1117,9 +1117,9 @@ Genera las {limit} recomendaciones ahora:"""
             
             # Detectar idioma
             if 'español' in description_lower or 'castellano' in description_lower:
-                special_instructions.append("CRÍTICO: Solo canciones en ESPAÑOL (artistas españoles o latinoamericanos)")
+                special_instructions.append("CRÍTICO: Solo canciones en ESPAÑOL (artistas españoles o latinoamericanos). RECHAZA artistas anglosajones como Pink Floyd, Oasis en inglés, Prodigy, etc.")
             elif 'inglés' in description_lower or 'english' in description_lower:
-                special_instructions.append("CRÍTICO: Solo canciones en INGLÉS")
+                special_instructions.append("CRÍTICO: Solo canciones en INGLÉS. RECHAZA artistas hispanos.")
             
             # Detectar década/año
             decades = ['60', '70', '80', '90', '2000', '2010', '2020']
@@ -1244,12 +1244,22 @@ Selecciona ahora (máximo {min(target_count, sample_size)} canciones):"""
                 text_clean = text_clean.replace(word, ' ')
             text_clean = ' '.join(text_clean.split())  # Normalizar espacios
             
-            # Si queda algo significativo (más de 3 palabras o 15 caracteres)
+            # Si queda algo significativo después de quitar géneros/idiomas
+            # Podría ser un nombre de artista
+            # Criterios: más de 2 caracteres Y (más de 2 palabras O más de 8 caracteres)
             # Y no contiene números (que indicarían cantidad de canciones)
-            if (len(text_clean) > 15 or len(text_clean.split()) >= 4) and not any(char.isdigit() for char in text_clean):
-                # Podría ser un nombre de artista (ej: "el mató a un policía motorizado")
-                print(f"🤔 Texto ambiguo, podría ser nombre de artista: '{text_clean}'")
-                artists.append(text_clean.strip())
+            text_clean = text_clean.strip()
+            word_count = len(text_clean.split())
+            char_count = len(text_clean)
+            
+            if text_clean and not any(char.isdigit() for char in text_clean):
+                # Casos válidos:
+                # - Nombres largos: "el mató a un policía motorizado" (3+ palabras)
+                # - Nombres cortos pero únicos: "oasis", "queen", "muse" (1 palabra pero >2 chars)
+                if word_count >= 3 or (word_count >= 1 and char_count > 3):
+                    # Podría ser un nombre de artista
+                    print(f"🤔 Texto ambiguo, podría ser nombre de artista: '{text_clean}'")
+                    artists.append(text_clean)
         
         # ESTRATEGIA 3: Detectar nombres propios (palabras con mayúscula)
         # Solo si aún no se encontraron artistas
