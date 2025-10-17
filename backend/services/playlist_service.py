@@ -47,11 +47,26 @@ class PlaylistService:
                 
                 # Agregar ruta del archivo
                 if track.path:
-                    # Navidrome espera rutas que empiecen con /music/
-                    # Si la ruta no empieza con /, agregarla
-                    file_path = track.path
-                    if not file_path.startswith('/'):
-                        file_path = f"/music/{file_path}"
+                    # Construir ruta limpia: /music/Artista/Album/Titulo.ext
+                    import os
+                    import re
+                    
+                    # Obtener la extensión del archivo original
+                    _, ext = os.path.splitext(track.path)
+                    
+                    # Construir nombre de archivo limpio sin números de pista
+                    # Usar el título de la canción directamente
+                    clean_filename = f"{title_info}{ext}"
+                    
+                    # Construir ruta completa: /music/Artista/Album/Titulo.ext
+                    if track.artist and track.album:
+                        file_path = f"/music/{track.artist}/{track.album}/{clean_filename}"
+                    else:
+                        # Fallback: usar la ruta original con /music/
+                        file_path = track.path
+                        if not file_path.startswith('/'):
+                            file_path = f"/music/{file_path}"
+                    
                     m3u_content += f"{file_path}\n"
                 elif track.id:
                     # Si no hay path pero hay ID, usar la URL de streaming de Navidrome
