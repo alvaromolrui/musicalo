@@ -764,14 +764,34 @@ Genera las {limit} recomendaciones ahora:"""
                                 added_count = 0
                                 for track in search_results.get('tracks', []):
                                     if track.id not in seen_ids:
-                                        # Verificar que el género coincida (filtro adicional)
-                                        if track.genre and genre.lower() in track.genre.lower():
+                                        # Verificar que el género coincida (filtro más flexible)
+                                        if track.genre and (
+                                            genre.lower() in track.genre.lower() or 
+                                            track.genre.lower() in genre.lower() or
+                                            any(word in track.genre.lower() for word in genre.lower().split())
+                                        ):
                                             all_tracks.append(track)
                                             seen_ids.add(track.id)
                                             added_count += 1
                                 print(f"   ✓ Género '{genre}' (search): {added_count} canciones nuevas")
                             except Exception as e:
                                 print(f"   ⚠️ Error con search para '{genre}': {e}")
+                        
+                        # ESTRATEGIA 2.5: Si no encuentra nada, buscar sin filtro de género
+                        if len(all_tracks) < 10:
+                            print(f"   🔄 Pocas canciones encontradas, buscando sin filtro de género...")
+                            for genre in valid_genres:
+                                try:
+                                    search_results = await self.navidrome.search(genre, limit=50)
+                                    added_count = 0
+                                    for track in search_results.get('tracks', []):
+                                        if track.id not in seen_ids:
+                                            all_tracks.append(track)
+                                            seen_ids.add(track.id)
+                                            added_count += 1
+                                    print(f"   ✓ Género '{genre}' (sin filtro): {added_count} canciones nuevas")
+                                except Exception as e:
+                                    print(f"   ⚠️ Error sin filtro para '{genre}': {e}")
                     else:
                         print(f"⚠️ Ninguno de los géneros detectados existe en la biblioteca")
                         print(f"   Detectados: {genres_detected}")
@@ -1193,91 +1213,90 @@ Selecciona ahora (máximo {min(target_count, sample_size)} canciones):"""
         # Mapeo inteligente de géneros con relaciones y variaciones
         # Cada entrada mapea a géneros reales que pueden existir en la biblioteca
         genre_mappings = {
-            # ROCK y variaciones
+            # ROCK y variaciones (usando nombres exactos de la biblioteca)
             'rock': [
-                'rock', 'rocanrol', 'alternative & indie', 'alternative', 
-                'alternativ und indie', 'alternatif et indé', 'indie rock'
+                'Rock', 'Alternative', 'Alternativ und Indie', 'Alternatif et Indé'
             ],
             
-            # INDIE y variaciones
+            # INDIE y variaciones (usando nombres exactos de la biblioteca)
             'indie': [
-                'indie', 'independiente', 'alternative & indie', 'alternative',
-                'alternativ und indie', 'alternatif et indé', 'latin indie', 
-                'mexican indie', 'indie rock', 'indie pop'
+                'Alternative', 'Alternativ und Indie', 'Alternatif et Indé'
             ],
             
             # POP
-            'pop': ['pop', 'indie pop'],
+            'pop': ['Pop'],
             
             # JAZZ
-            'jazz': ['jazz'],
+            'jazz': ['Jazz'],
             
             # BLUES
-            'blues': ['blues'],
+            'blues': ['Blues'],
             
             # METAL
-            'metal': ['metal', 'heavy metal'],
+            'metal': ['Metal', 'Heavy Metal'],
             
             # PUNK
-            'punk': ['punk', 'egg punk'],
+            'punk': ['Punk'],
             
             # FOLK
-            'folk': ['folk', 'folclore'],
+            'folk': ['Folk'],
             
             # ELECTRÓNICA
-            'electronic': ['electronica', 'electrónica', 'electronic', 'electro'],
+            'electronic': ['Electronica', 'Electronic'],
             
-            # HIP HOP / RAP (son el mismo género en tu biblioteca)
-            'hip hop': ['hip-hop', 'hip hop', 'hiphop', 'rap'],
-            'rap': ['hip-hop', 'hip hop', 'hiphop', 'rap'],
+            # HIP HOP / RAP
+            'hip hop': ['Hip-Hop', 'Rap'],
+            'rap': ['Hip-Hop', 'Rap'],
             
             # REGGAE
-            'reggae': ['reggae'],
+            'reggae': ['Reggae'],
             
             # COUNTRY
-            'country': ['country'],
+            'country': ['Country'],
             
             # CLÁSICA
-            'classical': ['clasica', 'clásica', 'classical'],
+            'classical': ['Classical'],
             
             # ALTERNATIVO (mapea a varios géneros relacionados)
             'alternative': [
-                'alternative', 'alternative & indie', 'alternativ und indie', 
-                'alternatif et indé', 'latin alternative'
+                'Alternative', 'Alternativ und Indie', 'Alternatif et Indé'
             ],
             
             # SKA
-            'ska': ['ska'],
+            'ska': ['Ska'],
             
             # SOUL
-            'soul': ['soul'],
+            'soul': ['Soul'],
             
             # FUNK
-            'funk': ['funk'],
+            'funk': ['Funk'],
             
             # DISCO
-            'disco': ['disco'],
+            'disco': ['Disco'],
             
             # GRUNGE
-            'grunge': ['grunge'],
+            'grunge': ['Grunge'],
             
             # PROGRESSIVE
-            'progressive': ['progresivo', 'progresiva', 'progressive', 'prog'],
+            'progressive': ['Progressive'],
             
             # FLAMENCO
-            'flamenco': ['flamenco'],
+            'flamenco': ['Flamenco'],
             
-            # LATIN (mapea a varios géneros latinos)
-            'latin': ['latin', 'latina', 'latino', 'latin indie', 'latin alternative', 'mexican indie'],
+            # LATIN
+            'latin': ['Latin'],
             
             # SALSA
-            'salsa': ['salsa'],
+            'salsa': ['Salsa'],
             
             # RUMBA
-            'rumba': ['rumba'],
+            'rumba': ['Rumba'],
             
             # WORLD MUSIC
-            'world': ['world music', 'world'],
+            'world': ['World Music'],
+            
+            # OTHER
+            'other': ['Other'],
         }
         
         detected_genres = []
