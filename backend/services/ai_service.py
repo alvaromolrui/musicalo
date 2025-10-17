@@ -1061,17 +1061,54 @@ Genera las {limit} recomendaciones ahora:"""
                 year_text = f" ({track.year})" if track.year else ""
                 tracks_text += f"{i}. {track.artist} - {track.title}{genre_text}{year_text}\n"
             
+            # Detectar especificaciones en la descripción
+            description_lower = description.lower()
+            special_instructions = []
+            
+            # Detectar idioma
+            if 'español' in description_lower or 'castellano' in description_lower:
+                special_instructions.append("CRÍTICO: Solo canciones en ESPAÑOL (artistas españoles o latinoamericanos)")
+            elif 'inglés' in description_lower or 'english' in description_lower:
+                special_instructions.append("CRÍTICO: Solo canciones en INGLÉS")
+            
+            # Detectar década/año
+            decades = ['60', '70', '80', '90', '2000', '2010', '2020']
+            for decade in decades:
+                if decade in description_lower or f'{decade}s' in description_lower:
+                    special_instructions.append(f"CRÍTICO: Priorizar música de los años {decade}")
+            
+            # Detectar características especiales
+            if 'acústic' in description_lower:
+                special_instructions.append("IMPORTANTE: Preferir versiones acústicas o unplugged")
+            if 'en vivo' in description_lower or 'live' in description_lower:
+                special_instructions.append("IMPORTANTE: Preferir grabaciones en vivo")
+            if 'relajant' in description_lower or 'chill' in description_lower or 'tranquil' in description_lower:
+                special_instructions.append("IMPORTANTE: Música relajante, tempo lento")
+            if 'energétic' in description_lower or 'enérgic' in description_lower or 'rock duro' in description_lower:
+                special_instructions.append("IMPORTANTE: Música energética, tempo rápido")
+            
+            special_text = "\n".join([f"⚠️ {inst}" for inst in special_instructions]) if special_instructions else ""
+            
+            # Log de especificaciones detectadas
+            if special_instructions:
+                print(f"🎯 Especificaciones detectadas:")
+                for inst in special_instructions:
+                    print(f"   • {inst}")
+            
             prompt = f"""Analiza esta lista de canciones y selecciona las que mejor coincidan con: "{description}"
+
+{special_text}
 
 Canciones disponibles:
 {tracks_text}
 
 INSTRUCCIONES:
 1. Selecciona las {min(target_count, sample_size)} canciones que MEJOR se ajusten a la descripción
-2. Considera género, estilo, idioma, época según la descripción
-3. Prioriza DIVERSIDAD de artistas (máximo 2-3 canciones por artista)
-4. Responde SOLO con los números separados por comas
-5. Ejemplo: 1,5,8,12,15,20,23,27,30,35,40,42,45,48,50
+2. Si hay instrucciones CRÍTICAS arriba, DEBES seguirlas estrictamente
+3. Considera: género, estilo, IDIOMA del artista, época según la descripción
+4. Prioriza DIVERSIDAD de artistas (máximo 2-3 canciones por artista)
+5. Responde SOLO con los números separados por comas
+6. Ejemplo: 1,5,8,12,15,20,23,27,30,35,40,42,45,48,50
 
 Selecciona ahora (máximo {min(target_count, sample_size)} canciones):"""
 
