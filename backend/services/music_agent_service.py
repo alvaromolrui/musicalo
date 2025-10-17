@@ -256,48 +256,89 @@ Responde ahora de forma natural y conversacional:"""
         # Detectar palabras clave para optimizar búsquedas
         query_lower = query.lower()
         
+        # Detectar si es una petición de RECOMENDACIÓN
+        is_recommendation_request = any(word in query_lower for word in [
+            "recomienda", "recomiéndame", "sugerencia", "sugiere", "sugiéreme",
+            "ponme", "pon", "quiero escuchar", "dame"
+        ])
+        
+        # Detectar géneros musicales comunes
+        music_genres = {
+            'rock', 'pop', 'jazz', 'blues', 'metal', 'punk', 'indie', 'folk',
+            'electrónica', 'electronica', 'house', 'techno', 'hip hop', 'rap',
+            'reggae', 'country', 'clásica', 'clasica', 'alternativo', 'alternativa',
+            'ska', 'soul', 'funk', 'disco', 'grunge', 'progressive', 'prog'
+        }
+        detected_genre = None
+        for genre in music_genres:
+            if genre in query_lower:
+                detected_genre = genre
+                break
+        
         # Detectar menciones de artistas/álbumes/discos (buscar en biblioteca)
-        # MEJORADO: También buscar cuando preguntan por "mejor disco de", "álbum de", etc.
         needs_library_search = any(word in query_lower for word in [
             "tengo", "teengo", "biblioteca", "colección", "poseo", 
             "álbum", "album", "disco", "álbumes", "albums", "discos",
             "mejor disco de", "mejor álbum de", "disco de", "álbum de",
-            "discografía", "música de", "canciones de", "temas de"
+            "discografía", "música de", "canciones de", "temas de", "mi biblioteca"
         ])
         
         needs_listening_history = any(word in query_lower for word in [
             "escuché", "escuchado", "última", "reciente", "top", "favorito", "estadística", "últimos"
         ])
         
-        # NUEVO: Detectar cuando el usuario pide descubrir música nueva
+        # Detectar cuando el usuario pide descubrir música nueva (que NO tenga)
         needs_new_music = any(word in query_lower for word in [
-            "nuevo", "nueva", "nuevos", "nuevas", "no tenga", "descubrir", 
-            "recomienda", "recomiéndame", "sugerencia", "otra cosa", "mejor"
-        ])
+            "nuevo", "nueva", "nuevos", "nuevas", "no tenga", "no tengo", "descubrir"
+        ]) and not any(word in query_lower for word in ["mi biblioteca", "tengo", "teengo"])
         
-        # Extraer término de búsqueda real (eliminar palabras comunes)
-        search_term = self._extract_search_term(query) if needs_library_search else query
+        # Extraer término de búsqueda 
+        # Si es recomendación + género, no extraer término (usar género)
+        if is_recommendation_request and detected_genre:
+            search_term = None  # No buscar artista específico
+        elif needs_library_search:
+            search_term = self._extract_search_term(query)
+        else:
+            search_term = None
         
         # Datos de biblioteca (Navidrome)
-        if needs_library_search and search_term:
+        if needs_library_search:
             try:
-                print(f"🔍 Buscando en biblioteca: '{search_term}' (query original: '{query}')")
-                # Búsqueda en biblioteca con el término extraído
-                search_results = await self.navidrome.search(search_term, limit=20)
+                # Si es recomendación por género, buscar el género
+                if is_recommendation_request and detected_genre and not search_term:
+                    print(f"🔍 Buscando en biblioteca por GÉNERO: '{detected_genre}' (query: '{query}')")
+                    # Buscar por género (Navidrome puede buscar por tags/géneros)
+                    search_results = await self.navidrome.search(detected_genre, limit=50)
+                    data["library"]["search_results"] = search_results
+                    data["library"]["search_term"] = detected_genre
+                    data["library"]["is_genre_search"] = True
+                    data["library"]["detected_genre"] = detected_genre
+                    
+                    if any(search_results.values()):
+                        data["library"]["has_content"] = True
+                        print(f"✅ Encontrado {len(search_results.get('albums', []))} álbumes, {len(search_results.get('artists', []))} artistas de género '{detected_genre}'")
+                    else:
+                        data["library"]["has_content"] = False
+                        print(f"⚠️ No se encontraron resultados para género '{detected_genre}'")
                 
-                # FILTRAR resultados para mantener solo los que realmente coincidan con el artista
-                filtered_results = self._filter_relevant_results(search_results, search_term)
-                
-                data["library"]["search_results"] = filtered_results
-                data["library"]["search_term"] = search_term
-                
-                # Si la búsqueda devuelve resultados, agregar más contexto
-                if any(filtered_results.values()):
-                    data["library"]["has_content"] = True
-                    print(f"✅ Encontrado en biblioteca (después de filtrar): {len(filtered_results.get('tracks', []))} tracks, {len(filtered_results.get('albums', []))} álbumes, {len(filtered_results.get('artists', []))} artistas")
-                else:
-                    data["library"]["has_content"] = False
-                    print(f"⚠️ No se encontraron resultados relevantes en biblioteca para '{search_term}'")
+                # Si hay un artista específico, buscar por artista
+                elif search_term:
+                    print(f"🔍 Buscando en biblioteca por ARTISTA: '{search_term}' (query: '{query}')")
+                    search_results = await self.navidrome.search(search_term, limit=20)
+                    
+                    # FILTRAR resultados para mantener solo los que realmente coincidan
+                    filtered_results = self._filter_relevant_results(search_results, search_term)
+                    
+                    data["library"]["search_results"] = filtered_results
+                    data["library"]["search_term"] = search_term
+                    data["library"]["is_genre_search"] = False
+                    
+                    if any(filtered_results.values()):
+                        data["library"]["has_content"] = True
+                        print(f"✅ Encontrado: {len(filtered_results.get('tracks', []))} tracks, {len(filtered_results.get('albums', []))} álbumes, {len(filtered_results.get('artists', []))} artistas")
+                    else:
+                        data["library"]["has_content"] = False
+                        print(f"⚠️ No se encontraron resultados para '{search_term}'")
                     
             except Exception as e:
                 print(f"⚠️ Error obteniendo datos de Navidrome: {e}")
@@ -427,21 +468,34 @@ Responde ahora de forma natural y conversacional:"""
         if data.get("library"):
             lib = data["library"]
             search_term = lib.get("search_term", "")
+            is_genre_search = lib.get("is_genre_search", False)
+            detected_genre = lib.get("detected_genre", "")
             
             if lib.get("search_results"):
                 results = lib["search_results"]
                 
+                # Si es búsqueda por género, indicarlo claramente
+                if is_genre_search:
+                    formatted += f"\n📚 === BIBLIOTECA LOCAL - BÚSQUEDA POR GÉNERO ===\n"
+                    formatted += f"🎸 GÉNERO DETECTADO: {detected_genre.upper()}\n"
+                    formatted += f"💡 El usuario pide RECOMENDACIÓN de {detected_genre} de su biblioteca\n\n"
+                
                 # Priorizar álbumes si existen
                 if results.get("albums"):
-                    formatted += f"\n📚 === BIBLIOTECA LOCAL === \n"
-                    formatted += f"📀 ÁLBUMES ENCONTRADOS PARA '{search_term.upper()}' ({len(results['albums'])}):\n"
-                    formatted += f"⚠️ IMPORTANTE: Verifica que el ARTISTA coincida con lo solicitado\n\n"
-                    for i, album in enumerate(results["albums"][:15], 1):
-                        formatted += f"  {i}. ARTISTA: {album.artist} | ÁLBUM: {album.name}"
+                    if not is_genre_search:
+                        formatted += f"\n📚 === BIBLIOTECA LOCAL === \n"
+                        formatted += f"📀 ÁLBUMES ENCONTRADOS PARA '{search_term.upper()}' ({len(results['albums'])}):\n"
+                        formatted += f"⚠️ IMPORTANTE: Verifica que el ARTISTA coincida con lo solicitado\n\n"
+                    else:
+                        formatted += f"📀 ÁLBUMES DE {detected_genre.upper()} EN BIBLIOTECA ({len(results['albums'])}):\n"
+                        formatted += f"💡 Recomienda UNO O VARIOS de estos según el gusto del usuario\n\n"
+                    
+                    for i, album in enumerate(results["albums"][:20], 1):
+                        formatted += f"  {i}. {album.artist} - {album.name}"
                         if album.year:
                             formatted += f" ({album.year})"
                         if album.track_count:
-                            formatted += f" - {album.track_count} canciones"
+                            formatted += f" [{album.track_count} canciones]"
                         formatted += "\n"
                     formatted += "\n"
                 
