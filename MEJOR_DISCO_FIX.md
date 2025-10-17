@@ -215,13 +215,90 @@ Ahora:
 - Soporta caracteres con acentos (áéíóúñ)
 - Más permisivo con nombres en minúsculas
 
+## Cambios Adicionales (Fix v3)
+
+### Problema: Extraía "CUAL" en lugar del nombre del artista
+
+Después del fix v2, surgió un nuevo problema:
+- Query: `"Cual es el mejor disco de el mató?"`
+- Extraía: `"CUAL"` (palabra de la pregunta) ❌
+- Esperado: `"el mató"` ✅
+
+**Causa:** La estrategia de buscar palabras con mayúsculas se ejecutaba ANTES de buscar el patrón "de [artista]", capturando "Cual" porque está al inicio de la oración.
+
+### Solución: Reordenar estrategias y filtrar palabras interrogativas
+
+**Archivo:** `backend/services/music_agent_service.py` (líneas 699-738)
+
+#### Cambio 1: Priorizar patrón "de [artista]" (ahora Estrategia 1)
+```python
+# ANTES: Estrategia 1 era buscar mayúsculas
+# DESPUÉS: Estrategia 1 es buscar patrón "de [artista]"
+
+de_patterns = [
+    # Específico: "mejor/peor disco/álbum de X"
+    r'(?:mejor|peor)\s+(?:disco|álbum|album)\s+de\s+(.+?)(?:\?|$)',
+    # General: "disco/álbum de X"
+    r'(?:disco|álbum|album)\s+de\s+(.+?)(?:\?|$)',
+    # Muy general: "de X"
+    r'\bde\s+([a-záéíóúñ][a-záéíóúñ\s]+?)(?:\?|$)'
+]
+```
+
+#### Cambio 2: Mayúsculas como Estrategia 2 con filtro (líneas 725-738)
+```python
+# Buscar mayúsculas PERO filtrar palabras interrogativas
+capitalized_pattern = r'\b([A-Z][a-záéíóúñ]+(?:\s+[A-Z][a-záéíóúñ]+)*)\b'
+cap_matches = re.findall(capitalized_pattern, query)
+
+if cap_matches:
+    # Filtrar palabras interrogativas
+    question_words = {'cual', 'cuál', 'qué', 'que', 'quién', ...}
+    filtered_matches = [m for m in cap_matches 
+                       if m.lower() not in question_words 
+                       and m.lower() not in stop_words]
+```
+
+#### Cambio 3: Validación adicional de stop words
+Ahora verifica que el resultado NO sea solo stop words antes de devolverlo.
+
+### Resultado del Fix v3
+
+**Test realizado:**
+```python
+Query: "Cual es el mejor disco de el mato?" 
+Resultado: "el mato" ✅
+
+Query: "Cual es el mejor disco de El Mato?"
+Resultado: "El Mato" ✅
+
+Query: "mejor disco de Pink Floyd"
+Resultado: "Pink Floyd" ✅
+```
+
+### Orden de Estrategias Final
+
+1. **Estrategia 1** (MÁS CONFIABLE): Patrón "de [artista]"
+2. **Estrategia 2**: Mayúsculas filtradas (sin palabras interrogativas)
+3. **Estrategia 3**: Keywords específicas
+4. **Estrategia 4**: Filtrado de stop words general
+
 ## Notas Adicionales
 
 - La palabra "mejor" ahora también activa la búsqueda de música nueva (`needs_new_music`)
 - El filtrado ahora usa **búsqueda por contenido** además de similitud
-- "el mató" encuentra "El Mató a un Policía Motorizado" ✅
-- "pink" encuentra "Pink Floyd" ✅
-- "radio" encuentra "Radiohead" ✅
+- La extracción de términos **prioriza patrones específicos** sobre heurísticas generales
+- Resultados de prueba:
+  - `"el mató"` encuentra `"El Mató a un Policía Motorizado"` ✅
+  - `"pink"` encuentra `"Pink Floyd"` ✅
+  - `"radio"` encuentra `"Radiohead"` ✅
+  - `"Cual es el mejor disco de el mató?"` → extrae `"el mató"` (no "CUAL") ✅
 - El sistema sigue priorizando la biblioteca sobre fuentes externas
 - Las conversaciones mantienen el contexto entre mensajes
+
+## Resumen de Commits
+
+- **bf0f476**: Fix v1 - Detección y consulta mejorada en ambas fuentes
+- **7b828dd**: Fix v2 - Filtro por contenido para nombres parciales
+- **abaa4f1**: Fix v3 - Priorizar patrón sobre mayúsculas, evitar "CUAL"
 
