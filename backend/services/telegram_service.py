@@ -46,16 +46,21 @@ class TelegramService:
             print("💡 Para hacerlo privado, configura TELEGRAM_ALLOWED_USER_IDS en .env")
         
         # Detectar qué servicio de scrobbling usar
+        # PRIORIDAD: ListenBrainz > Last.fm (ListenBrainz tiene mejor API y sin límites)
         self.lastfm = None
-        if os.getenv("LASTFM_API_KEY") and os.getenv("LASTFM_USERNAME"):
+        if os.getenv("LISTENBRAINZ_USERNAME"):
+            self.music_service = self.listenbrainz
+            self.music_service_name = "ListenBrainz"
+            print("✅ Usando ListenBrainz para datos de escucha")
+            # Mantener Last.fm disponible para descubrimiento si está configurado
+            if os.getenv("LASTFM_API_KEY") and os.getenv("LASTFM_USERNAME"):
+                self.lastfm = LastFMService()
+                print("✅ Last.fm también disponible para descubrimiento")
+        elif os.getenv("LASTFM_API_KEY") and os.getenv("LASTFM_USERNAME"):
             self.lastfm = LastFMService()
             self.music_service = self.lastfm
             self.music_service_name = "Last.fm"
             print("✅ Usando Last.fm para datos de escucha")
-        elif os.getenv("LISTENBRAINZ_USERNAME"):
-            self.music_service = self.listenbrainz
-            self.music_service_name = "ListenBrainz"
-            print("✅ Usando ListenBrainz para datos de escucha")
         else:
             self.music_service = None
             self.music_service_name = None
