@@ -725,8 +725,22 @@ Genera las {limit} recomendaciones ahora:"""
                 
                 print(f"✅ Encontradas {len(all_tracks)} canciones de los artistas especificados")
             
-            # PASO 2: Si no hay artistas específicos o no se encontraron suficientes, usar keywords
+            # PASO 2: Si no hay artistas específicos o no se encontraron suficientes, buscar por género/keywords
             if len(all_tracks) < limit:
+                # Intentar detectar género musical
+                genres_detected = self._extract_genres(description)
+                if genres_detected:
+                    print(f"🎸 Géneros detectados: {genres_detected}")
+                    for genre in genres_detected:
+                        # Buscar por género en Navidrome
+                        genre_tracks = await self.navidrome.get_tracks(limit=100, genre=genre)
+                        for track in genre_tracks:
+                            if track.id not in seen_ids:
+                                all_tracks.append(track)
+                                seen_ids.add(track.id)
+                        print(f"   ✓ Género '{genre}': {len(genre_tracks)} canciones")
+                
+                # También buscar por keywords generales
                 keywords = self._extract_keywords(description)
                 print(f"🔑 Palabras clave extraídas: {keywords}")
                 
@@ -1109,6 +1123,65 @@ Selecciona ahora (máximo {min(target_count, sample_size)} canciones):"""
                     return count
         
         return None
+    
+    def _extract_genres(self, text: str) -> List[str]:
+        """Extraer géneros musicales de la descripción
+        
+        Args:
+            text: Texto de la descripción
+            
+        Returns:
+            Lista de géneros musicales detectados
+        """
+        text_lower = text.lower()
+        
+        # Diccionario de géneros comunes y sus variaciones
+        genre_patterns = {
+            'rock': ['rock', 'rocanrol'],
+            'indie': ['indie', 'independiente'],
+            'pop': ['pop'],
+            'jazz': ['jazz'],
+            'blues': ['blues'],
+            'metal': ['metal', 'heavy metal'],
+            'punk': ['punk'],
+            'folk': ['folk', 'folclore'],
+            'electronic': ['electronica', 'electrónica', 'electronic', 'electro'],
+            'hip hop': ['hip hop', 'hiphop', 'rap'],
+            'reggae': ['reggae'],
+            'country': ['country'],
+            'classical': ['clasica', 'clásica', 'classical'],
+            'alternative': ['alternativo', 'alternativa', 'alternative'],
+            'ska': ['ska'],
+            'soul': ['soul'],
+            'funk': ['funk'],
+            'disco': ['disco'],
+            'grunge': ['grunge'],
+            'progressive': ['progresivo', 'progresiva', 'progressive', 'prog'],
+            'flamenco': ['flamenco'],
+            'latin': ['latina', 'latino', 'latin'],
+            'salsa': ['salsa'],
+            'rumba': ['rumba'],
+            'indie rock': ['indie rock'],
+            'indie pop': ['indie pop'],
+        }
+        
+        detected_genres = []
+        
+        for genre, patterns in genre_patterns.items():
+            for pattern in patterns:
+                if pattern in text_lower:
+                    detected_genres.append(genre)
+                    break  # Solo agregar una vez por género
+        
+        # Eliminar duplicados manteniendo orden
+        unique_genres = []
+        seen = set()
+        for genre in detected_genres:
+            if genre not in seen:
+                unique_genres.append(genre)
+                seen.add(genre)
+        
+        return unique_genres
     
     def _extract_keywords(self, text: str) -> List[str]:
         """Extraer palabras clave de una descripción

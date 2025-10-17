@@ -690,47 +690,23 @@ Sé todo lo detallado que quieras:
             
             recommendations = library_recommendations
             library_count = len(library_recommendations)
-            external_count = 0
             
             print(f"✅ Obtenidas {library_count} recomendaciones de biblioteca")
             
-            # 2. Si no hay suficientes de la biblioteca, complementar con Last.fm
-            if len(recommendations) < 10 and self.music_service:
-                print(f"📡 PASO 2: Complementando con música de Last.fm...")
-                
-                recent_tracks = await self.music_service.get_recent_tracks(limit=20)
-                top_artists = await self.music_service.get_top_artists(limit=10)
-                
-                from models.schemas import UserProfile
-                user_profile = UserProfile(
-                    recent_tracks=recent_tracks,
-                    top_artists=top_artists,
-                    favorite_genres=[],
-                    mood_preference="",
-                    activity_context=""
-                )
-                
-                # Generar recomendaciones adicionales
-                remaining = 15 - len(recommendations)
-                external_recommendations = await self.ai.generate_recommendations(
-                    user_profile,
-                    limit=remaining,
-                    custom_prompt=description
-                )
-                
-                # Filtrar solo las que NO sean de biblioteca (externas)
-                for rec in external_recommendations:
-                    if rec.source != "biblioteca" and not rec.track.id.startswith('subsonic'):
-                        recommendations.append(rec)
-                        external_count += 1
-                
-                print(f"✅ Agregadas {external_count} recomendaciones externas")
+            # Las playlists SIEMPRE son 100% de tu biblioteca local
+            # No se agregan canciones externas de Last.fm
             
             if not recommendations:
-                await update.message.reply_text("😔 No pude generar playlist con esos criterios.")
+                await update.message.reply_text(
+                    "😔 No encontré suficiente música en tu biblioteca que coincida con esos criterios.\n\n"
+                    "💡 Intenta:\n"
+                    "• Hacer la descripción más general\n"
+                    "• Mencionar artistas que tengas en tu biblioteca\n"
+                    "• Usar géneros que tengas disponibles"
+                )
                 return
             
-            print(f"🎵 TOTAL: {len(recommendations)} canciones ({library_count} de biblioteca, {external_count} externas)")
+            print(f"🎵 TOTAL: {len(recommendations)} canciones de tu biblioteca local")
             
             # 3. Crear archivo M3U
             playlist_name = f"Musicalo - {description[:50]}"
@@ -745,31 +721,15 @@ Sé todo lo detallado que quieras:
             filename = f"playlist_{update.effective_user.id}_{timestamp}"
             filepath = self.playlist_service.save_playlist(m3u_content, filename)
             
-            # 5. Mostrar preview con indicador de origen
+            # 5. Mostrar preview
             tracks = [rec.track for rec in recommendations]
             text = f"🎵 **Playlist creada:** {playlist_name}\n\n"
             text += f"📝 {description}\n\n"
-            
-            # Agregar estadísticas de origen
-            if library_count > 0 or external_count > 0:
-                text += f"📊 **Composición:** "
-                if library_count > 0:
-                    text += f"📚 {library_count} de tu biblioteca"
-                if external_count > 0:
-                    if library_count > 0:
-                        text += f" + "
-                    text += f"🌍 {external_count} externas"
-                text += "\n\n"
-            
+            text += f"📚 **{library_count} canciones de tu biblioteca local**\n\n"
             text += f"🎼 **Canciones ({len(tracks)}):**\n"
             
-            for i, rec in enumerate(recommendations[:10], 1):
-                track = rec.track
-                # Indicar si es de biblioteca o externa
-                source_icon = "📚" if rec.source == "biblioteca" else "🌍"
-                text += f"{i}. {source_icon} {track.artist} - {track.title}\n"
-                if track.path and "last.fm" in str(track.path):
-                    text += f"   🌐 [Last.fm]({track.path})\n"
+            for i, track in enumerate(tracks[:10], 1):
+                text += f"{i}. {track.artist} - {track.title}\n"
             
             if len(tracks) > 10:
                 text += f"\n...y {len(tracks) - 10} más\n"
