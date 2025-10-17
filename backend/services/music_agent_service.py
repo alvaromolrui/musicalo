@@ -108,13 +108,16 @@ class MusicAgentService:
 {self._format_context_for_ai(data_context)}
 
 REGLAS CRÍTICAS:
-1. Si preguntan "qué tengo" → USA SOLO BIBLIOTECA (📚)
-2. Si piden "recomienda", "algo nuevo", "otro disco" → USA BIBLIOTECA + LAST.FM (🌍)
-3. NUNCA digas "no puedo" cuando tienes datos de Last.fm disponibles
-4. Si no está en biblioteca pero SÍ en Last.fm → RECOMIÉNDALO igual
-5. Balance: combina lo que tiene (biblioteca) + descubrimiento (Last.fm)
+1. SIEMPRE consulta PRIMERO la biblioteca (📚) para ver qué tiene el usuario
+2. LUEGO complementa con Last.fm (🌍) para recomendaciones y descubrimientos
+3. Si preguntan "mejor disco/álbum de X":
+   a) Verifica QUÉ TIENE en biblioteca de ese artista
+   b) Combina con recomendaciones de Last.fm
+   c) Responde: "En tu biblioteca tienes X, Y, Z. Según Last.fm, el mejor es..."
+4. Si preguntan "qué tengo de X" → USA SOLO BIBLIOTECA
+5. NUNCA digas "no tienes nada" sin VERIFICAR primero en los datos de biblioteca
 6. VERIFICA coincidencia exacta de artistas - no mezcles artistas diferentes
-7. Sé PROACTIVO: si piden electrónica y no tienen, busca en Last.fm
+7. Sé PROACTIVO: combina siempre biblioteca + descubrimiento
 
 IMPORTANTE - Diferentes tipos de peticiones:
 
@@ -199,17 +202,24 @@ Responde ahora de forma natural y conversacional:"""
         
         # Detectar palabras clave para optimizar búsquedas
         query_lower = query.lower()
+        
+        # Detectar menciones de artistas/álbumes/discos (buscar en biblioteca)
+        # MEJORADO: También buscar cuando preguntan por "mejor disco de", "álbum de", etc.
         needs_library_search = any(word in query_lower for word in [
             "tengo", "teengo", "biblioteca", "colección", "poseo", 
-            "álbum", "album", "disco", "álbumes", "albums", "discos"
+            "álbum", "album", "disco", "álbumes", "albums", "discos",
+            "mejor disco de", "mejor álbum de", "disco de", "álbum de",
+            "discografía", "música de", "canciones de", "temas de"
         ])
+        
         needs_listening_history = any(word in query_lower for word in [
             "escuché", "escuchado", "última", "reciente", "top", "favorito", "estadística", "últimos"
         ])
+        
         # NUEVO: Detectar cuando el usuario pide descubrir música nueva
         needs_new_music = any(word in query_lower for word in [
             "nuevo", "nueva", "nuevos", "nuevas", "no tenga", "descubrir", 
-            "recomienda", "recomiéndame", "sugerencia", "otra cosa"
+            "recomienda", "recomiéndame", "sugerencia", "otra cosa", "mejor"
         ])
         
         # Extraer término de búsqueda real (eliminar palabras comunes)
@@ -277,6 +287,21 @@ Responde ahora de forma natural y conversacional:"""
                         break
             except Exception as e:
                 print(f"⚠️ Error buscando contenido similar: {e}")
+        
+        # NUEVO: Buscar información de Last.fm sobre artistas específicos cuando preguntan por "mejor disco/álbum"
+        if self.lastfm and needs_library_search and search_term and any(word in query_lower for word in ["mejor", "recomend"]):
+            try:
+                print(f"🌍 Buscando información de Last.fm sobre '{search_term}'...")
+                # Obtener top álbumes del artista desde Last.fm
+                top_albums = await self.lastfm.get_artist_top_albums(search_term, limit=10)
+                if top_albums:
+                    data["lastfm_artist_info"] = {
+                        "artist": search_term,
+                        "top_albums": top_albums
+                    }
+                    print(f"✅ Encontrados {len(top_albums)} álbumes de '{search_term}' en Last.fm")
+            except Exception as e:
+                print(f"⚠️ Error obteniendo info de Last.fm para '{search_term}': {e}")
         
         # NUEVO: Buscar música nueva activamente cuando lo pidan
         if needs_new_music and self.music_service:
@@ -406,6 +431,31 @@ Responde ahora de forma natural y conversacional:"""
                     if artist.playcount:
                         formatted += f" ({artist.playcount} escuchas)"
                     formatted += "\n"
+        
+        # Información de Last.fm sobre artista específico
+        if data.get("lastfm_artist_info"):
+            info = data["lastfm_artist_info"]
+            formatted += f"\n🌍 === INFORMACIÓN DE LAST.FM: {info['artist'].upper()} ===\n"
+            formatted += f"📊 TOP ÁLBUMES MÁS POPULARES (según Last.fm):\n\n"
+            for i, album in enumerate(info["top_albums"][:10], 1):
+                # Puede ser dict o objeto
+                if isinstance(album, dict):
+                    album_name = album.get('name', 'Unknown')
+                    playcount = album.get('playcount', 0)
+                    url = album.get('url', '')
+                else:
+                    album_name = getattr(album, 'name', 'Unknown')
+                    playcount = getattr(album, 'playcount', 0)
+                    url = getattr(album, 'url', '')
+                
+                formatted += f"  {i}. {album_name}"
+                if playcount:
+                    formatted += f" - {playcount:,} escuchas globales"
+                if url:
+                    formatted += f" | {url}"
+                formatted += "\n"
+            formatted += "\n💡 IMPORTANTE: Usa esta info para recomendar el mejor álbum\n"
+            formatted += f"💡 Combina lo que tiene en biblioteca + popularidad en Last.fm\n\n"
         
         # Contenido similar
         if data.get("similar_content"):
@@ -641,15 +691,21 @@ Responde ahora de forma natural y conversacional:"""
             return result
         
         # ESTRATEGIA 2: Buscar patrón "de [artista]" (más flexible)
-        # Acepta variaciones: "de oasis", "de Pink Floyd", etc.
-        de_pattern = r'de\s+([a-zA-Z][a-zA-Z\s]+?)(?:\s+tengo|\s+teengo|\s+en|\?|$)'
-        de_match = re.search(de_pattern, query, re.IGNORECASE)
-        if de_match:
-            result = de_match.group(1).strip()
-            # Limpiar palabras comunes al final
-            result = re.sub(r'\s+(tengo|teengo|en|mi|tu|biblioteca)$', '', result, flags=re.IGNORECASE)
-            print(f"🔍 Término extraído (patrón 'de'): '{result}'")
-            return result
+        # Acepta variaciones: "de oasis", "de Pink Floyd", "mejor disco de X", etc.
+        # MEJORADO: Captura mejor "mejor disco de X", "álbum de X", etc.
+        de_patterns = [
+            r'(?:mejor disco|mejor álbum|disco|álbum)\s+de\s+([a-zA-Z][a-zA-Z\s]+?)(?:\s+tengo|\s+teengo|\s+en|\?|$)',
+            r'de\s+([a-zA-Z][a-zA-Z\s]+?)(?:\s+tengo|\s+teengo|\s+en|\?|$)'
+        ]
+        
+        for de_pattern in de_patterns:
+            de_match = re.search(de_pattern, query, re.IGNORECASE)
+            if de_match:
+                result = de_match.group(1).strip()
+                # Limpiar palabras comunes al final
+                result = re.sub(r'\s+(tengo|teengo|en|mi|tu|biblioteca)$', '', result, flags=re.IGNORECASE)
+                print(f"🔍 Término extraído (patrón 'de'): '{result}'")
+                return result
         
         # ESTRATEGIA 3: Buscar después de palabras clave específicas
         keywords_patterns = [
