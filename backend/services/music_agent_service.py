@@ -754,10 +754,22 @@ Responde ahora de forma natural y conversacional:"""
             Resultados filtrados
         """
         from difflib import SequenceMatcher
+        import unicodedata
+        
+        def normalize_text(text: str) -> str:
+            """Normalizar texto: eliminar tildes/acentos y convertir a minúsculas
+            
+            Ej: "Tobogán Andaluz" -> "tobogan andaluz"
+            """
+            # Normalizar caracteres Unicode (NFD separa base + diacríticos)
+            nfd = unicodedata.normalize('NFD', text)
+            # Eliminar diacríticos (categoría 'Mn' = Nonspacing Mark)
+            without_accents = ''.join(c for c in nfd if unicodedata.category(c) != 'Mn')
+            return without_accents.lower()
         
         def similarity_ratio(a: str, b: str) -> float:
-            """Calcular similitud entre dos strings"""
-            return SequenceMatcher(None, a.lower(), b.lower()).ratio()
+            """Calcular similitud entre dos strings (normalizados)"""
+            return SequenceMatcher(None, normalize_text(a), normalize_text(b)).ratio()
         
         # Umbral de similitud (0.6 = 60% similar)
         SIMILARITY_THRESHOLD = 0.6
@@ -768,22 +780,24 @@ Responde ahora de forma natural y conversacional:"""
             "artists": []
         }
         
-        search_lower = search_term.lower()
+        # Normalizar el término de búsqueda
+        search_normalized = normalize_text(search_term)
         
         # Filtrar álbumes
         for album in results.get("albums", []):
             artist_similarity = similarity_ratio(album.artist, search_term)
             album_similarity = similarity_ratio(album.name, search_term)
-            artist_lower = album.artist.lower()
+            artist_normalized = normalize_text(album.artist)
+            album_normalized = normalize_text(album.name)
             
-            # MEJORADO: Mantener si:
+            # MEJORADO: Mantener si (con normalización de texto):
             # 1. El término de búsqueda está CONTENIDO en el nombre del artista
             # 2. El artista es similar al término de búsqueda (60%+)
             # 3. El álbum contiene el término de búsqueda
-            if (search_lower in artist_lower or 
-                artist_lower.startswith(search_lower) or
+            if (search_normalized in artist_normalized or 
+                artist_normalized.startswith(search_normalized) or
                 artist_similarity >= SIMILARITY_THRESHOLD or 
-                search_lower in album.name.lower()):
+                search_normalized in album_normalized):
                 filtered["albums"].append(album)
                 print(f"   ✓ Álbum mantenido: {album.artist} - {album.name} (similitud: {artist_similarity:.2f})")
             else:
@@ -792,11 +806,11 @@ Responde ahora de forma natural y conversacional:"""
         # Filtrar artistas
         for artist in results.get("artists", []):
             artist_similarity = similarity_ratio(artist.name, search_term)
-            artist_lower = artist.name.lower()
+            artist_normalized = normalize_text(artist.name)
             
-            # MEJORADO: Mantener si el término está contenido o el nombre comienza con él
-            if (search_lower in artist_lower or 
-                artist_lower.startswith(search_lower) or
+            # MEJORADO: Mantener si el término está contenido o el nombre comienza con él (normalizado)
+            if (search_normalized in artist_normalized or 
+                artist_normalized.startswith(search_normalized) or
                 artist_similarity >= SIMILARITY_THRESHOLD):
                 filtered["artists"].append(artist)
                 print(f"   ✓ Artista mantenido: {artist.name} (similitud: {artist_similarity:.2f})")
@@ -806,11 +820,11 @@ Responde ahora de forma natural y conversacional:"""
         # Filtrar canciones
         for track in results.get("tracks", []):
             artist_similarity = similarity_ratio(track.artist, search_term)
-            artist_lower = track.artist.lower()
+            artist_normalized = normalize_text(track.artist)
             
-            # MEJORADO: Mantener si el término está contenido en el artista
-            if (search_lower in artist_lower or 
-                artist_lower.startswith(search_lower) or
+            # MEJORADO: Mantener si el término está contenido en el artista (normalizado)
+            if (search_normalized in artist_normalized or 
+                artist_normalized.startswith(search_normalized) or
                 artist_similarity >= SIMILARITY_THRESHOLD):
                 filtered["tracks"].append(track)
             else:
