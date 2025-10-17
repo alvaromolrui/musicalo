@@ -38,8 +38,14 @@ class PlaylistService:
                 if track.path:
                     # Extraer solo el nombre del archivo de la ruta
                     import os
+                    import re
                     filename = os.path.basename(track.path)
-                    m3u_content += f"{filename}\n"
+                    
+                    # Limpiar el nombre del archivo: remover números de pista (01-04 -, 02-05 -, etc.)
+                    # Patrón: número-número - al inicio del nombre
+                    cleaned_filename = re.sub(r'^\d{2}-\d{2}\s*-\s*', '', filename)
+                    
+                    m3u_content += f"{cleaned_filename}\n"
                 elif track.id:
                     # Si no hay path pero hay ID, usar la URL de streaming de Navidrome
                     stream_url = f"{self.navidrome_url}/rest/stream.view?id={track.id}&u={self.navidrome_username}"
