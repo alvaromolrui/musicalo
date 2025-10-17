@@ -793,15 +793,26 @@ Responde ahora de forma natural y conversacional:"""
         import unicodedata
         
         def normalize_text(text: str) -> str:
-            """Normalizar texto: eliminar tildes/acentos y convertir a minúsculas
+            """Normalizar texto: eliminar tildes/acentos, puntuación y convertir a minúsculas
             
-            Ej: "Tobogán Andaluz" -> "tobogan andaluz"
+            Ejemplos:
+                "Tobogán Andaluz" -> "tobogan andaluz"
+                "Kase.O" -> "kaseo"
+                "El Mató a un Policía" -> "el mato a un policia"
             """
+            import re
             # Normalizar caracteres Unicode (NFD separa base + diacríticos)
             nfd = unicodedata.normalize('NFD', text)
             # Eliminar diacríticos (categoría 'Mn' = Nonspacing Mark)
             without_accents = ''.join(c for c in nfd if unicodedata.category(c) != 'Mn')
-            return without_accents.lower()
+            # Convertir a minúsculas
+            lowercased = without_accents.lower()
+            # Eliminar puntuación (excepto espacios)
+            # Mantener letras, números y espacios; eliminar puntos, comas, guiones, etc.
+            no_punctuation = re.sub(r'[^\w\s]', '', lowercased)
+            # Normalizar espacios múltiples a uno solo
+            normalized_spaces = re.sub(r'\s+', ' ', no_punctuation).strip()
+            return normalized_spaces
         
         def similarity_ratio(a: str, b: str) -> float:
             """Calcular similitud entre dos strings (normalizados)"""
@@ -818,19 +829,24 @@ Responde ahora de forma natural y conversacional:"""
         
         # Normalizar el término de búsqueda
         search_normalized = normalize_text(search_term)
+        # También crear versión sin espacios para comparaciones (ej: "kase o" -> "kaseo")
+        search_no_spaces = search_normalized.replace(' ', '')
         
         # Filtrar álbumes
         for album in results.get("albums", []):
             artist_similarity = similarity_ratio(album.artist, search_term)
             album_similarity = similarity_ratio(album.name, search_term)
             artist_normalized = normalize_text(album.artist)
+            artist_no_spaces = artist_normalized.replace(' ', '')
             album_normalized = normalize_text(album.name)
             
             # MEJORADO: Mantener si (con normalización de texto):
             # 1. El término de búsqueda está CONTENIDO en el nombre del artista
-            # 2. El artista es similar al término de búsqueda (60%+)
-            # 3. El álbum contiene el término de búsqueda
+            # 2. El término sin espacios coincide con el artista sin espacios (ej: "kase o" = "kaseo")
+            # 3. El artista es similar al término de búsqueda (60%+)
+            # 4. El álbum contiene el término de búsqueda
             if (search_normalized in artist_normalized or 
+                search_no_spaces == artist_no_spaces or
                 artist_normalized.startswith(search_normalized) or
                 artist_similarity >= SIMILARITY_THRESHOLD or 
                 search_normalized in album_normalized):
@@ -843,9 +859,11 @@ Responde ahora de forma natural y conversacional:"""
         for artist in results.get("artists", []):
             artist_similarity = similarity_ratio(artist.name, search_term)
             artist_normalized = normalize_text(artist.name)
+            artist_no_spaces = artist_normalized.replace(' ', '')
             
-            # MEJORADO: Mantener si el término está contenido o el nombre comienza con él (normalizado)
-            if (search_normalized in artist_normalized or 
+            # MEJORADO: Mantener si el término está contenido, sin espacios coincide, o es similar
+            if (search_normalized in artist_normalized or
+                search_no_spaces == artist_no_spaces or
                 artist_normalized.startswith(search_normalized) or
                 artist_similarity >= SIMILARITY_THRESHOLD):
                 filtered["artists"].append(artist)
@@ -857,9 +875,11 @@ Responde ahora de forma natural y conversacional:"""
         for track in results.get("tracks", []):
             artist_similarity = similarity_ratio(track.artist, search_term)
             artist_normalized = normalize_text(track.artist)
+            artist_no_spaces = artist_normalized.replace(' ', '')
             
             # MEJORADO: Mantener si el término está contenido en el artista (normalizado)
-            if (search_normalized in artist_normalized or 
+            if (search_normalized in artist_normalized or
+                search_no_spaces == artist_no_spaces or
                 artist_normalized.startswith(search_normalized) or
                 artist_similarity >= SIMILARITY_THRESHOLD):
                 filtered["tracks"].append(track)
