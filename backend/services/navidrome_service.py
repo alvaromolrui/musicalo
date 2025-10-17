@@ -109,6 +109,14 @@ class NavidromeService:
                 songs = [songs]
             
             for item in songs:
+                # Debug: imprimir todos los campos disponibles (solo primero)
+                if len(tracks) == 0:
+                    print(f"🔍 Campos disponibles en song: {list(item.keys())}")
+                    if 'path' in item:
+                        print(f"   path: {item.get('path')}")
+                    if 'suffix' in item:
+                        print(f"   suffix: {item.get('suffix')}")
+                
                 track = Track(
                     id=item.get("id", ""),
                     title=item.get("title", ""),
