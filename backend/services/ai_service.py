@@ -1591,21 +1591,29 @@ Selecciona ahora (máximo {min(target_count, sample_size)} canciones):"""
             genres_text = ', '.join(genres)
             artists_text = '\n'.join([f"{i}. {artist}" for i, artist in enumerate(artists_list[:100])])
             
+            # Detectar si hay especificación de idioma
+            description_lower = description.lower()
+            language_filter = ""
+            if 'español' in description_lower or 'castellano' in description_lower:
+                language_filter = "\n⚠️ CRÍTICO: El usuario pidió música en ESPAÑOL. RECHAZA artistas que cantan en inglés (Pink Floyd, The Police, Oasis, Radiohead, etc.). SOLO artistas españoles o latinoamericanos."
+            elif 'inglés' in description_lower or 'english' in description_lower:
+                language_filter = "\n⚠️ CRÍTICO: El usuario pidió música en INGLÉS. RECHAZA artistas hispanos."
+            
             prompt = f"""Eres un experto en música con conocimiento enciclopédico de todos los géneros musicales.
 
 TAREA: Identifica qué artistas de esta lista pertenecen a los géneros: {genres_text}
 
-CONTEXTO: El usuario pidió "{description}"
+CONTEXTO: El usuario pidió "{description}"{language_filter}
 
 ARTISTAS DISPONIBLES:
 {artists_text}
 
 INSTRUCCIONES:
 1. Analiza cada artista y determina si pertenece a los géneros solicitados
-2. Usa tu conocimiento musical sobre cada artista
+2. Usa tu conocimiento musical sobre cada artista (nacionalidad, idioma en que canta, estilo)
 3. Considera sub-géneros y géneros relacionados
-4. Si la descripción menciona un IDIOMA (español, inglés, etc.), filtra ESTRICTAMENTE por ese idioma
-5. Selecciona SOLO los artistas que realmente encajen con TODOS los criterios
+4. Si hay filtro de IDIOMA arriba (⚠️ CRÍTICO), es OBLIGATORIO seguirlo - rechaza artistas del idioma incorrecto
+5. Selecciona SOLO los artistas que cumplan TODOS los criterios (género + idioma si aplica)
 6. Responde SOLO con los números de los artistas seleccionados, separados por comas
 
 EJEMPLO: 5,12,23,34,45,67,89
