@@ -342,7 +342,25 @@ Responde ahora de forma natural y conversacional:"""
                 # Si hay un artista específico, buscar por artista
                 elif search_term:
                     print(f"🔍 Buscando en biblioteca por ARTISTA: '{search_term}' (query: '{query}')")
-                    search_results = await self.navidrome.search(search_term, limit=20)
+                    
+                    # Generar variaciones del término para búsqueda más flexible
+                    # Ej: "kaseo" → ["kaseo", "kase.o", "kase o", "kase. o"]
+                    search_variations = self._generate_search_variations(search_term)
+                    print(f"🔍 DEBUG - Variaciones de búsqueda: {search_variations}")
+                    
+                    # Buscar con todas las variaciones y combinar resultados
+                    combined_results = {"tracks": [], "albums": [], "artists": []}
+                    for variation in search_variations:
+                        variation_results = await self.navidrome.search(variation, limit=20)
+                        # Combinar resultados evitando duplicados
+                        for result_type in ["tracks", "albums", "artists"]:
+                            existing_ids = {item.id for item in combined_results[result_type]}
+                            for item in variation_results.get(result_type, []):
+                                if item.id not in existing_ids:
+                                    combined_results[result_type].append(item)
+                                    existing_ids.add(item.id)
+                    
+                    search_results = combined_results
                     
                     # DEBUG: Mostrar resultados crudos antes del filtro
                     print(f"🔍 DEBUG - Resultados ANTES del filtro:")
@@ -887,6 +905,56 @@ Responde ahora de forma natural y conversacional:"""
                 print(f"   ✗ Canción filtrada: {track.artist} - {track.title}")
         
         return filtered
+    
+    def _generate_search_variations(self, search_term: str) -> List[str]:
+        """Generar variaciones de un término de búsqueda para mayor flexibilidad
+        
+        Esto ayuda a encontrar artistas como "Kase.O" incluso si el usuario busca "kaseo" o "kase o"
+        
+        Args:
+            search_term: Término de búsqueda original
+            
+        Returns:
+            Lista de variaciones del término
+            
+        Ejemplos:
+            "kaseo" → ["kaseo", "kase.o", "kase o", "kase. o"]
+            "kase o" → ["kase o", "kaseo", "kase.o"]
+            "el mato" → ["el mato", "elmato", "el.mato"]
+        """
+        variations = [search_term]  # Siempre incluir el original
+        
+        # Variación sin espacios
+        no_spaces = search_term.replace(' ', '')
+        if no_spaces != search_term and no_spaces not in variations:
+            variations.append(no_spaces)
+        
+        # Variación con punto entre palabras (para artistas como "Kase.O")
+        if ' ' in search_term:
+            with_dot = search_term.replace(' ', '.')
+            if with_dot not in variations:
+                variations.append(with_dot)
+            
+            # También probar con punto y espacio
+            with_dot_space = search_term.replace(' ', '. ')
+            if with_dot_space not in variations:
+                variations.append(with_dot_space)
+        
+        # Si no tiene espacios, probar agregando punto en diferentes posiciones
+        # Especialmente útil para "kaseo" → "kase.o", "elmato" → "el.mato"
+        if ' ' not in search_term and '.' not in search_term and len(search_term) > 3:
+            # Probar punto antes de la última letra
+            with_dot_last = search_term[:-1] + '.' + search_term[-1]
+            if with_dot_last not in variations:
+                variations.append(with_dot_last)
+            
+            # También probar con espacio antes de la última letra
+            with_space_last = search_term[:-1] + ' ' + search_term[-1]
+            if with_space_last not in variations:
+                variations.append(with_space_last)
+        
+        print(f"🔍 Generadas {len(variations)} variaciones para '{search_term}'")
+        return variations
     
     def _extract_search_term(self, query: str) -> str:
         """Extraer el término de búsqueda real de una consulta en lenguaje natural
