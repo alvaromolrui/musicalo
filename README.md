@@ -239,13 +239,13 @@ La IA entiende tu intención y responde usando tus datos reales de Last.fm/Liste
 
 ### 🎯 Comandos Tradicionales (también funcionan)
 
-- **`/start`** - Iniciar el bot y ver el menú principal
-- **`/help`** - Mostrar ayuda detallada
 - **`/recommend`** - Obtener recomendaciones personalizadas con IA
 - **`/library`** - Explorar tu biblioteca musical
 - **`/stats`** - Ver estadísticas de escucha
-- **`/search <término>`** - Buscar música en tu biblioteca
-- **`/ask <pregunta>`** - Hacer preguntas sobre música
+- **`/search`** - Buscar música en tu biblioteca
+- **`/playlist`** - Genera una playlist a partir de la música de tu biblioteca
+- **`/help`** - Mostrar ayuda detallada
+- **`/start`** - Iniciar el bot y ver el menú principal
 
 ### Ejemplos con Comandos
 
