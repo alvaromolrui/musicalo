@@ -741,10 +741,10 @@ Genera las {limit} recomendaciones ahora:"""
                     if valid_genres:
                         print(f"✅ Géneros válidos en biblioteca: {valid_genres}")
                         
-                        # Buscar por cada género válido
+                        # ESTRATEGIA 1: Buscar por género usando getRandomSongs
                         for genre in valid_genres:
                             try:
-                                # Buscar por género en Navidrome
+                                print(f"   🔍 Buscando por género '{genre}' con getRandomSongs...")
                                 genre_tracks = await self.navidrome.get_tracks(limit=100, genre=genre)
                                 added_count = 0
                                 for track in genre_tracks:
@@ -752,20 +752,38 @@ Genera las {limit} recomendaciones ahora:"""
                                         all_tracks.append(track)
                                         seen_ids.add(track.id)
                                         added_count += 1
-                                print(f"   ✓ Género '{genre}': {added_count} canciones nuevas")
+                                print(f"   ✓ Género '{genre}' (getRandomSongs): {added_count} canciones nuevas")
                             except Exception as e:
-                                print(f"   ⚠️ Error buscando género '{genre}': {e}")
+                                print(f"   ⚠️ Error con getRandomSongs para '{genre}': {e}")
+                        
+                        # ESTRATEGIA 2: Buscar por género usando search (más robusto)
+                        for genre in valid_genres:
+                            try:
+                                print(f"   🔍 Buscando por género '{genre}' con search...")
+                                search_results = await self.navidrome.search(genre, limit=100)
+                                added_count = 0
+                                for track in search_results.get('tracks', []):
+                                    if track.id not in seen_ids:
+                                        # Verificar que el género coincida (filtro adicional)
+                                        if track.genre and genre.lower() in track.genre.lower():
+                                            all_tracks.append(track)
+                                            seen_ids.add(track.id)
+                                            added_count += 1
+                                print(f"   ✓ Género '{genre}' (search): {added_count} canciones nuevas")
+                            except Exception as e:
+                                print(f"   ⚠️ Error con search para '{genre}': {e}")
                     else:
                         print(f"⚠️ Ninguno de los géneros detectados existe en la biblioteca")
                         print(f"   Detectados: {genres_detected}")
                         print(f"   Disponibles: {list(available_genres)[:10]}...")
                 
-                # También buscar por keywords generales
+                # ESTRATEGIA 3: Buscar por keywords generales
                 keywords = self._extract_keywords(description)
                 print(f"🔑 Palabras clave extraídas: {keywords}")
                 
                 for keyword in keywords[:3]:  # Usar hasta 3 keywords
                     try:
+                        print(f"   🔍 Buscando por keyword '{keyword}'...")
                         results = await self.navidrome.search(keyword, limit=50)
                         added_count = 0
                         for track in results.get('tracks', []):
@@ -799,6 +817,17 @@ Genera las {limit} recomendaciones ahora:"""
                     if track.id not in seen_ids:
                         all_tracks.append(track)
                         seen_ids.add(track.id)
+            
+            # PASO 5: FALLBACK AGRESIVO - Si aún no hay suficientes canciones, obtener más
+            if len(all_tracks) < limit:
+                print(f"🚨 FALLBACK: Solo {len(all_tracks)} canciones encontradas, obteniendo más...")
+                # Intentar obtener más canciones aleatorias
+                fallback_tracks = await self.navidrome.get_tracks(limit=300)
+                for track in fallback_tracks:
+                    if track.id not in seen_ids:
+                        all_tracks.append(track)
+                        seen_ids.add(track.id)
+                print(f"✅ Fallback agregó {len(fallback_tracks)} canciones más")
             
             print(f"📊 Total de canciones disponibles: {len(all_tracks)}")
             

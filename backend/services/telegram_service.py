@@ -702,13 +702,37 @@ Sé todo lo detallado que quieras:
             # No se agregan canciones externas de Last.fm
             
             if not recommendations:
-                await update.message.reply_text(
-                    "😔 No encontré suficiente música en tu biblioteca que coincida con esos criterios.\n\n"
-                    "💡 Intenta:\n"
-                    "• Hacer la descripción más general\n"
-                    "• Mencionar artistas que tengas en tu biblioteca\n"
-                    "• Usar géneros que tengas disponibles"
-                )
+                # Obtener información de debug para ayudar al usuario
+                try:
+                    # Obtener algunos géneros disponibles para mostrar
+                    sample_tracks = await self.ai.navidrome.get_tracks(limit=50)
+                    available_genres = set()
+                    for track in sample_tracks:
+                        if track.genre:
+                            available_genres.add(track.genre)
+                    
+                    genres_list = list(available_genres)[:10]  # Primeros 10 géneros
+                    genres_text = ", ".join(genres_list) if genres_list else "No detectados"
+                    
+                    await update.message.reply_text(
+                        f"😔 No encontré suficiente música en tu biblioteca que coincida con esos criterios.\n\n"
+                        f"🔍 **Debug info:**\n"
+                        f"• Géneros detectados en tu biblioteca: {genres_text}\n"
+                        f"• Total de canciones en muestra: {len(sample_tracks)}\n\n"
+                        f"💡 **Intenta:**\n"
+                        f"• Hacer la descripción más general\n"
+                        f"• Mencionar artistas que tengas en tu biblioteca\n"
+                        f"• Usar géneros que tengas disponibles\n"
+                        f"• Probar: `/playlist rock` o `/playlist pop`"
+                    )
+                except Exception as e:
+                    await update.message.reply_text(
+                        "😔 No encontré suficiente música en tu biblioteca que coincida con esos criterios.\n\n"
+                        "💡 Intenta:\n"
+                        "• Hacer la descripción más general\n"
+                        "• Mencionar artistas que tengas en tu biblioteca\n"
+                        "• Usar géneros que tengas disponibles"
+                    )
                 return
             
             print(f"🎵 TOTAL: {len(recommendations)} canciones de tu biblioteca local")
