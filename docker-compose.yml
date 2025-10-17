@@ -33,10 +33,6 @@ services:
     networks:
       - musicalo-network
     
-    # Health check desactivado (no necesario en modo polling)
-    healthcheck:
-      disable: true
-    
     # Límites de recursos
     deploy:
       resources:
