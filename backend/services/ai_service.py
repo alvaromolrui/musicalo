@@ -737,12 +737,26 @@ Genera las {limit} recomendaciones ahora:"""
                             all_tracks.append(track)
                             seen_ids.add(track.id)
             
-            # PASO 3: Si aún no hay suficientes, obtener aleatorias
-            if len(all_tracks) < limit:
-                print(f"⚠️ Solo {len(all_tracks)} canciones encontradas, obteniendo más de la biblioteca...")
-                random_tracks = await self.navidrome.get_tracks(limit=100)
+            # PASO 3: Si no hay artistas específicos, obtener una muestra grande de la biblioteca
+            # para que el algoritmo de selección tenga suficiente material
+            if not artist_names:
+                # Sin artistas específicos, necesitamos una muestra grande para seleccionar
+                target_pool_size = max(200, limit * 5)  # Al menos 5x el límite solicitado
+                print(f"🎲 Sin artistas específicos: obteniendo {target_pool_size} canciones aleatorias de biblioteca...")
+                random_tracks = await self.navidrome.get_tracks(limit=target_pool_size)
                 for track in random_tracks:
-                    if track.id not in seen_ids and len(all_tracks) < 100:
+                    if track.id not in seen_ids:
+                        all_tracks.append(track)
+                        seen_ids.add(track.id)
+                print(f"✅ Agregadas {len(random_tracks)} canciones aleatorias")
+            
+            # PASO 4: Si aún no hay suficientes (caso con artistas específicos), completar
+            elif len(all_tracks) < limit * 2:
+                print(f"⚠️ Solo {len(all_tracks)} canciones de artistas específicos, complementando...")
+                additional = max(100, limit * 2)
+                random_tracks = await self.navidrome.get_tracks(limit=additional)
+                for track in random_tracks:
+                    if track.id not in seen_ids:
                         all_tracks.append(track)
                         seen_ids.add(track.id)
             
@@ -803,6 +817,12 @@ Genera las {limit} recomendaciones ahora:"""
         from collections import defaultdict
         
         print(f"🎯 Seleccionando {limit} canciones con diversidad de artistas...")
+        
+        # Si no hay artistas específicos y hay muchas canciones, pre-filtrar con IA
+        if not artist_names and len(all_tracks) > limit * 3:
+            print(f"🤖 Usando IA para pre-filtrar canciones relevantes...")
+            all_tracks = self._ai_filter_tracks(all_tracks, description, limit * 3)
+            print(f"✅ Pre-filtradas a {len(all_tracks)} canciones más relevantes")
         
         # Agrupar canciones por artista
         tracks_by_artist = defaultdict(list)
@@ -921,6 +941,72 @@ Genera las {limit} recomendaciones ahora:"""
             print(f"   Promedio: {len(selected)/artists_used:.1f} canciones por artista")
             
             return selected[:limit]
+    
+    def _ai_filter_tracks(
+        self,
+        tracks: List[Track],
+        description: str,
+        target_count: int
+    ) -> List[Track]:
+        """Usar IA para filtrar canciones relevantes basándose en la descripción
+        
+        Args:
+            tracks: Lista completa de canciones
+            description: Descripción de lo que se busca
+            target_count: Número aproximado de canciones a mantener
+            
+        Returns:
+            Lista filtrada de canciones más relevantes
+        """
+        import random
+        
+        try:
+            # Limitar a un máximo razonable para la IA
+            sample_size = min(len(tracks), 100)
+            sampled_tracks = random.sample(tracks, sample_size) if len(tracks) > sample_size else tracks
+            
+            # Formatear para la IA
+            tracks_text = ""
+            for i, track in enumerate(sampled_tracks):
+                genre_text = f" [{track.genre}]" if track.genre else ""
+                year_text = f" ({track.year})" if track.year else ""
+                tracks_text += f"{i}. {track.artist} - {track.title}{genre_text}{year_text}\n"
+            
+            prompt = f"""Analiza esta lista de canciones y selecciona las que mejor coincidan con: "{description}"
+
+Canciones disponibles:
+{tracks_text}
+
+INSTRUCCIONES:
+1. Selecciona las {min(target_count, sample_size)} canciones que MEJOR se ajusten a la descripción
+2. Considera género, estilo, idioma, época según la descripción
+3. Prioriza DIVERSIDAD de artistas (máximo 2-3 canciones por artista)
+4. Responde SOLO con los números separados por comas
+5. Ejemplo: 1,5,8,12,15,20,23,27,30,35,40,42,45,48,50
+
+Selecciona ahora (máximo {min(target_count, sample_size)} canciones):"""
+
+            response = self.model.generate_content(prompt)
+            selected_indices = self._parse_selection(response.text)
+            
+            # Construir lista de canciones seleccionadas
+            filtered = []
+            for idx in selected_indices:
+                if idx < len(sampled_tracks):
+                    filtered.append(sampled_tracks[idx])
+            
+            # Si quedaron muy pocas, agregar más aleatorias
+            if len(filtered) < target_count // 2:
+                remaining = [t for t in tracks if t not in filtered]
+                additional_needed = min(target_count - len(filtered), len(remaining))
+                filtered.extend(random.sample(remaining, additional_needed))
+            
+            return filtered
+            
+        except Exception as e:
+            print(f"⚠️ Error en filtrado por IA: {e}")
+            # Fallback: devolver muestra aleatoria
+            return random.sample(tracks, min(target_count, len(tracks)))
     
     def _extract_artist_names(self, text: str) -> List[str]:
         """Extraer nombres de artistas de una descripción
