@@ -30,22 +30,25 @@ class PlaylistService:
         """
         
         if simple_format:
-            # Formato ultra simple: SOLO nombres de archivo, nada más
-            m3u_content = ""
+            # Formato M3U estándar para Navidrome
+            m3u_content = "#EXTM3U\n"
             
             for track in tracks:
-                # Solo agregar el nombre del archivo (sin ruta completa, sin metadata)
+                # Duración en segundos (usar -1 si no está disponible)
+                duration = track.duration if track.duration else -1
+                
+                # Información del track para mostrar
+                artist_info = track.artist if track.artist else "Unknown Artist"
+                title_info = track.title if track.title else "Unknown Track"
+                display_info = f"{artist_info} - {title_info}"
+                
+                # Agregar línea EXTINF con duración y título
+                m3u_content += f"#EXTINF:{duration},{display_info}\n"
+                
+                # Agregar ruta del archivo
                 if track.path:
-                    # Extraer solo el nombre del archivo de la ruta
-                    import os
-                    import re
-                    filename = os.path.basename(track.path)
-                    
-                    # Limpiar el nombre del archivo: remover números de pista (01-04 -, 02-05 -, etc.)
-                    # Patrón: número-número - al inicio del nombre
-                    cleaned_filename = re.sub(r'^\d{2}-\d{2}\s*-\s*', '', filename)
-                    
-                    m3u_content += f"{cleaned_filename}\n"
+                    # Usar la ruta completa del archivo
+                    m3u_content += f"{track.path}\n"
                 elif track.id:
                     # Si no hay path pero hay ID, usar la URL de streaming de Navidrome
                     stream_url = f"{self.navidrome_url}/rest/stream.view?id={track.id}&u={self.navidrome_username}"
