@@ -702,6 +702,9 @@ Genera las {limit} recomendaciones ahora:"""
             all_tracks = []
             seen_ids = set()
             
+            print(f"🔍 Análisis de descripción: '{description}'")
+            print(f"   Artistas detectados: {artist_names if artist_names else 'Ninguno'}")
+            
             if artist_names:
                 print(f"🎤 Artistas detectados: {artist_names}")
                 print(f"🎯 Modo: Playlist específica de artista(s)")
@@ -711,13 +714,19 @@ Genera las {limit} recomendaciones ahora:"""
                     print(f"   🔍 Buscando canciones de '{artist_name}'...")
                     results = await self.navidrome.search(artist_name, limit=100)
                     
+                    print(f"      Resultados búsqueda: {len(results.get('tracks', []))} tracks, {len(results.get('albums', []))} albums, {len(results.get('artists', []))} artists")
+                    
                     # Priorizar tracks del artista exacto
+                    matches_found = 0
                     for track in results.get('tracks', []):
                         if track.id not in seen_ids:
                             # Verificar si es del artista (coincidencia flexible)
-                            if artist_name.lower() in track.artist.lower():
+                            if artist_name.lower() in track.artist.lower() or track.artist.lower() in artist_name.lower():
                                 all_tracks.append(track)
                                 seen_ids.add(track.id)
+                                matches_found += 1
+                    
+                    print(f"      ✓ {matches_found} canciones coinciden con el artista")
                     
                     # También agregar de álbumes
                     for album in results.get('albums', []):
@@ -738,11 +747,11 @@ Genera las {limit} recomendaciones ahora:"""
                     # Saltar a la selección final
                     if len(all_tracks) >= limit:
                         # Tenemos suficientes canciones del artista
-                        selected = await self._smart_track_selection(
+                        selected = self._smart_track_selection(
                             all_tracks, 
+                            artist_names,
                             limit, 
-                            description, 
-                            artist_names
+                            description
                         )
                         
                         recommendations = [
