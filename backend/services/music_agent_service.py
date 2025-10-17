@@ -692,27 +692,20 @@ Responde ahora de forma natural y conversacional:"""
             'artista', 'artistas', 'por', 'para', 'con', 'sin',
             'hay', 'está', 'esta', 'están', 'estan', 'son', 'es',
             'busca', 'buscar', 'encuentra', 'encontrar', 'dame', 'dime',
-            'muestra', 'mostrar', 'ver', 'a', 'e', 'i', 'o', 'u', 'y'
+            'muestra', 'mostrar', 'ver', 'a', 'e', 'i', 'o', 'u', 'y',
+            'mejor', 'peor'
         }
         
-        # ESTRATEGIA 1: Buscar nombres propios (palabras con mayúsculas)
-        capitalized_pattern = r'\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\b'
-        cap_matches = re.findall(capitalized_pattern, query)
-        
-        if cap_matches:
-            # Unir todas las palabras capitalizadas encontradas
-            result = ' '.join(cap_matches)
-            print(f"🔍 Término extraído (mayúsculas): '{result}'")
-            return result
-        
-        # ESTRATEGIA 2: Buscar patrón "de [artista]" (más flexible)
-        # Acepta variaciones: "de oasis", "de Pink Floyd", "mejor disco de X", etc.
-        # MEJORADO: Captura mejor "mejor disco de X", "álbum de X", "de el mató", etc.
+        # ESTRATEGIA 1: Buscar patrón "de [artista]" (MÁS CONFIABLE)
+        # Esta estrategia debe ir PRIMERA porque es más específica y evita confusiones
+        # Ejemplo: "Cual es el mejor disco de el mató?" → extrae "el mató"
         de_patterns = [
-            # Patrón específico para "mejor disco/álbum de X"
-            r'(?:mejor\s+)?(?:disco|álbum|album)\s+de\s+(.+?)(?:\?|$)',
-            # Patrón general "de X"
-            r'\bde\s+([a-zA-Záéíóúñ][a-zA-Záéíóúñ\s]+?)(?:\s+tengo|\s+teengo|\s+en|\?|$)'
+            # Patrón específico para "mejor/peor disco/álbum de X"
+            r'(?:mejor|peor)\s+(?:disco|álbum|album)\s+de\s+(.+?)(?:\?|$)',
+            # Patrón para "disco/álbum de X"
+            r'(?:disco|álbum|album)\s+de\s+(.+?)(?:\?|$)',
+            # Patrón general "de X" (cuando no hay palabras anteriores conflictivas)
+            r'\bde\s+([a-záéíóúñ][a-záéíóúñ\s]+?)(?:\?|$)'
         ]
         
         for de_pattern in de_patterns:
@@ -720,12 +713,29 @@ Responde ahora de forma natural y conversacional:"""
             if de_match:
                 result = de_match.group(1).strip()
                 # Limpiar palabras comunes al final
-                result = re.sub(r'\s+(tengo|teengo|en|mi|tu|biblioteca)$', '', result, flags=re.IGNORECASE)
+                result = re.sub(r'\s+(tengo|teengo|en|mi|tu|biblioteca|es|son)$', '', result, flags=re.IGNORECASE)
                 # Limpiar interrogantes y espacios
                 result = result.rstrip('? ').strip()
-                if result and len(result) > 2:
+                # Verificar que no sea solo stop words
+                words = result.lower().split()
+                if result and len(result) > 2 and not all(w in stop_words for w in words):
                     print(f"🔍 Término extraído (patrón 'de'): '{result}'")
                     return result
+        
+        # ESTRATEGIA 2: Buscar nombres propios (palabras con mayúsculas)
+        # Pero filtrar palabras interrogativas comunes que podrían estar al inicio
+        capitalized_pattern = r'\b([A-Z][a-záéíóúñ]+(?:\s+[A-Z][a-záéíóúñ]+)*)\b'
+        cap_matches = re.findall(capitalized_pattern, query)
+        
+        if cap_matches:
+            # Filtrar palabras interrogativas aunque tengan mayúscula
+            question_words = {'cual', 'cuál', 'qué', 'que', 'quién', 'quien', 'cómo', 'como', 'dónde', 'donde', 'cuándo', 'cuando'}
+            filtered_matches = [m for m in cap_matches if m.lower() not in question_words and m.lower() not in stop_words]
+            
+            if filtered_matches:
+                result = ' '.join(filtered_matches)
+                print(f"🔍 Término extraído (mayúsculas filtradas): '{result}'")
+                return result
         
         # ESTRATEGIA 3: Buscar después de palabras clave específicas
         keywords_patterns = [
