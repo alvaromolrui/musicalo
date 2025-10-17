@@ -704,10 +704,12 @@ Genera las {limit} recomendaciones ahora:"""
             
             if artist_names:
                 print(f"🎤 Artistas detectados: {artist_names}")
+                print(f"🎯 Modo: Playlist específica de artista(s)")
+                
                 # Buscar canciones específicas de esos artistas
                 for artist_name in artist_names:
                     print(f"   🔍 Buscando canciones de '{artist_name}'...")
-                    results = await self.navidrome.search(artist_name, limit=50)
+                    results = await self.navidrome.search(artist_name, limit=100)
                     
                     # Priorizar tracks del artista exacto
                     for track in results.get('tracks', []):
@@ -721,13 +723,52 @@ Genera las {limit} recomendaciones ahora:"""
                     for album in results.get('albums', []):
                         if artist_name.lower() in album.artist.lower():
                             # Buscar tracks del álbum
-                            album_tracks = await self.navidrome.search(f"{album.artist} {album.name}", limit=20)
+                            album_tracks = await self.navidrome.search(f"{album.artist} {album.name}", limit=30)
                             for track in album_tracks.get('tracks', []):
                                 if track.id not in seen_ids:
                                     all_tracks.append(track)
                                     seen_ids.add(track.id)
                 
                 print(f"✅ Encontradas {len(all_tracks)} canciones de los artistas especificados")
+                
+                # Si encontramos canciones del artista, NO buscar más
+                # Solo crear playlist con canciones de ese artista
+                if len(all_tracks) > 0:
+                    print(f"🎵 Playlist exclusiva de {', '.join(artist_names)}")
+                    # Saltar a la selección final
+                    if len(all_tracks) >= limit:
+                        # Tenemos suficientes canciones del artista
+                        selected = await self._smart_track_selection(
+                            all_tracks, 
+                            limit, 
+                            description, 
+                            artist_names
+                        )
+                        
+                        recommendations = [
+                            Recommendation(
+                                track=track,
+                                reason=f"Canción de {track.artist}",
+                                score=0.9,
+                                source="library"
+                            ) for track in selected
+                        ]
+                        
+                        print(f"🎵 Generadas {len(recommendations)} recomendaciones de biblioteca")
+                        return recommendations
+                    else:
+                        print(f"⚠️ Solo {len(all_tracks)} canciones encontradas del artista")
+                        # Si hay pocas, devolver todas las que hay
+                        recommendations = [
+                            Recommendation(
+                                track=track,
+                                reason=f"Canción de {track.artist}",
+                                score=0.9,
+                                source="library"
+                            ) for track in all_tracks
+                        ]
+                        print(f"🎵 Generadas {len(recommendations)} recomendaciones de biblioteca")
+                        return recommendations
             
             # PASO 2: Si no hay artistas específicos o no se encontraron suficientes, buscar por género/keywords
             if len(all_tracks) < limit:
@@ -1174,8 +1215,24 @@ Selecciona ahora (máximo {min(target_count, sample_size)} canciones):"""
                     if part and len(part) > 2:
                         artists.append(part)
         
-        # ESTRATEGIA 2: Detectar nombres propios (palabras con mayúscula)
-        # Solo si no se encontraron artistas por la estrategia 1
+        # ESTRATEGIA 2: Usar IA para detectar nombres de artistas en texto ambiguo
+        # Si no hay artistas o el texto parece ser un nombre de artista completo
+        if not artists or len(text.strip()) < 50:
+            # Si el texto completo (sin palabras de comando) parece ser un artista
+            text_clean = text.lower()
+            # Remover palabras de comando comunes
+            for cmd in ['playlist', 'lista', 'música', 'canciones', 'de', 'con', 'en español', 'en ingles']:
+                text_clean = text_clean.replace(cmd, ' ')
+            text_clean = text_clean.strip()
+            
+            # Si queda algo significativo (más de 3 palabras o 10 caracteres)
+            if len(text_clean) > 10 or len(text_clean.split()) >= 3:
+                # Podría ser un nombre de artista (ej: "el mató a un policía motorizado")
+                print(f"🤔 Texto ambiguo, podría ser nombre de artista: '{text_clean}'")
+                artists.append(text_clean)
+        
+        # ESTRATEGIA 3: Detectar nombres propios (palabras con mayúscula)
+        # Solo si aún no se encontraron artistas
         if not artists:
             # Buscar secuencias de palabras que empiezan con mayúscula
             capitalized_pattern = r'\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\b'
