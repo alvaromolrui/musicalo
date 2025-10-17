@@ -160,14 +160,47 @@ LASTFM_USERNAME=tu_usuario_lastfm
 | ❌ | ✅ | Historial y descubrimiento de LFM |
 | ❌ | ❌ | Solo biblioteca local (sin scrobbling) |
 
+## 🔄 Sistema de Fallback Automático
+
+El agente musical implementa un **fallback inteligente** entre servicios:
+
+```python
+async def _get_with_fallback(self, primary_method, fallback_method, *args, **kwargs):
+    """Intenta ejecutar un método con fallback automático si falla"""
+    try:
+        if primary_method:
+            result = await primary_method(*args, **kwargs)
+            if result:
+                return result
+    except Exception as e:
+        print(f"⚠️ Método principal falló ({e}), usando fallback...")
+    
+    # Intentar con fallback
+    try:
+        if fallback_method:
+            return await fallback_method(*args, **kwargs)
+    except Exception as e:
+        print(f"⚠️ Fallback también falló: {e}")
+    
+    return []
+```
+
+### Casos de Uso del Fallback:
+
+1. **Perfil privado en ListenBrainz** → Usa Last.fm automáticamente
+2. **Usuario no existe en ListenBrainz** → Usa Last.fm automáticamente  
+3. **Error de red en servicio primario** → Intenta con el secundario
+4. **Timeout en API** → Cambia al servicio alternativo
+
 ## 🎯 Beneficios de esta Arquitectura
 
 1. **Mejor rendimiento**: ListenBrainz no tiene límites de API
 2. **Datos completos**: Todo el historial disponible sin restricciones
 3. **Mejores recomendaciones**: Algoritmos de Last.fm más maduros
-4. **Redundancia**: Si uno falla, el otro responde
+4. **Redundancia automática**: Si uno falla, el otro responde sin intervención
 5. **Complementariedad**: Cada API hace lo que mejor sabe
 6. **Flexibilidad**: Funciona con una o ambas APIs
+7. **Resiliencia**: Manejo inteligente de errores 404, 410, timeouts
 
 ## 🔄 Migración desde el Sistema Anterior
 
