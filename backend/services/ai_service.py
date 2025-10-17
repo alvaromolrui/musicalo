@@ -1226,19 +1226,30 @@ Selecciona ahora (máximo {min(target_count, sample_size)} canciones):"""
         
         # ESTRATEGIA 2: Usar IA para detectar nombres de artistas en texto ambiguo
         # Si no hay artistas o el texto parece ser un nombre de artista completo
-        if not artists or len(text.strip()) < 50:
+        if not artists and len(text.strip()) < 50:
             # Si el texto completo (sin palabras de comando) parece ser un artista
             text_clean = text.lower()
-            # Remover palabras de comando comunes
-            for cmd in ['playlist', 'lista', 'música', 'canciones', 'de', 'con', 'en español', 'en ingles']:
-                text_clean = text_clean.replace(cmd, ' ')
-            text_clean = text_clean.strip()
             
-            # Si queda algo significativo (más de 3 palabras o 10 caracteres)
-            if len(text_clean) > 10 or len(text_clean.split()) >= 3:
+            # Remover palabras de comando Y géneros comunes
+            remove_words = [
+                'playlist', 'lista', 'música', 'canciones', 'de', 'con',
+                'en español', 'español', 'castellano', 
+                'en ingles', 'inglés', 'english',
+                'rock', 'indie', 'pop', 'jazz', 'blues', 'metal', 
+                'punk', 'folk', 'electronic', 'rap', 'reggae',
+                'acústico', 'en vivo', 'live', 'relajante', 'energético'
+            ]
+            
+            for word in remove_words:
+                text_clean = text_clean.replace(word, ' ')
+            text_clean = ' '.join(text_clean.split())  # Normalizar espacios
+            
+            # Si queda algo significativo (más de 3 palabras o 15 caracteres)
+            # Y no contiene números (que indicarían cantidad de canciones)
+            if (len(text_clean) > 15 or len(text_clean.split()) >= 4) and not any(char.isdigit() for char in text_clean):
                 # Podría ser un nombre de artista (ej: "el mató a un policía motorizado")
                 print(f"🤔 Texto ambiguo, podría ser nombre de artista: '{text_clean}'")
-                artists.append(text_clean)
+                artists.append(text_clean.strip())
         
         # ESTRATEGIA 3: Detectar nombres propios (palabras con mayúscula)
         # Solo si aún no se encontraron artistas
