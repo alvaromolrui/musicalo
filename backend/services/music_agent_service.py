@@ -482,23 +482,53 @@ Responde ahora de forma natural y conversacional:"""
         if data.get("listening_history"):
             hist = data["listening_history"]
             
-            # Solo mostrar estadísticas de Last.fm si NO hay datos de biblioteca
-            # o si específicamente pidieron estadísticas
+            # ESCUCHAS RECIENTES (orden cronológico) - CRÍTICO para consultas de "últimos"
+            if hist.get("recent_tracks"):
+                recent = hist["recent_tracks"]
+                formatted += f"\n🕐 === HISTORIAL RECIENTE (orden cronológico, MÁS RECIENTE PRIMERO) ===\n"
+                formatted += f"⚠️ IMPORTANTE: Usa ESTOS datos cuando pregunten por 'últimos/recientes' escuchados\n\n"
+                
+                # Mostrar últimas escuchas
+                formatted += f"📝 ÚLTIMAS ESCUCHAS:\n"
+                for i, track in enumerate(recent[:15], 1):
+                    formatted += f"  {i}. {track.artist} - {track.name}"
+                    if track.date:
+                        formatted += f" (escuchado: {track.date.strftime('%Y-%m-%d %H:%M')})"
+                    formatted += "\n"
+                
+                # Extraer artistas únicos en orden cronológico
+                from collections import OrderedDict
+                unique_artists = OrderedDict()
+                for track in recent:
+                    if track.artist and track.artist not in unique_artists:
+                        unique_artists[track.artist] = True
+                
+                if unique_artists:
+                    formatted += f"\n🎤 ÚLTIMOS ARTISTAS ÚNICOS (en orden cronológico):\n"
+                    for i, artist in enumerate(list(unique_artists.keys())[:10], 1):
+                        formatted += f"  {i}. {artist}\n"
+                
+                formatted += f"\n💡 Si preguntan 'últimos 3/5/N artistas' → USA ESTA LISTA (no top artists)\n\n"
+            
+            # Estadísticas generales
             if hist.get("stats"):
                 stats = hist["stats"]
-                formatted += f"\n📊 === ESTADÍSTICAS DE LAST.FM (NO ES TU BIBLIOTECA) ===\n"
+                formatted += f"\n📊 === ESTADÍSTICAS GENERALES ===\n"
                 formatted += f"  • Total de escuchas: {stats.get('total_listens', 'N/A')}\n"
                 formatted += f"  • Artistas únicos: {stats.get('total_artists', 'N/A')}\n"
                 formatted += f"  • Álbumes únicos: {stats.get('total_albums', 'N/A')}\n"
                 formatted += f"  • Canciones únicas: {stats.get('total_tracks', 'N/A')}\n\n"
             
+            # Top artists (por cantidad, NO por cronología)
             if hist.get("top_artists"):
-                formatted += f"\n🏆 TUS TOP ARTISTAS MÁS ESCUCHADOS (Last.fm):\n"
-                for i, artist in enumerate(hist["top_artists"][:5], 1):  # Reducido a 5
+                formatted += f"\n🏆 TUS TOP ARTISTAS MÁS ESCUCHADOS (por cantidad total):\n"
+                formatted += f"⚠️ NOTA: Estos son los MÁS ESCUCHADOS, NO los más recientes\n"
+                for i, artist in enumerate(hist["top_artists"][:5], 1):
                     formatted += f"  {i}. {artist.name}"
                     if artist.playcount:
                         formatted += f" ({artist.playcount} escuchas)"
                     formatted += "\n"
+                formatted += "\n"
         
         # Información de Last.fm sobre artista específico
         if data.get("lastfm_artist_info"):
