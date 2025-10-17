@@ -261,6 +261,7 @@ Responde ahora de forma natural y conversacional:"""
             "recomienda", "recomiéndame", "sugerencia", "sugiere", "sugiéreme",
             "ponme", "pon", "quiero escuchar", "dame"
         ])
+        print(f"🔍 DEBUG - is_recommendation_request: {is_recommendation_request}")
         
         # Detectar géneros musicales comunes
         music_genres = {
@@ -282,6 +283,7 @@ Responde ahora de forma natural y conversacional:"""
             "mejor disco de", "mejor álbum de", "disco de", "álbum de",
             "discografía", "música de", "canciones de", "temas de", "mi biblioteca"
         ])
+        print(f"🔍 DEBUG - needs_library_search: {needs_library_search}")
         
         needs_listening_history = any(word in query_lower for word in [
             "escuché", "escuchado", "última", "reciente", "top", "favorito", "estadística", "últimos"
@@ -300,6 +302,8 @@ Responde ahora de forma natural y conversacional:"""
             search_term = self._extract_search_term(query)
         else:
             search_term = None
+        
+        print(f"🔍 DEBUG - search_term extraído: '{search_term}'")
         
         # Datos de biblioteca (Navidrome)
         if needs_library_search:
@@ -326,8 +330,26 @@ Responde ahora de forma natural y conversacional:"""
                     print(f"🔍 Buscando en biblioteca por ARTISTA: '{search_term}' (query: '{query}')")
                     search_results = await self.navidrome.search(search_term, limit=20)
                     
+                    # DEBUG: Mostrar resultados crudos antes del filtro
+                    print(f"🔍 DEBUG - Resultados ANTES del filtro:")
+                    print(f"   Tracks: {len(search_results.get('tracks', []))}")
+                    print(f"   Albums: {len(search_results.get('albums', []))}")
+                    if search_results.get('albums'):
+                        for album in search_results.get('albums', [])[:3]:
+                            print(f"     - {album.artist} - {album.name}")
+                    print(f"   Artists: {len(search_results.get('artists', []))}")
+                    
                     # FILTRAR resultados para mantener solo los que realmente coincidan
                     filtered_results = self._filter_relevant_results(search_results, search_term)
+                    
+                    # DEBUG: Mostrar resultados después del filtro
+                    print(f"🔍 DEBUG - Resultados DESPUÉS del filtro:")
+                    print(f"   Tracks: {len(filtered_results.get('tracks', []))}")
+                    print(f"   Albums: {len(filtered_results.get('albums', []))}")
+                    if filtered_results.get('albums'):
+                        for album in filtered_results.get('albums', [])[:3]:
+                            print(f"     - {album.artist} - {album.name}")
+                    print(f"   Artists: {len(filtered_results.get('artists', []))}")
                     
                     data["library"]["search_results"] = filtered_results
                     data["library"]["search_term"] = search_term
