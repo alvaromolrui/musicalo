@@ -8,7 +8,7 @@ class ListenBrainzService:
     def __init__(self):
         self.username = os.getenv("LISTENBRAINZ_USERNAME")
         self.token = os.getenv("LISTENBRAINZ_TOKEN")  # Opcional
-        self.base_url = "https://api.listenbrainz.org/1.0"
+        self.base_url = "https://api.listenbrainz.org/1"  # API v1, no v1.0
         self.client = httpx.AsyncClient(timeout=30.0)
     
     async def _make_request(self, endpoint: str, params: Optional[Dict] = None) -> Dict[str, Any]:
