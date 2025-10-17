@@ -30,13 +30,16 @@ class PlaylistService:
         """
         
         if simple_format:
-            # Formato simple: solo #EXTM3U y rutas de archivos
+            # Formato simple: solo #EXTM3U y nombres de archivo
             m3u_content = "#EXTM3U\n"
             
             for track in tracks:
-                # Solo agregar el path del archivo
+                # Solo agregar el nombre del archivo (sin ruta completa)
                 if track.path:
-                    m3u_content += f"{track.path}\n"
+                    # Extraer solo el nombre del archivo de la ruta
+                    import os
+                    filename = os.path.basename(track.path)
+                    m3u_content += f"{filename}\n"
                 elif track.id:
                     # Si no hay path pero hay ID, usar la URL de streaming de Navidrome
                     stream_url = f"{self.navidrome_url}/rest/stream.view?id={track.id}&u={self.navidrome_username}"

@@ -1301,9 +1301,16 @@ Selecciona ahora (máximo {min(target_count, sample_size)} canciones):"""
         
         detected_genres = []
         
-        # Buscar coincidencias en el texto
+        # Buscar coincidencias en el texto (más flexible)
         for requested_genre, possible_genres in genre_mappings.items():
-            if requested_genre in text_lower:
+            # Buscar el género en el texto (más flexible)
+            if (requested_genre in text_lower or 
+                f" {requested_genre} " in text_lower or
+                text_lower.startswith(requested_genre) or
+                text_lower.endswith(requested_genre) or
+                f"canciones de {requested_genre}" in text_lower or
+                f"música de {requested_genre}" in text_lower or
+                f"playlist de {requested_genre}" in text_lower):
                 # Agregar todos los géneros relacionados que podrían existir en la biblioteca
                 detected_genres.extend(possible_genres)
                 print(f"🎸 Género '{requested_genre}' detectado → mapea a: {possible_genres}")
