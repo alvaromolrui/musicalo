@@ -39,9 +39,16 @@ class MusicAgentService:
             except Exception as e:
                 print(f"⚠️ Agente musical: Error inicializando ListenBrainz: {e}")
         
-        # Determinar servicio de scrobbling principal
-        self.music_service = self.lastfm or self.listenbrainz
-        self.music_service_name = "Last.fm" if self.lastfm else "ListenBrainz" if self.listenbrainz else None
+        # Determinar servicios para cada propósito
+        # HISTORIAL: Priorizar ListenBrainz (más datos, sin límites de API)
+        self.history_service = self.listenbrainz or self.lastfm
+        self.history_service_name = "ListenBrainz" if self.listenbrainz else "Last.fm" if self.lastfm else None
+        
+        # RECOMENDACIONES Y METADATOS: Solo Last.fm (tiene mejores APIs para esto)
+        self.discovery_service = self.lastfm
+        
+        print(f"📊 Servicio de historial: {self.history_service_name}")
+        print(f"🔍 Servicio de descubrimiento: {'Last.fm' if self.discovery_service else 'No disponible'}")
     
     async def query(
         self, 
@@ -80,12 +87,12 @@ class MusicAgentService:
         
         # 2. Obtener estadísticas del usuario para personalización
         user_stats = {}
-        if self.music_service:
+        if self.history_service:
             try:
-                top_artists_data = await self.music_service.get_top_artists(limit=5)
+                top_artists_data = await self.history_service.get_top_artists(limit=5)
                 user_stats['top_artists'] = [a.name for a in top_artists_data]
                 
-                recent_tracks = await self.music_service.get_recent_tracks(limit=1)
+                recent_tracks = await self.history_service.get_recent_tracks(limit=1)
                 if recent_tracks:
                     user_stats['last_track'] = f"{recent_tracks[0].artist} - {recent_tracks[0].name}"
             except Exception as e:
@@ -250,50 +257,50 @@ Responde ahora de forma natural y conversacional:"""
                 print(f"⚠️ Error obteniendo datos de Navidrome: {e}")
                 data["library"]["error"] = str(e)
         
-        # Datos de escucha (Last.fm o ListenBrainz)
-        if self.music_service and needs_listening_history:
+        # Datos de escucha (Priorizar ListenBrainz para historial)
+        if self.history_service and needs_listening_history:
             try:
-                print(f"📊 Obteniendo historial de escucha de {self.music_service_name}")
+                print(f"📊 Obteniendo historial de escucha de {self.history_service_name}")
                 
-                # Obtener datos básicos
-                data["listening_history"]["recent_tracks"] = await self.music_service.get_recent_tracks(limit=20)
-                data["listening_history"]["top_artists"] = await self.music_service.get_top_artists(limit=10)
+                # Obtener datos básicos del historial
+                data["listening_history"]["recent_tracks"] = await self.history_service.get_recent_tracks(limit=20)
+                data["listening_history"]["top_artists"] = await self.history_service.get_top_artists(limit=10)
                 
                 # Si preguntan por tracks específicos
                 if "canción" in query_lower or "track" in query_lower or "tema" in query_lower:
-                    data["listening_history"]["top_tracks"] = await self.music_service.get_top_tracks(limit=10)
+                    data["listening_history"]["top_tracks"] = await self.history_service.get_top_tracks(limit=10)
                 
                 # Si preguntan por estadísticas
                 if "estadística" in query_lower or "stats" in query_lower or "cuánto" in query_lower:
-                    if hasattr(self.music_service, 'get_user_stats'):
-                        data["listening_history"]["stats"] = await self.music_service.get_user_stats()
+                    if hasattr(self.history_service, 'get_user_stats'):
+                        data["listening_history"]["stats"] = await self.history_service.get_user_stats()
                 
             except Exception as e:
                 print(f"⚠️ Error obteniendo historial de escucha: {e}")
                 data["listening_history"]["error"] = str(e)
         
-        # Búsqueda de contenido similar (usando Last.fm)
-        if self.lastfm and ("similar" in query_lower or "parecido" in query_lower or "como" in query_lower):
+        # Búsqueda de contenido similar (SIEMPRE Last.fm para esto)
+        if self.discovery_service and ("similar" in query_lower or "parecido" in query_lower or "como" in query_lower):
             try:
-                print(f"🔍 Buscando contenido similar")
+                print(f"🔍 Buscando contenido similar en Last.fm")
                 # Extraer nombre de artista/álbum de la query
                 words = query.split()
                 for i, word in enumerate(words):
                     if word.lower() in ["similar", "parecido", "como"] and i + 1 < len(words):
                         potential_artist = " ".join(words[i+1:])
-                        similar_artists = await self.lastfm.get_similar_artists(potential_artist, limit=5)
+                        similar_artists = await self.discovery_service.get_similar_artists(potential_artist, limit=5)
                         if similar_artists:
                             data["similar_content"] = similar_artists
                         break
             except Exception as e:
                 print(f"⚠️ Error buscando contenido similar: {e}")
         
-        # NUEVO: Buscar información de Last.fm sobre artistas específicos cuando preguntan por "mejor disco/álbum"
-        if self.lastfm and needs_library_search and search_term and any(word in query_lower for word in ["mejor", "recomend"]):
+        # Buscar información de Last.fm sobre artistas específicos cuando preguntan por "mejor disco/álbum"
+        if self.discovery_service and needs_library_search and search_term and any(word in query_lower for word in ["mejor", "recomend"]):
             try:
-                print(f"🌍 Buscando información de Last.fm sobre '{search_term}'...")
+                print(f"🌍 Buscando información de descubrimiento en Last.fm para '{search_term}'...")
                 # Obtener top álbumes del artista desde Last.fm
-                top_albums = await self.lastfm.get_artist_top_albums(search_term, limit=10)
+                top_albums = await self.discovery_service.get_artist_top_albums(search_term, limit=10)
                 if top_albums:
                     data["lastfm_artist_info"] = {
                         "artist": search_term,
@@ -303,24 +310,25 @@ Responde ahora de forma natural y conversacional:"""
             except Exception as e:
                 print(f"⚠️ Error obteniendo info de Last.fm para '{search_term}': {e}")
         
-        # NUEVO: Buscar música nueva activamente cuando lo pidan
-        if needs_new_music and self.music_service:
+        # Buscar música nueva activamente cuando lo pidan
+        if needs_new_music and self.history_service:
             try:
                 print(f"🌍 Buscando música NUEVA basada en gustos del usuario...")
                 
-                # Obtener top artistas del usuario
-                top_artists = await self.music_service.get_top_artists(limit=5)
+                # Obtener top artistas del historial (ListenBrainz o Last.fm)
+                top_artists = await self.history_service.get_top_artists(limit=5)
                 
-                if top_artists and self.lastfm:
+                # Buscar artistas similares usando Last.fm para descubrimiento
+                if top_artists and self.discovery_service:
                     # Buscar artistas similares a sus favoritos
                     new_discoveries = []
                     for top_artist in top_artists[:3]:  # Solo los top 3
-                        similar = await self.lastfm.get_similar_artists(top_artist.name, limit=3)
+                        similar = await self.discovery_service.get_similar_artists(top_artist.name, limit=3)
                         for artist in similar:
                             # Agregar solo si no está duplicado
                             if artist.name not in [d.get('artist') for d in new_discoveries]:
                                 # Obtener el álbum top del artista para dar recomendación concreta
-                                top_albums = await self.lastfm.get_artist_top_albums(artist.name, limit=1)
+                                top_albums = await self.discovery_service.get_artist_top_albums(artist.name, limit=1)
                                 
                                 discovery = {
                                     'artist': artist.name,
@@ -572,17 +580,17 @@ Responde ahora de forma natural y conversacional:"""
         except Exception as e:
             print(f"Error buscando en biblioteca: {e}")
         
-        # Información de Last.fm
-        if self.lastfm:
+        # Información de descubrimiento (Last.fm)
+        if self.discovery_service:
             try:
                 # Artistas similares
-                info["similar_artists"] = await self.lastfm.get_similar_artists(artist_name, limit=5)
+                info["similar_artists"] = await self.discovery_service.get_similar_artists(artist_name, limit=5)
                 
                 # Top álbumes
-                info["top_albums"] = await self.lastfm.get_artist_top_albums(artist_name, limit=5)
+                info["top_albums"] = await self.discovery_service.get_artist_top_albums(artist_name, limit=5)
                 
                 # Top tracks
-                info["top_tracks"] = await self.lastfm.get_artist_top_tracks(artist_name, limit=5)
+                info["top_tracks"] = await self.discovery_service.get_artist_top_tracks(artist_name, limit=5)
             except Exception as e:
                 print(f"Error obteniendo info de Last.fm: {e}")
         
