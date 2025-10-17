@@ -32,23 +32,61 @@ class MusicAgentService:
         self.navidrome = NavidromeService()
         
         self.listenbrainz = None
+        listenbrainz_available = False
         if os.getenv("LISTENBRAINZ_USERNAME"):
             try:
                 self.listenbrainz = ListenBrainzService()
-                print("✅ Agente musical: ListenBrainz habilitado")
+                print("✅ Agente musical: ListenBrainz configurado")
+                listenbrainz_available = True
             except Exception as e:
                 print(f"⚠️ Agente musical: Error inicializando ListenBrainz: {e}")
         
         # Determinar servicios para cada propósito
         # HISTORIAL: Priorizar ListenBrainz (más datos, sin límites de API)
-        self.history_service = self.listenbrainz or self.lastfm
-        self.history_service_name = "ListenBrainz" if self.listenbrainz else "Last.fm" if self.lastfm else None
+        # Pero solo si está realmente disponible (no solo configurado)
+        if listenbrainz_available and self.listenbrainz:
+            self.history_service = self.listenbrainz
+            self.history_service_name = "ListenBrainz"
+        elif self.lastfm:
+            self.history_service = self.lastfm
+            self.history_service_name = "Last.fm"
+        else:
+            self.history_service = None
+            self.history_service_name = None
         
         # RECOMENDACIONES Y METADATOS: Solo Last.fm (tiene mejores APIs para esto)
         self.discovery_service = self.lastfm
         
-        print(f"📊 Servicio de historial: {self.history_service_name}")
+        print(f"📊 Servicio de historial: {self.history_service_name if self.history_service_name else 'No disponible'}")
         print(f"🔍 Servicio de descubrimiento: {'Last.fm' if self.discovery_service else 'No disponible'}")
+    
+    async def _get_with_fallback(self, primary_method, fallback_method, *args, **kwargs):
+        """Intenta ejecutar un método con fallback automático si falla
+        
+        Args:
+            primary_method: Método principal a ejecutar
+            fallback_method: Método de fallback si el principal falla
+            *args, **kwargs: Argumentos para los métodos
+            
+        Returns:
+            Resultado del método que funcione
+        """
+        try:
+            if primary_method:
+                result = await primary_method(*args, **kwargs)
+                if result:  # Si devuelve datos, usarlos
+                    return result
+        except Exception as e:
+            print(f"⚠️ Método principal falló ({e}), usando fallback...")
+        
+        # Intentar con fallback
+        try:
+            if fallback_method:
+                return await fallback_method(*args, **kwargs)
+        except Exception as e:
+            print(f"⚠️ Fallback también falló: {e}")
+        
+        return []  # Devolver lista vacía si ambos fallan
     
     async def query(
         self, 
@@ -87,16 +125,24 @@ class MusicAgentService:
         
         # 2. Obtener estadísticas del usuario para personalización
         user_stats = {}
-        if self.history_service:
-            try:
-                top_artists_data = await self.history_service.get_top_artists(limit=5)
+        try:
+            # Usar fallback automático entre ListenBrainz y Last.fm
+            primary_service = self.listenbrainz.get_top_artists if self.listenbrainz else None
+            fallback_service = self.lastfm.get_top_artists if self.lastfm else None
+            
+            top_artists_data = await self._get_with_fallback(primary_service, fallback_service, limit=5)
+            if top_artists_data:
                 user_stats['top_artists'] = [a.name for a in top_artists_data]
-                
-                recent_tracks = await self.history_service.get_recent_tracks(limit=1)
-                if recent_tracks:
-                    user_stats['last_track'] = f"{recent_tracks[0].artist} - {recent_tracks[0].name}"
-            except Exception as e:
-                print(f"⚠️ Error obteniendo stats para contexto: {e}")
+            
+            # Obtener último track escuchado
+            primary_recent = self.listenbrainz.get_recent_tracks if self.listenbrainz else None
+            fallback_recent = self.lastfm.get_recent_tracks if self.lastfm else None
+            
+            recent_tracks = await self._get_with_fallback(primary_recent, fallback_recent, limit=1)
+            if recent_tracks:
+                user_stats['last_track'] = f"{recent_tracks[0].artist} - {recent_tracks[0].name}"
+        except Exception as e:
+            print(f"⚠️ Error obteniendo stats para contexto: {e}")
         
         # 3. Construir prompt inteligente usando SystemPrompts
         conversation_context = session.get_context_for_ai()
@@ -257,23 +303,35 @@ Responde ahora de forma natural y conversacional:"""
                 print(f"⚠️ Error obteniendo datos de Navidrome: {e}")
                 data["library"]["error"] = str(e)
         
-        # Datos de escucha (Priorizar ListenBrainz para historial)
-        if self.history_service and needs_listening_history:
+        # Datos de escucha (Priorizar ListenBrainz con fallback a Last.fm)
+        if needs_listening_history:
             try:
-                print(f"📊 Obteniendo historial de escucha de {self.history_service_name}")
+                print(f"📊 Obteniendo historial de escucha...")
                 
-                # Obtener datos básicos del historial
-                data["listening_history"]["recent_tracks"] = await self.history_service.get_recent_tracks(limit=20)
-                data["listening_history"]["top_artists"] = await self.history_service.get_top_artists(limit=10)
+                # Obtener datos básicos del historial con fallback automático
+                primary_recent = self.listenbrainz.get_recent_tracks if self.listenbrainz else None
+                fallback_recent = self.lastfm.get_recent_tracks if self.lastfm else None
+                data["listening_history"]["recent_tracks"] = await self._get_with_fallback(primary_recent, fallback_recent, limit=20)
+                
+                primary_artists = self.listenbrainz.get_top_artists if self.listenbrainz else None
+                fallback_artists = self.lastfm.get_top_artists if self.lastfm else None
+                data["listening_history"]["top_artists"] = await self._get_with_fallback(primary_artists, fallback_artists, limit=10)
                 
                 # Si preguntan por tracks específicos
                 if "canción" in query_lower or "track" in query_lower or "tema" in query_lower:
-                    data["listening_history"]["top_tracks"] = await self.history_service.get_top_tracks(limit=10)
+                    primary_tracks = self.listenbrainz.get_top_tracks if self.listenbrainz else None
+                    fallback_tracks = self.lastfm.get_top_tracks if self.lastfm else None
+                    data["listening_history"]["top_tracks"] = await self._get_with_fallback(primary_tracks, fallback_tracks, limit=10)
                 
                 # Si preguntan por estadísticas
                 if "estadística" in query_lower or "stats" in query_lower or "cuánto" in query_lower:
-                    if hasattr(self.history_service, 'get_user_stats'):
-                        data["listening_history"]["stats"] = await self.history_service.get_user_stats()
+                    primary_stats = self.listenbrainz.get_user_stats if self.listenbrainz and hasattr(self.listenbrainz, 'get_user_stats') else None
+                    fallback_stats = self.lastfm.get_user_stats if self.lastfm and hasattr(self.lastfm, 'get_user_stats') else None
+                    if primary_stats or fallback_stats:
+                        data["listening_history"]["stats"] = await self._get_with_fallback(primary_stats, fallback_stats)
+                
+                service_used = "ListenBrainz" if self.listenbrainz and data["listening_history"]["recent_tracks"] else "Last.fm" if self.lastfm else "Ninguno"
+                print(f"✅ Historial obtenido desde: {service_used}")
                 
             except Exception as e:
                 print(f"⚠️ Error obteniendo historial de escucha: {e}")
@@ -311,12 +369,14 @@ Responde ahora de forma natural y conversacional:"""
                 print(f"⚠️ Error obteniendo info de Last.fm para '{search_term}': {e}")
         
         # Buscar música nueva activamente cuando lo pidan
-        if needs_new_music and self.history_service:
+        if needs_new_music:
             try:
                 print(f"🌍 Buscando música NUEVA basada en gustos del usuario...")
                 
-                # Obtener top artistas del historial (ListenBrainz o Last.fm)
-                top_artists = await self.history_service.get_top_artists(limit=5)
+                # Obtener top artistas del historial con fallback
+                primary_artists = self.listenbrainz.get_top_artists if self.listenbrainz else None
+                fallback_artists = self.lastfm.get_top_artists if self.lastfm else None
+                top_artists = await self._get_with_fallback(primary_artists, fallback_artists, limit=5)
                 
                 # Buscar artistas similares usando Last.fm para descubrimiento
                 if top_artists and self.discovery_service:

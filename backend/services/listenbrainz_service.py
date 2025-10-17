@@ -28,19 +28,22 @@ class ListenBrainzService:
             )
             
             if response.status_code == 404:
-                print(f"Usuario {self.username} no encontrado en ListenBrainz")
-                return {}
+                print(f"⚠️ Usuario {self.username} no encontrado en ListenBrainz")
+                raise ValueError(f"Usuario {self.username} no encontrado en ListenBrainz")
             
             if response.status_code == 410:
-                print(f"Usuario {self.username}: perfil no disponible o privado en ListenBrainz")
-                return {}
+                print(f"⚠️ Usuario {self.username}: perfil no disponible o privado en ListenBrainz")
+                raise ValueError(f"Perfil de {self.username} no disponible en ListenBrainz (privado o deshabilitado)")
             
             response.raise_for_status()
             return response.json()
             
+        except ValueError:
+            # Re-lanzar errores de validación (404, 410)
+            raise
         except Exception as e:
             print(f"Error en petición ListenBrainz: {e}")
-            return {}
+            raise
     
     async def get_recent_tracks(self, limit: int = 50) -> List[LastFMTrack]:
         """Obtener escuchas recientes del usuario"""
