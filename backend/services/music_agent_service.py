@@ -268,13 +268,27 @@ Responde ahora de forma natural y conversacional:"""
             'rock', 'pop', 'jazz', 'blues', 'metal', 'punk', 'indie', 'folk',
             'electrónica', 'electronica', 'house', 'techno', 'hip hop', 'rap',
             'reggae', 'country', 'clásica', 'clasica', 'alternativo', 'alternativa',
-            'ska', 'soul', 'funk', 'disco', 'grunge', 'progressive', 'prog'
+            'ska', 'soul', 'funk', 'grunge', 'progressive', 'prog'
         }
         detected_genre = None
         for genre in music_genres:
             if genre in query_lower:
                 detected_genre = genre
                 break
+        
+        # IMPORTANTE: "disco" puede ser género (Disco Music) o la palabra española para "álbum"
+        # Solo detectar como género si está en contexto específico de género musical
+        if 'disco' in query_lower and detected_genre is None:
+            # Es género solo si aparece en contextos como:
+            # "música disco", "estilo disco", "género disco", "de los 70", etc.
+            genre_contexts = ['música disco', 'estilo disco', 'género disco', 'música de disco', 'tipo disco']
+            if any(context in query_lower for context in genre_contexts):
+                detected_genre = 'disco'
+            # Si dice "un disco de X" o "disco de X", NO es género, es álbum
+            elif 'disco de' in query_lower or 'un disco' in query_lower or 'el disco' in query_lower:
+                detected_genre = None  # Confirmar que no es género
+        
+        print(f"🔍 DEBUG - detected_genre: '{detected_genre}'")
         
         # Detectar menciones de artistas/álbumes/discos (buscar en biblioteca)
         needs_library_search = any(word in query_lower for word in [
