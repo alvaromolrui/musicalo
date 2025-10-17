@@ -882,16 +882,19 @@ Genera las {limit} recomendaciones ahora:"""
             
             # PASO 3: Si no hay artistas específicos, obtener una muestra grande de la biblioteca
             # para que el algoritmo de selección tenga suficiente material
-            if not artist_names:
+            # IMPORTANTE: Solo agregar si no hay suficientes canciones ya
+            if not artist_names and len(all_tracks) < limit * 2:
                 # Sin artistas específicos, necesitamos una muestra grande para seleccionar
                 target_pool_size = max(200, limit * 5)  # Al menos 5x el límite solicitado
-                print(f"🎲 Sin artistas específicos: obteniendo {target_pool_size} canciones aleatorias de biblioteca...")
+                print(f"🎲 Sin artistas específicos y pocas canciones ({len(all_tracks)}): obteniendo {target_pool_size} aleatorias...")
                 random_tracks = await self.navidrome.get_tracks(limit=target_pool_size)
                 for track in random_tracks:
                     if track.id not in seen_ids:
                         all_tracks.append(track)
                         seen_ids.add(track.id)
                 print(f"✅ Agregadas {len(random_tracks)} canciones aleatorias")
+            elif not artist_names:
+                print(f"✅ Ya hay {len(all_tracks)} canciones, no se agregan aleatorias")
             
             # PASO 4: Si aún no hay suficientes (caso con artistas específicos), completar
             elif len(all_tracks) < limit * 2:
@@ -1169,11 +1172,13 @@ Canciones disponibles:
 
 INSTRUCCIONES:
 1. Selecciona las {min(target_count, sample_size)} canciones que MEJOR se ajusten a la descripción
-2. Si hay instrucciones CRÍTICAS arriba, DEBES seguirlas estrictamente
-3. Considera: género, estilo, IDIOMA del artista, época según la descripción
-4. Prioriza DIVERSIDAD de artistas (máximo 2-3 canciones por artista)
-5. Responde SOLO con los números separados por comas
-6. Ejemplo: 1,5,8,12,15,20,23,27,30,35,40,42,45,48,50
+2. Si hay instrucciones CRÍTICAS arriba, DEBES seguirlas estrictamente - NO INCLUYAS canciones que las violen
+3. Considera: género, estilo, IDIOMA del artista (español vs inglés), época según la descripción
+4. IDIOMA: Si pide español, RECHAZA totalmente artistas que cantan en inglés (Pink Floyd, The Police, etc.)
+5. IDIOMA: Si pide inglés, RECHAZA totalmente artistas hispanos
+6. Prioriza DIVERSIDAD de artistas (máximo 2-3 canciones por artista)
+7. Responde SOLO con los números separados por comas
+8. Ejemplo: 1,5,8,12,15,20,23,27,30,35,40,42,45,48,50
 
 Selecciona ahora (máximo {min(target_count, sample_size)} canciones):"""
 
@@ -1599,8 +1604,9 @@ INSTRUCCIONES:
 1. Analiza cada artista y determina si pertenece a los géneros solicitados
 2. Usa tu conocimiento musical sobre cada artista
 3. Considera sub-géneros y géneros relacionados
-4. Selecciona SOLO los artistas que realmente encajen
-5. Responde SOLO con los números de los artistas seleccionados, separados por comas
+4. Si la descripción menciona un IDIOMA (español, inglés, etc.), filtra ESTRICTAMENTE por ese idioma
+5. Selecciona SOLO los artistas que realmente encajen con TODOS los criterios
+6. Responde SOLO con los números de los artistas seleccionados, separados por comas
 
 EJEMPLO: 5,12,23,34,45,67,89
 
