@@ -826,23 +826,28 @@ Sé todo lo detallado que quieras:
             
             print(f"🎵 TOTAL: {len(recommendations)} canciones de tu biblioteca local")
             
-            # 3. Crear archivo M3U
+            # 3. Crear playlist directamente en Navidrome
             playlist_name = f"Musicalo - {description[:50]}"
-            m3u_content = self.playlist_service.create_playlist_from_recommendations(
-                recommendations, 
-                playlist_name,
-                description,
-                simple_format=True  # Solo nombres de archivo
-            )
-            
-            # 4. Guardar archivo
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            filename = f"playlist_{update.effective_user.id}_{timestamp}"
-            filepath = self.playlist_service.save_playlist(m3u_content, filename)
-            
-            # 5. Mostrar preview
             tracks = [rec.track for rec in recommendations]
-            text = f"🎵 **Playlist creada:** {playlist_name}\n\n"
+            song_ids = [track.id for track in tracks if track.id]
+            
+            if not song_ids:
+                await update.message.reply_text(
+                    "❌ No se pudieron obtener los IDs de las canciones para crear la playlist."
+                )
+                return
+            
+            # Crear playlist en Navidrome
+            playlist_id = await self.ai.navidrome.create_playlist(playlist_name, song_ids)
+            
+            if not playlist_id:
+                await update.message.reply_text(
+                    "❌ Error al crear la playlist en Navidrome."
+                )
+                return
+            
+            # 4. Mostrar preview
+            text = f"🎵 **Playlist creada en Navidrome:** {playlist_name}\n\n"
             text += f"📝 {description}\n\n"
             text += f"📚 **{library_count} canciones de tu biblioteca local**\n\n"
             text += f"🎼 **Canciones ({len(tracks)}):**\n"
@@ -853,18 +858,12 @@ Sé todo lo detallado que quieras:
             if len(tracks) > 10:
                 text += f"\n...y {len(tracks) - 10} más\n"
             
-            # Enviar archivo M3U
-            with open(filepath, 'rb') as f:
-                await update.message.reply_document(
-                    document=f,
-                    filename=f"{playlist_name}.m3u",
-                    caption=text,
-                    parse_mode='Markdown'
-                )
+            text += f"\n✅ **La playlist está disponible en Navidrome**"
+            text += f"\n🆔 Playlist ID: `{playlist_id}`"
             
-            # Limpiar archivo temporal
-            os.remove(filepath)
-            print(f"✅ Playlist enviada y archivo temporal eliminado")
+            # Enviar mensaje con resultado
+            await update.message.reply_text(text, parse_mode='Markdown')
+            print(f"✅ Playlist creada en Navidrome con ID: {playlist_id}")
         
         except Exception as e:
             print(f"❌ Error creando playlist: {e}")

@@ -32,6 +32,57 @@ class NavidromeService:
             "f": "json"
         }
     
+    async def create_playlist(self, name: str, song_ids: List[str]) -> Optional[str]:
+        """Crear playlist en Navidrome usando la API
+        
+        Args:
+            name: Nombre de la playlist
+            song_ids: Lista de IDs de canciones a agregar
+            
+        Returns:
+            ID de la playlist creada o None si falla
+        """
+        try:
+            print(f"🎵 Creando playlist '{name}' en Navidrome con {len(song_ids)} canciones...")
+            
+            # Crear playlist vacía
+            params = self._get_auth_params()
+            params["name"] = name
+            
+            data = await self._make_request("createPlaylist", params)
+            playlist_data = data.get("playlist", {})
+            playlist_id = playlist_data.get("id")
+            
+            if not playlist_id:
+                print(f"❌ No se pudo obtener ID de playlist creada")
+                return None
+            
+            print(f"✅ Playlist creada con ID: {playlist_id}")
+            
+            # Agregar canciones a la playlist
+            # La API de Subsonic requiere múltiples parámetros songIdToAdd
+            params = self._get_auth_params()
+            params["playlistId"] = playlist_id
+            
+            # Construir URL con múltiples parámetros songIdToAdd
+            url = f"{self.base_url}/rest/updatePlaylist.view"
+            url_params = "&".join([f"{k}={v}" for k, v in params.items()])
+            song_params = "&".join([f"songIdToAdd={sid}" for sid in song_ids])
+            full_url = f"{url}?{url_params}&{song_params}"
+            
+            response = await self.client.get(full_url)
+            if response.status_code != 200:
+                print(f"❌ Error al agregar canciones: {response.status_code}")
+                return None
+            
+            print(f"✅ Agregadas {len(song_ids)} canciones a la playlist")
+            
+            return playlist_id
+            
+        except Exception as e:
+            print(f"❌ Error creando playlist en Navidrome: {e}")
+            return None
+    
     async def test_connection(self):
         """Probar conexión con Navidrome"""
         try:
