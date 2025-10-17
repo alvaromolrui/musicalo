@@ -5,6 +5,57 @@ Todos los cambios notables en este proyecto serán documentados en este archivo.
 El formato está basado en [Keep a Changelog](https://keepachangelog.com/es/1.0.0/),
 y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
+## [2.0.0-alpha] - 2025-10-17
+
+### 🎉 Lanzamiento Mayor - Agente Musical Conversacional
+
+Esta versión representa una reescritura completa del bot, transformándolo en un agente musical inteligente con capacidades conversacionales avanzadas.
+
+### ✨ Añadido
+- **🤖 Agente Musical Conversacional**: Sistema completo de detección de intenciones y respuestas inteligentes
+- **📝 Sistema de Gestión de Conversaciones**: Mantiene contexto de hasta 10 mensajes por usuario
+- **🎵 Creación de Playlists M3U**: Genera playlists directamente en Navidrome
+- **🔍 Búsqueda Inteligente**: Normalización de texto, manejo de tildes y variaciones de nombres
+- **🎯 Detección de Intenciones**: Clasifica automáticamente el tipo de consulta del usuario
+- **🌐 Integración Híbrida**: Combina ListenBrainz + Last.fm con fallback automático
+- **🎨 Filtrado Inteligente por Idioma**: Post-filtrado usando IA para garantizar idioma solicitado
+- **🔀 Mapeo Inteligente de Géneros**: Relaciones y estrategias múltiples de búsqueda
+- **📊 Estadísticas Mejoradas**: Soporte para rangos de tiempo de ListenBrainz
+- **🎼 Playlists Exclusivas**: Cuando se solicita artista específico, solo incluye ese artista
+
+### 🔧 Mejorado
+- **Priorización de Biblioteca Local**: Siempre busca primero en biblioteca antes que en Last.fm
+- **Extracción Mejorada de Términos**: Soporta typos comunes y múltiples formatos
+- **Normalización de Búsquedas**: Maneja correctamente artistas con puntuación (Kase.O)
+- **Resolución de Ambigüedades**: Distingue "disco" como álbum vs género
+- **Formato M3U Estándar**: Compatible con Navidrome
+- **Logs Detallados**: Diagnóstico completo de todas las operaciones
+
+### 🗑️ Eliminado
+- **Webhooks completos**: Bot funciona solo en modo polling
+- **Configuración nginx**: Ya no se requiere proxy reverso
+- **Scripts de deployment manual**: build-and-push.sh, quick-deploy.sh
+- **Scripts docker obsoletos**: docker-*.sh
+- **Comandos /info y /ask**: Simplificación de comandos
+- **backend/main.py**: Solo era para webhooks
+
+### 🐛 Corregido
+- **CRÍTICO**: Bot ignoraba biblioteca completamente - ahora prioriza biblioteca local
+- **CRÍTICO**: Filtrado de resultados irrelevantes antes de pasar a IA
+- **CRÍTICO**: Bot inventaba álbumes mezclando artistas diferentes
+- Distinción clara entre "últimos" y "top" artistas escuchados
+- Endpoint correcto de API de ListenBrainz (/1/ en lugar de /1.0/)
+- Detección correcta de "disco DE" vs "SIMILAR A"
+- Normalización de texto para búsquedas (eliminar tildes/acentos)
+- Búsqueda flexible con variaciones del término
+
+### 📚 Documentación
+- Guía completa del agente musical
+- Documentación del sistema conversacional
+- Guía completa de pruebas
+- Documentación de todos los fixes críticos
+- README actualizado con lista de comandos correcta
+
 ## [1.1.1-alpha] - 2025-10-15
 
 ### ✨ Añadido
