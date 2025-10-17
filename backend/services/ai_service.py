@@ -758,7 +758,7 @@ Genera las {limit} recomendaciones ahora:"""
                             Recommendation(
                                 track=track,
                                 reason=f"Canción de {track.artist}",
-                                score=0.9,
+                                confidence=0.9,
                                 source="library"
                             ) for track in selected
                         ]
@@ -772,7 +772,7 @@ Genera las {limit} recomendaciones ahora:"""
                             Recommendation(
                                 track=track,
                                 reason=f"Canción de {track.artist}",
-                                score=0.9,
+                                confidence=0.9,
                                 source="library"
                             ) for track in all_tracks
                         ]
