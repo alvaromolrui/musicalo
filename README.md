@@ -96,10 +96,9 @@ docker-compose up -d
 
 **Comandos útiles:**
 ```bash
-./docker-start.sh      # Iniciar
-./docker-logs.sh       # Ver logs
-./docker-restart.sh    # Reiniciar
-./docker-stop.sh       # Detener
+docker-compose logs -f      # Ver logs
+docker-compose restart      # Reiniciar
+docker-compose down         # Detener
 ```
 
 ### 📦 Opción 2: Instalación Manual (Sin Docker)
@@ -330,20 +329,6 @@ El sistema utiliza múltiples enfoques:
 
 ## 👨‍💻 Para Desarrolladores
 
-### 🔧 Build y Push Manual
-
-Si quieres construir y subir la imagen manualmente:
-
-```bash
-# Build y push a Docker Hub
-./build-and-push.sh [version]
-
-# Ejemplos:
-./build-and-push.sh latest
-./build-and-push.sh v1.0.0
-./build-and-push.sh dev
-```
-
 ### 🔄 CI/CD Automático
 
 El repositorio incluye GitHub Actions que automáticamente:
@@ -411,18 +396,7 @@ El proyecto incluye dos configuraciones:
 
 Usa el que prefieras según tus necesidades.
 
-### Scripts de gestión incluidos
-
-```bash
-./docker-start.sh      # Iniciar el bot
-./docker-logs.sh       # Ver logs en tiempo real
-./docker-status.sh     # Ver estado del bot
-./docker-restart.sh    # Reiniciar el bot
-./docker-update.sh     # Actualizar el bot
-./docker-stop.sh       # Detener el bot
-```
-
-### Comandos Docker Compose manuales
+### Comandos Docker Compose
 
 ```bash
 # Con imagen de Docker Hub (producción)
