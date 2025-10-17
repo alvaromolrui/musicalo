@@ -45,24 +45,6 @@ services:
         reservations:
           memory: 256M
 
-  # Servicio opcional: Nginx como proxy reverso
-  nginx:
-    image: nginx:alpine
-    container_name: musicalo-nginx
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/ssl:/etc/nginx/ssl:ro
-    depends_on:
-      - musicalo
-    networks:
-      - musicalo-network
-    profiles:
-      - nginx  # Solo se ejecuta si se especifica el perfil
-
 networks:
   musicalo-network:
     driver: bridge
