@@ -1,6 +1,6 @@
 # Musicalo 🎵🤖
 
-[![Version](https://img.shields.io/badge/Version-2.0.0--alpha-orange.svg)](VERSION)
+[![Version](https://img.shields.io/badge/Version-3.0.0--alpha-orange.svg)](VERSION)
 [![Docker Hub](https://img.shields.io/badge/Docker%20Hub-alvaromolrui%2Fmusicalo-blue?logo=docker)](https://hub.docker.com/r/alvaromolrui/musicalo)
 [![GitHub](https://img.shields.io/badge/GitHub-alvaromolrui%2Fmusicalo-black?logo=github)](https://github.com/alvaromolrui/musicalo)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
@@ -51,6 +51,7 @@ La IA entiende múltiples criterios y genera recomendaciones precisas que cumple
   - `NavidromeService`: Conexión con tu servidor Navidrome
   - `ListenBrainzService`: Integración con la API de ListenBrainz (open source, sin límites)
   - `LastFMService`: Integración con Last.fm para descubrimiento y artistas similares
+  - `MusicBrainzService`: Enriquecimiento de metadatos y búsqueda inversa por género/país/época
   - `MusicRecommendationService`: IA con Google Gemini para recomendaciones personalizadas
   - `TelegramService`: Manejo de interacciones del bot en modo polling
 
@@ -58,6 +59,13 @@ La IA entiende múltiples criterios y genera recomendaciones precisas que cumple
 - Puedes usar **solo ListenBrainz**, **solo Last.fm**, o **ambos simultáneamente**
 - Si configuras ambos, ListenBrainz se usa para datos de escucha y Last.fm complementa con descubrimiento de artistas similares
 - ListenBrainz es recomendado por ser open source y no tener límites de API
+
+**Nota sobre MusicBrainz:**
+- **MusicBrainz es opcional** pero **altamente recomendado** para búsquedas específicas
+- Permite búsquedas avanzadas como "indie español de los 2000" o "rock progresivo de los 70s"
+- Verifica metadatos precisos de artistas (género, país, época) contra tu biblioteca local
+- Usa cache persistente para minimizar llamadas a la API
+- Sistema de búsqueda incremental con "busca más" para explorar toda tu biblioteca
 
 ## 🚀 Instalación
 
@@ -163,6 +171,25 @@ El archivo `.env` está completamente documentado con comentarios explicativos p
 4. Haz clic en "Submit"
 5. Guarda tu **API Key** (la necesitarás para el archivo `.env`)
 6. El **API Secret** no es necesario para este bot
+
+#### MusicBrainz (Opcional, pero recomendado)
+MusicBrainz es completamente **gratuito y open source**. No requiere API key, solo información de contacto:
+
+1. **No necesitas registrarte** para usar MusicBrainz
+2. Configura en tu archivo `.env`:
+   - `ENABLE_MUSICBRAINZ=true` (para habilitar)
+   - `APP_NAME=MusicaloBot` (nombre de tu aplicación)
+   - `CONTACT_EMAIL=tu_email@example.com` (requerido por las políticas de MusicBrainz)
+3. Configuración opcional:
+   - `MUSICBRAINZ_BATCH_SIZE=20` (artistas a verificar por búsqueda, 15-30 recomendado)
+   - `MUSICBRAINZ_MAX_TOTAL=100` (límite máximo total de artistas)
+
+**¿Por qué usar MusicBrainz?**
+- ✅ Búsquedas ultra-específicas: "indie español de los 2000", "rock progresivo de los 70s"
+- ✅ Metadatos precisos de género, país y época de cada artista
+- ✅ Cache persistente (evita consultas repetidas)
+- ✅ Búsqueda incremental con "busca más"
+- ✅ Totalmente gratuito y sin límites estrictos
 
 #### Google Gemini API
 1. Ve a [Google AI Studio](https://makersuite.google.com/app/apikey)
@@ -316,11 +343,13 @@ El sistema utiliza múltiples enfoques:
 - **Diversidad musical**: Medición de amplitud de gustos
 - **Descubrimiento**: Sugerencias para expandir horizontes
 - **Explicabilidad**: Razones claras para cada recomendación
+- **Búsqueda inversa con MusicBrainz**: Identifica artistas de tu biblioteca que cumplen criterios específicos (género, país, época)
 
 ## 🔮 Roadmap
 
 - [x] **Modo conversacional**: Chat natural con la IA ✅ (v1.1.0)
 - [x] **Bot privado**: Control de acceso por usuario ✅ (v1.1.1)
+- [x] **Integración MusicBrainz**: Búsquedas avanzadas por género/país/época ✅ (v2.0.0-alpha)
 - [ ] **Notificaciones inteligentes**: Alertas basadas en patrones de escucha
 - [ ] **Playlists automáticas**: Creación de playlists por IA
 - [ ] **Integración con Spotify**: Acceso a biblioteca de Spotify
@@ -384,6 +413,7 @@ Este proyecto está bajo la Licencia MIT. Ver `LICENSE` para más detalles.
 
 - [Navidrome](https://github.com/navidrome/navidrome) por el excelente servidor de música
 - [ListenBrainz](https://listenbrainz.org/) por la API de scrobbling open source
+- [MusicBrainz](https://musicbrainz.org/) por la base de datos de metadatos musicales open source
 - [Google Gemini](https://ai.google.dev/) por las capacidades de IA
 - La comunidad de desarrolladores de música open source
 

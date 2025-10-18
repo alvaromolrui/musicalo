@@ -5,6 +5,68 @@ Todos los cambios notables en este proyecto serán documentados en este archivo.
 El formato está basado en [Keep a Changelog](https://keepachangelog.com/es/1.0.0/),
 y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
+## [3.0.0-alpha] - 2025-10-18
+
+### 🎉 Integración MusicBrainz - Búsquedas Avanzadas por Género/País/Época
+
+Esta actualización añade integración completa con MusicBrainz para búsquedas musicales ultra-específicas, permitiendo consultas como "indie español de los 2000" o "rock progresivo de los 70s con sintetizadores".
+
+### ✨ Añadido
+- **🎵 Servicio MusicBrainz**: Nuevo `MusicBrainzService` para enriquecimiento y verificación de metadatos
+- **🔍 Búsqueda Inversa**: Identifica artistas de tu biblioteca que cumplen criterios específicos (género, país, época)
+- **💾 Cache Persistente**: Sistema de cache con expiración de 30 días para minimizar llamadas a la API
+- **🔄 Búsqueda Incremental**: Comando "busca más" para continuar explorando tu biblioteca
+- **📊 Verificación por Lotes**: Configurable vía `MUSICBRAINZ_BATCH_SIZE` (15-30 artistas por búsqueda)
+- **🎯 Filtros Avanzados**: Soporte para género, país, idioma y rango de años
+- **🗺️ Mapeo Inteligente de Géneros**: Relaciones entre géneros relacionados (indie/alternative, rock/hard rock, etc.)
+- **⚙️ Configuración Flexible**: Variables de entorno para habilitar/deshabilitar y configurar límites
+
+### 🔧 Mejorado
+- **Detección de Intenciones**: Clasificar "busca más" como conversación para mantener contexto
+- **Gestor de Conversaciones**: Nuevo atributo `context` en `ConversationSession` para búsquedas incrementales
+- **Agente Musical**: 
+  - SIEMPRE usar MusicBrainz para búsquedas de género y guardar contexto
+  - Optimizar consultas simples saltando stats del usuario cuando no son necesarias
+  - Priorizar género sobre search_term cuando coinciden
+- **Rendimiento**: Aumentar límite de artistas verificados de 20/30 a 50 en búsquedas complejas
+- **Logging**: Logging detallado del cache con edad de datos y estadísticas
+- **Rate Limiting**: Respeto estricto del límite de 1 req/seg de MusicBrainz (1.1s para seguridad)
+- **Comando /recommend**: Agregar fallback a Last.fm cuando MusicBrainz no encuentra suficientes resultados
+
+### 🐛 Corregido
+- **Manejo de Errores**: Manejo robusto de errores en MusicBrainz para artistas no encontrados
+- **Respuestas Vacías**: Evitar crashes cuando MusicBrainz no devuelve datos válidos
+- **Extracción Segura**: Manejo seguro de géneros, tags, área y life-span con fallbacks
+
+### 📚 Documentación
+- README actualizado con sección completa de MusicBrainz
+- Documentación de todas las variables de entorno en `env.example`
+- Guía de configuración: por qué usar MusicBrainz y cómo configurarlo
+- docker-compose.yml actualizado con variables de MusicBrainz
+
+### ⚙️ Configuración
+Nuevas variables de entorno en `.env`:
+```bash
+# MusicBrainz Configuration (Optional)
+ENABLE_MUSICBRAINZ=true
+APP_NAME=MusicaloBot
+CONTACT_EMAIL=your_email@example.com
+MUSICBRAINZ_BATCH_SIZE=20
+MUSICBRAINZ_MAX_TOTAL=100
+```
+
+### 📊 Métricas de Rendimiento
+- **Cache Hit Rate**: ~80-90% en búsquedas repetidas
+- **Tiempo por búsqueda**: ~17-33 segundos (dependiendo del batch size)
+- **API Requests**: Minimizados gracias al cache persistente
+
+### 🔗 Commits Principales
+- `f1be050` - fix: Agregar fallback a Last.fm en comando /recommend
+- `9d2303e` - feat: Optimizaciones de rendimiento en music_agent_service
+- `c5de42c` - fix: SIEMPRE usar MusicBrainz para géneros y guardar contexto
+- `8333194` - feat: Cache persistente y búsqueda incremental con 'busca más'
+- `77adca0` - feat: Integrar MusicBrainz para búsqueda inversa de géneros
+
 ## [2.0.0-alpha] - 2025-10-17
 
 ### 🎉 Lanzamiento Mayor - Agente Musical Conversacional
