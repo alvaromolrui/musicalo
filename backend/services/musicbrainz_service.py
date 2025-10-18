@@ -575,6 +575,96 @@ class MusicBrainzService:
             print(f"❌ Error en petición MusicBrainz ({endpoint}): {e}")
             return {}
     
+    async def get_latest_releases_by_artist(
+        self,
+        artist_name: str,
+        limit: int = 3
+    ) -> List[Dict[str, Any]]:
+        """Obtener los últimos N releases de un artista específico
+        
+        Este método busca los releases más recientes de un artista,
+        sin importar la fecha, solo ordenados cronológicamente.
+        
+        Args:
+            artist_name: Nombre del artista
+            limit: Número de releases a obtener (default: 3)
+        
+        Returns:
+            Lista de releases ordenados por fecha (más reciente primero)
+        """
+        try:
+            import logging
+            logger = logging.getLogger(__name__)
+            
+            logger.info(f"🔍 Buscando últimos {limit} releases de '{artist_name}'...")
+            
+            # Búsqueda simple por artista con ordenamiento por fecha
+            query = f'artist:"{artist_name}" AND status:official AND (type:album OR type:ep)'
+            
+            await self._rate_limit()
+            
+            data = await self._make_request(
+                "release-group",
+                {
+                    "query": query,
+                    "limit": 100  # Obtener más para poder ordenar
+                }
+            )
+            
+            release_groups = data.get("release-groups", [])
+            
+            if not release_groups:
+                logger.info(f"   ⚠️ No se encontraron releases para '{artist_name}'")
+                return []
+            
+            # Parsear y ordenar por fecha
+            all_releases = []
+            for rg in release_groups:
+                # Extraer información del artista
+                artist_credit = rg.get("artist-credit", [])
+                artist_name_from_mb = None
+                artist_mbid = None
+                
+                if artist_credit and len(artist_credit) > 0:
+                    artist_info = artist_credit[0].get("artist", {})
+                    artist_name_from_mb = artist_info.get("name")
+                    artist_mbid = artist_info.get("id")
+                
+                release_date = rg.get("first-release-date")
+                
+                # Solo agregar si tiene artista y fecha
+                if artist_name_from_mb and release_date:
+                    all_releases.append({
+                        "title": rg.get("title"),
+                        "artist": artist_name_from_mb,
+                        "artist_mbid": artist_mbid,
+                        "date": release_date,
+                        "type": rg.get("primary-type"),
+                        "mbid": rg.get("id"),
+                        "url": f"https://musicbrainz.org/release-group/{rg.get('id')}"
+                    })
+            
+            # Ordenar por fecha (más reciente primero)
+            all_releases.sort(key=lambda x: x.get("date", ""), reverse=True)
+            
+            # Tomar solo los N más recientes
+            latest_releases = all_releases[:limit]
+            
+            logger.info(f"✅ Encontrados {len(latest_releases)} releases de '{artist_name}'")
+            
+            if latest_releases:
+                logger.info(f"   📝 Últimos releases:")
+                for r in latest_releases:
+                    logger.info(f"      {r.get('title')} ({r.get('date')})")
+            
+            return latest_releases
+            
+        except Exception as e:
+            logger.error(f"❌ Error obteniendo releases de '{artist_name}': {e}")
+            import traceback
+            traceback.print_exc()
+            return []
+    
     async def get_recent_releases_for_artists(
         self, 
         artist_names: List[str], 

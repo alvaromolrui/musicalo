@@ -198,6 +198,7 @@ Sé todo lo detallado que quieras:
 • /releases last_month - Últimos 2 meses
 • /releases year - Todo el año
 • /releases 90 - Días específicos (ej: 90 días)
+• /releases Pink Floyd - Últimos 3 releases de un artista
 💡 Ve los álbumes y EPs nuevos de artistas en tu biblioteca
 
 <b>Botones interactivos:</b>
@@ -708,6 +709,8 @@ Sé todo lo detallado que quieras:
         - /releases last_month → Mes pasado
         - /releases year → Este año
         - /releases 30 → 30 días específicos
+        - /releases Pink Floyd → Últimos 3 releases de Pink Floyd
+        - /releases Interpol → Últimos 3 releases de Interpol
         """
         # Mapeo de períodos a días
         period_mapping = {
@@ -732,6 +735,7 @@ Sé todo lo detallado que quieras:
         # Parsear argumento (default: 7 = última semana)
         days = 7
         period_name = "esta semana"
+        artist_query = None  # Para consultas de artista específico
         
         if context.args:
             arg = context.args[0].lower()
@@ -765,19 +769,21 @@ Sé todo lo detallado que quieras:
                     else:
                         period_name = f"los últimos {days} días"
                 except ValueError:
-                    await update.message.reply_text(
-                        f"⚠️ Período '{context.args[0]}' no reconocido.\n\n"
-                        "Usa: week, month, last_week, last_month, year\n"
-                        "O un número de días (ej: 30, 90)\n\n"
-                        "Usando 7 días por defecto (esta semana)."
-                    )
-                    days = 7
-                    period_name = "esta semana"
+                    # No es número ni período → debe ser nombre de artista
+                    artist_query = " ".join(context.args)
+                    period_name = None
         
-        await update.message.reply_text(
-            f"🔍 Buscando lanzamientos de {period_name}...\n"
-            "Esto puede tardar unos segundos."
-        )
+        # Mensaje de espera adaptado
+        if artist_query:
+            await update.message.reply_text(
+                f"🔍 Buscando últimos lanzamientos de <b>{artist_query}</b>...",
+                parse_mode='HTML'
+            )
+        else:
+            await update.message.reply_text(
+                f"🔍 Buscando lanzamientos de {period_name}...\n"
+                "Esto puede tardar unos segundos."
+            )
         
         try:
             # Importar MusicBrainzService
@@ -792,11 +798,51 @@ Sé todo lo detallado que quieras:
                 return
             
             mb = MusicBrainzService()
-            
-            # Nuevo enfoque: Primero obtener artistas, luego buscar releases de ESOS artistas
             import logging
             logger = logging.getLogger(__name__)
             
+            # CASO 1: Consulta de artista específico
+            if artist_query:
+                logger.info(f"🎤 Consultando releases de artista específico: '{artist_query}'")
+                
+                # Buscar últimos 3 releases del artista
+                releases = await mb.get_latest_releases_by_artist(artist_query, limit=3)
+                
+                await mb.close()
+                
+                if not releases:
+                    await update.message.reply_text(
+                        f"😔 No se encontraron releases de <b>{artist_query}</b> en MusicBrainz.\n\n"
+                        "💡 Verifica que el nombre sea correcto o intenta con una variación.",
+                        parse_mode='HTML'
+                    )
+                    return
+                
+                # Formatear respuesta para artista específico
+                text = f"🎤 <b>Últimos lanzamientos de {releases[0]['artist']}</b>\n\n"
+                text += f"📀 Mostrando los <b>últimos {len(releases)} álbumes/EPs</b>:\n\n"
+                
+                for i, release in enumerate(releases, 1):
+                    release_type = release.get("type", "Album")
+                    release_title = release.get("title", "Sin título")
+                    release_date = release.get("date", "Fecha desconocida")
+                    release_url = release.get("url", "")
+                    
+                    # Emoji según el tipo
+                    type_emoji = "📀" if release_type == "Album" else "💿"
+                    
+                    text += f"<b>{i}.</b> {type_emoji} <b>{release_title}</b> ({release_type})\n"
+                    text += f"   📅 {release_date}\n"
+                    if release_url:
+                        text += f"   🔗 <a href=\"{release_url}\">Ver en MusicBrainz</a>\n"
+                    text += "\n"
+                
+                text += "💡 Usa <code>/releases &lt;artista&gt;</code> para ver otros artistas"
+                
+                await update.message.reply_text(text, parse_mode='HTML')
+                return
+            
+            # CASO 2: Consulta por período (flujo normal)
             # 1. Obtener artistas de la biblioteca
             logger.info(f"📚 Obteniendo artistas de tu biblioteca...")
             library_artists = await self.navidrome.get_artists(limit=9999)
@@ -833,7 +879,10 @@ Sé todo lo detallado que quieras:
                     "Intenta con un período mayor:\n"
                     "• <code>/releases month</code> - Este mes completo\n"
                     "• <code>/releases last_month</code> - Últimos 2 meses\n"
-                    "• <code>/releases year</code> - Todo el año"
+                    "• <code>/releases year</code> - Todo el año\n\n"
+                    "O consulta un artista específico:\n"
+                    "• <code>/releases Pink Floyd</code>\n"
+                    "• <code>/releases Interpol</code>"
                 )
                 await update.message.reply_text(debug_msg, parse_mode='HTML')
                 return
@@ -879,11 +928,10 @@ Sé todo lo detallado que quieras:
                 text += f"...y {len(matching_releases) - 20} lanzamientos más\n\n"
             
             text += (
-                "💡 <b>Otros períodos:</b> "
-                "<code>/releases month</code>, "
-                "<code>/releases last_month</code>, "
-                "<code>/releases year</code>, "
-                "o usa días: <code>/releases 90</code>"
+                "💡 <b>Otras opciones:</b>\n"
+                "• Períodos: <code>/releases month</code>, <code>/releases year</code>\n"
+                "• Días: <code>/releases 90</code>\n"
+                "• Artista: <code>/releases Pink Floyd</code>"
             )
             
             await update.message.reply_text(text, parse_mode='HTML')
