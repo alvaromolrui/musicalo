@@ -144,25 +144,38 @@ class MusicAgentService:
             }
         
         # 2. Obtener estadísticas del usuario para personalización
+        # OPTIMIZACIÓN: Solo obtener stats cuando realmente se necesiten
         user_stats = {}
-        try:
-            # Usar fallback automático entre ListenBrainz y Last.fm
-            primary_service = self.listenbrainz.get_top_artists if self.listenbrainz else None
-            fallback_service = self.lastfm.get_top_artists if self.lastfm else None
-            
-            top_artists_data = await self._get_with_fallback(primary_service, fallback_service, limit=5)
-            if top_artists_data:
-                user_stats['top_artists'] = [a.name for a in top_artists_data]
-            
-            # Obtener último track escuchado
-            primary_recent = self.listenbrainz.get_recent_tracks if self.listenbrainz else None
-            fallback_recent = self.lastfm.get_recent_tracks if self.lastfm else None
-            
-            recent_tracks = await self._get_with_fallback(primary_recent, fallback_recent, limit=1)
-            if recent_tracks:
-                user_stats['last_track'] = f"{recent_tracks[0].artist} - {recent_tracks[0].name}"
-        except Exception as e:
-            print(f"⚠️ Error obteniendo stats para contexto: {e}")
+        
+        # Detectar si la consulta necesita contexto del usuario
+        needs_user_context = any(phrase in user_question.lower() for phrase in [
+            "recomienda", "recomiéndame", "sugerencia", "sugiere",
+            "ponme", "parecido", "similar", "nuevo", "descubrir",
+            "mis gustos", "mi perfil", "personalizado"
+        ])
+        
+        if needs_user_context:
+            print("📊 Obteniendo contexto del usuario (consulta lo requiere)...")
+            try:
+                # Usar fallback automático entre ListenBrainz y Last.fm
+                primary_service = self.listenbrainz.get_top_artists if self.listenbrainz else None
+                fallback_service = self.lastfm.get_top_artists if self.lastfm else None
+                
+                top_artists_data = await self._get_with_fallback(primary_service, fallback_service, limit=5)
+                if top_artists_data:
+                    user_stats['top_artists'] = [a.name for a in top_artists_data]
+                
+                # Obtener último track escuchado
+                primary_recent = self.listenbrainz.get_recent_tracks if self.listenbrainz else None
+                fallback_recent = self.lastfm.get_recent_tracks if self.lastfm else None
+                
+                recent_tracks = await self._get_with_fallback(primary_recent, fallback_recent, limit=1)
+                if recent_tracks:
+                    user_stats['last_track'] = f"{recent_tracks[0].artist} - {recent_tracks[0].name}"
+            except Exception as e:
+                print(f"⚠️ Error obteniendo stats para contexto: {e}")
+        else:
+            print("⚡ Consulta simple: saltando obtención de stats del usuario (optimización)")
         
         # 3. Construir prompt inteligente usando SystemPrompts
         conversation_context = session.get_context_for_ai()
