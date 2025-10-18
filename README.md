@@ -49,10 +49,15 @@ La IA entiende múltiples criterios y genera recomendaciones precisas que cumple
 ### Backend (Python + Telegram Bot API)
 - **Servicios integrados**: 
   - `NavidromeService`: Conexión con tu servidor Navidrome
-  - `ListenBrainzService`: Integración con la API de ListenBrainz (open source)
-  - `LastFMService`: Integración con Last.fm para descubrimiento de música
+  - `ListenBrainzService`: Integración con la API de ListenBrainz (open source, sin límites)
+  - `LastFMService`: Integración con Last.fm para descubrimiento y artistas similares
   - `MusicRecommendationService`: IA con Google Gemini para recomendaciones personalizadas
   - `TelegramService`: Manejo de interacciones del bot en modo polling
+
+**Nota sobre servicios de scrobbling:**
+- Puedes usar **solo ListenBrainz**, **solo Last.fm**, o **ambos simultáneamente**
+- Si configuras ambos, ListenBrainz se usa para datos de escucha y Last.fm complementa con descubrimiento de artistas similares
+- ListenBrainz es recomendado por ser open source y no tener límites de API
 
 ## 🚀 Instalación
 
@@ -119,10 +124,14 @@ El archivo `.env` está completamente documentado con comentarios explicativos p
 
 **Variables principales:**
 - `NAVIDROME_URL`: URL de tu servidor Navidrome
-- `LISTENBRAINZ_USERNAME` o `LASTFM_API_KEY`: Tu cuenta de scrobbling
-- `GEMINI_API_KEY`: API key de Google Gemini (gratuita)
+- `NAVIDROME_USERNAME` y `NAVIDROME_PASSWORD`: Credenciales de Navidrome
+- `LISTENBRAINZ_USERNAME` y `LISTENBRAINZ_TOKEN`: Para ListenBrainz (recomendado)
+- `LASTFM_API_KEY` y `LASTFM_USERNAME`: Para Last.fm (opcional, complementa a ListenBrainz)
+- `GEMINI_API_KEY`: API key de Google Gemini (REQUERIDO)
 - `TELEGRAM_BOT_TOKEN`: Token de tu bot de Telegram (REQUERIDO)
 - `TELEGRAM_ALLOWED_USER_IDS`: IDs permitidos para bot privado (RECOMENDADO)
+
+**Nota:** Necesitas al menos uno de los servicios de scrobbling (ListenBrainz o Last.fm) para obtener recomendaciones personalizadas.
 
 ### Obtener Credenciales
 
@@ -142,6 +151,18 @@ El archivo `.env` está completamente documentado con comentarios explicativos p
 1. Ve a [ListenBrainz](https://listenbrainz.org/)
 2. Regístrate con tu cuenta de MusicBrainz
 3. Opcional: Obtén un token de API para límites más altos
+
+#### Last.fm
+1. Crea una cuenta en [Last.fm](https://www.last.fm/join)
+2. Ve a [Last.fm API Account](https://www.last.fm/api/account/create)
+3. Rellena el formulario:
+   - **Application name**: `Musicalo Bot` (o el nombre que prefieras)
+   - **Application description**: `Bot personal de Telegram para recomendaciones musicales`
+   - **Application homepage**: Puedes dejar tu perfil de Last.fm o GitHub
+   - **Callback URL**: Déjalo en blanco (no se necesita)
+4. Haz clic en "Submit"
+5. Guarda tu **API Key** (la necesitarás para el archivo `.env`)
+6. El **API Secret** no es necesario para este bot
 
 #### Google Gemini API
 1. Ve a [Google AI Studio](https://makersuite.google.com/app/apikey)
