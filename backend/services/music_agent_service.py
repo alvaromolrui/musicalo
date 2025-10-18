@@ -1130,11 +1130,11 @@ Responde ahora de forma natural y conversacional:"""
             # Preparar filtros
             filters = {"genre": genre}
             
-            # Verificar artistas (limitar a 20 para no tardar demasiado)
+            # Verificar artistas (limitar a 50 para mayor precisión)
             matching_artists_data = await self.musicbrainz.find_matching_artists_in_library(
                 unique_artists,
                 filters,
-                max_artists=20
+                max_artists=50
             )
             
             if not matching_artists_data:

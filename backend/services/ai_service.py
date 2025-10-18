@@ -865,7 +865,7 @@ Genera las {limit} recomendaciones ahora:"""
                                 mb_tracks = await self._find_genre_artists_with_musicbrainz(
                                     genre,
                                     additional_filters,
-                                    max_artists=30
+                                    max_artists=50
                                 )
                                 
                                 for track in mb_tracks:
@@ -907,7 +907,7 @@ Genera las {limit} recomendaciones ahora:"""
                                 mb_tracks = await self._find_genre_artists_with_musicbrainz(
                                     genre,
                                     additional_filters,
-                                    max_artists=30
+                                    max_artists=50
                                 )
                                 
                                 for track in mb_tracks:
@@ -1789,7 +1789,7 @@ Números de artistas en {language_name}:"""
         self,
         genre: str,
         additional_filters: Optional[Dict[str, Any]] = None,
-        max_artists: int = 30
+        max_artists: int = 50
     ) -> List[Track]:
         """Usar MusicBrainz para identificar artistas del género en la biblioteca
         
