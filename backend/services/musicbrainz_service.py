@@ -595,6 +595,8 @@ class MusicBrainzService:
             start_date = end_date - timedelta(days=days)
             
             print(f"🔍 Buscando releases en MusicBrainz desde {start_date.strftime('%Y-%m-%d')} hasta {end_date.strftime('%Y-%m-%d')}...")
+            print(f"   📅 DEBUG: Fecha actual del sistema: {end_date}")
+            print(f"   📅 DEBUG: Fecha inicio: {start_date}")
             
             # Construcción de query Lucene para MusicBrainz
             # firstreleasedate: fecha de primer lanzamiento
@@ -736,6 +738,17 @@ class MusicBrainzService:
         print(f"📚 Artistas en biblioteca: {len(library_names)}")
         print(f"🔍 Releases a verificar: {len(recent_releases)}")
         
+        # DEBUG: Mostrar algunos ejemplos de artistas de biblioteca
+        library_sample = list(library_names)[:10]
+        print(f"   📝 DEBUG - Muestra de artistas en biblioteca (normalizados): {library_sample}")
+        
+        # DEBUG: Mostrar algunos ejemplos de releases
+        if recent_releases:
+            releases_sample = [f"{r['artist']} - {r['title']} ({r['date']})" for r in recent_releases[:5]]
+            print(f"   📝 DEBUG - Muestra de releases encontrados:")
+            for rs in releases_sample:
+                print(f"      {rs}")
+        
         # Filtrar releases que coincidan
         matching_releases = []
         
@@ -746,8 +759,16 @@ class MusicBrainzService:
                 # Agregar el nombre original de la biblioteca
                 release["matched_library_name"] = library_name_map.get(artist_normalized)
                 matching_releases.append(release)
+                print(f"   ✅ MATCH: '{release['artist']}' → '{artist_normalized}' encontrado en biblioteca")
         
         print(f"✅ Releases coincidentes: {len(matching_releases)}")
+        
+        # DEBUG: Si no hay matches, mostrar más info
+        if not matching_releases and recent_releases:
+            print(f"   ⚠️ DEBUG - No se encontraron matches. Verificando normalización...")
+            for release in recent_releases[:3]:
+                artist_norm = normalize_artist_name(release["artist"])
+                print(f"      '{release['artist']}' → normalizado: '{artist_norm}' | en biblioteca: {artist_norm in library_names}")
         
         return matching_releases
     

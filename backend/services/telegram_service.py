@@ -743,13 +743,20 @@ Sé todo lo detallado que quieras:
             
             if not all_recent_releases:
                 await update.message.reply_text(
-                    f"😔 No se encontraron lanzamientos en los últimos {days} días.\n\n"
+                    f"😔 No se encontraron lanzamientos en MusicBrainz en los últimos {days} días.\n\n"
+                    "Esto puede indicar un problema con la fecha del sistema o la consulta.\n"
                     "Intenta con un rango de días mayor (ej: /releases 60)"
                 )
                 await mb.close()
                 return
             
             print(f"✅ Encontrados {len(all_recent_releases)} releases en MusicBrainz")
+            
+            # DEBUG: Mostrar algunos ejemplos
+            if len(all_recent_releases) > 0:
+                print(f"   📝 DEBUG - Primeros 3 releases de MusicBrainz:")
+                for r in all_recent_releases[:3]:
+                    print(f"      {r.get('artist')} - {r.get('title')} ({r.get('date')})")
             
             # 2. Obtener artistas de la biblioteca
             print(f"📚 Obteniendo artistas de tu biblioteca...")
@@ -765,6 +772,12 @@ Sé todo lo detallado que quieras:
             
             print(f"✅ Encontrados {len(library_artists)} artistas en tu biblioteca")
             
+            # DEBUG: Mostrar algunos artistas de ejemplo
+            if len(library_artists) > 0:
+                print(f"   📝 DEBUG - Primeros 5 artistas en biblioteca:")
+                for artist in library_artists[:5]:
+                    print(f"      {artist.name}")
+            
             # 3. Hacer matching (comparar releases con biblioteca)
             matching_releases = mb.match_releases_with_library(
                 all_recent_releases,
@@ -774,10 +787,20 @@ Sé todo lo detallado que quieras:
             await mb.close()
             
             if not matching_releases:
-                await update.message.reply_text(
+                # Mensaje más informativo cuando no encuentra matches
+                debug_msg = (
                     f"😔 No hay lanzamientos nuevos de artistas en tu biblioteca en los últimos {days} días.\n\n"
-                    "💡 Intenta con un rango mayor (ej: /releases 60)"
+                    f"📊 <b>Información de debug:</b>\n"
+                    f"• Releases encontrados en MusicBrainz: {len(all_recent_releases)}\n"
+                    f"• Artistas en tu biblioteca: {len(library_artists)}\n"
+                    f"• Coincidencias: 0\n\n"
+                    "💡 <b>Posibles razones:</b>\n"
+                    "• Tus artistas no han lanzado nada recientemente\n"
+                    "• Los nombres en MusicBrainz no coinciden con Navidrome\n"
+                    "• Problema con la fecha del sistema\n\n"
+                    "Intenta con un rango mayor (ej: <code>/releases 60</code> o <code>/releases 180</code>)"
                 )
+                await update.message.reply_text(debug_msg, parse_mode='HTML')
                 return
             
             # 4. Formatear respuesta
