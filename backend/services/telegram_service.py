@@ -83,12 +83,12 @@ class TelegramService:
             if not self._is_user_allowed(user_id):
                 print(f"🚫 Acceso denegado para usuario {username} (ID: {user_id})")
                 await update.message.reply_text(
-                    "🚫 **Acceso Denegado**\n\n"
+                    "🚫 <b>Acceso Denegado</b>\n\n"
                     "Este bot es privado y solo puede ser usado por usuarios autorizados.\n\n"
-                    f"Tu ID de usuario es: `{user_id}`\n\n"
+                    f"Tu ID de usuario es: <code>{user_id}</code>\n\n"
                     "Si crees que deberías tener acceso, contacta con el administrador del bot "
                     "y proporciona tu ID de usuario.",
-                    parse_mode='Markdown'
+                    parse_mode='HTML'
                 )
                 return
             
@@ -99,38 +99,36 @@ class TelegramService:
     @_check_authorization
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Comando /start - Bienvenida del bot"""
-        welcome_text = """
-🎵 **¡Bienvenido a Musicalo!**
+        welcome_text = """🎵 <b>¡Bienvenido a Musicalo!</b>
 
 Soy tu asistente personal de música con IA que entiende lenguaje natural. Puedes hablarme directamente o usar comandos.
 
-**✨ Nuevo: Habla conmigo naturalmente**
+<b>✨ Nuevo: Habla conmigo naturalmente</b>
 Ya no necesitas recordar comandos. Escribe lo que quieras:
 • "Recomiéndame música rock"
 • "Busca Queen en mi biblioteca"
 • "Muéstrame mis estadísticas"
 • "¿Qué álbumes tengo de Pink Floyd?"
 
-**🎨 Sé específico en tus peticiones:**
+<b>🎨 Sé específico en tus peticiones:</b>
 Puedes dar todos los detalles que quieras:
 • "Rock progresivo de los 70s con sintetizadores"
 • "Música energética para hacer ejercicio"
 • "Jazz suave para estudiar"
 • "Metal melódico con voces limpias"
 
-**📝 Comandos disponibles:**
+<b>📝 Comandos disponibles:</b>
 /recommend - Obtener recomendaciones personalizadas
-/playlist <descripción> - Crear playlist M3U 🎵
+/playlist &lt;descripción&gt; - Crear playlist M3U 🎵
 /library - Explorar tu biblioteca musical
 /stats - Ver estadísticas de escucha
-/search <término> - Buscar música en tu biblioteca
+/search &lt;término&gt; - Buscar música en tu biblioteca
 /help - Mostrar ayuda
 
-**¿Cómo funciona?**
+<b>¿Cómo funciona?</b>
 Analizo tu actividad en Last.fm/ListenBrainz y tu biblioteca de Navidrome para sugerirte música que realmente te gustará.
 
-¡Simplemente escríbeme lo que necesites! 🎶
-        """
+¡Simplemente escríbeme lo que necesites! 🎶"""
         
         keyboard = [
             [KeyboardButton("🎵 Recomendaciones"), KeyboardButton("📚 Mi Biblioteca")],
@@ -138,15 +136,14 @@ Analizo tu actividad en Last.fm/ListenBrainz y tu biblioteca de Navidrome para s
         ]
         reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
         
-        await update.message.reply_text(welcome_text, reply_markup=reply_markup, parse_mode='Markdown')
+        await update.message.reply_text(welcome_text, reply_markup=reply_markup, parse_mode='HTML')
     
     @_check_authorization
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Comando /help - Ayuda detallada"""
-        help_text = """
-🎵 **Musicalo - Guía de Comandos**
+        help_text = """🎵 <b>Musicalo - Guía de Comandos</b>
 
-**✨ Lenguaje Natural (NUEVO):**
+<b>✨ Lenguaje Natural (NUEVO):</b>
 Ahora puedes escribirme directamente sin usar comandos:
 • "Recomiéndame álbumes de rock"
 • "Busca Queen"
@@ -154,7 +151,7 @@ Ahora puedes escribirme directamente sin usar comandos:
 • "¿Qué artistas tengo en mi biblioteca?"
 • "Crea una playlist de rock progresivo"
 
-**🎨 Peticiones Específicas (NUEVO):**
+<b>🎨 Peticiones Específicas (NUEVO):</b>
 Sé todo lo detallado que quieras:
 • "Rock progresivo de los 70s con sintetizadores"
 • "Música energética con buenos solos de guitarra"
@@ -162,51 +159,50 @@ Sé todo lo detallado que quieras:
 • "Jazz suave para estudiar"
 • "Metal melódico con voces limpias"
 
-**Comandos principales:**
-• `/recommend` - Recomendaciones generales
-• `/recommend album` - Recomendar álbumes
-• `/recommend artist` - Recomendar artistas
-• `/recommend track` - Recomendar canciones
-• `/playlist <descripción>` - Crear playlist M3U 🎵
-• `/library` - Ver tu biblioteca musical
-• `/stats` - Estadísticas de escucha
-• `/search <término>` - Buscar en tu biblioteca
+<b>Comandos principales:</b>
+• /recommend - Recomendaciones generales
+• /recommend album - Recomendar álbumes
+• /recommend artist - Recomendar artistas
+• /recommend track - Recomendar canciones
+• /playlist &lt;descripción&gt; - Crear playlist M3U 🎵
+• /library - Ver tu biblioteca musical
+• /stats - Estadísticas de escucha
+• /search &lt;término&gt; - Buscar en tu biblioteca
 
-**Recomendaciones con filtros:**
-• `/recommend rock` - Música de rock
-• `/recommend album jazz` - Álbumes de jazz
-• `/recommend artist metal` - Artistas de metal
-• `/recommend track pop` - Canciones pop
+<b>Recomendaciones con filtros:</b>
+• /recommend rock - Música de rock
+• /recommend album jazz - Álbumes de jazz
+• /recommend artist metal - Artistas de metal
+• /recommend track pop - Canciones pop
 
-**Recomendaciones similares:**
-• `/recommend similar albertucho` - Artistas similares
-• `/recommend like extremoduro` - Música parecida
-• `/recommend como marea` - Alternativa en español
+<b>Recomendaciones similares:</b>
+• /recommend similar albertucho - Artistas similares
+• /recommend like extremoduro - Música parecida
+• /recommend como marea - Alternativa en español
 
-**Búsqueda:**
-• `/search queen` - Buscar Queen
-• `/search bohemian rhapsody` - Buscar canción
+<b>Búsqueda:</b>
+• /search queen - Buscar Queen
+• /search bohemian rhapsody - Buscar canción
 
-**Playlists:**
-• `/playlist rock de los 80s` - Playlist de rock ochentero
-• `/playlist jazz suave` - Música jazz relajante
-• `/playlist 20 canciones de Queen` - Playlist con cantidad específica
+<b>Playlists:</b>
+• /playlist rock de los 80s - Playlist de rock ochentero
+• /playlist jazz suave - Música jazz relajante
+• /playlist 20 canciones de Queen - Playlist con cantidad específica
 
-**Botones interactivos:**
+<b>Botones interactivos:</b>
 • ❤️ Me gusta / 👎 No me gusta
 • 🔄 Más recomendaciones (genera nuevas)
 • 📚 Ver más (biblioteca)
 • 📊 Actualizar (estadísticas)
 
-**Servicios:**
+<b>Servicios:</b>
 • Last.fm: Análisis de escucha y descubrimiento
 • Navidrome: Tu biblioteca musical
 • Gemini AI: Recomendaciones inteligentes
 
-**💡 Tip:** Puedes preguntarme cualquier cosa sobre música directamente, sin usar comandos. ¡Prueba!
-        """
+<b>💡 Tip:</b> Puedes preguntarme cualquier cosa sobre música directamente, sin usar comandos. ¡Prueba!"""
         
-        await update.message.reply_text(help_text, parse_mode='Markdown')
+        await update.message.reply_text(help_text, parse_mode='HTML')
     
     @_check_authorization
     async def recommend_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -442,30 +438,30 @@ Sé todo lo detallado que quieras:
             
             # Mostrar recomendaciones con título personalizado
             if custom_prompt:
-                text = f"🎨 **Recomendaciones para:** _{custom_prompt}_\n\n"
+                text = f"🎨 <b>Recomendaciones para:</b> <i>{custom_prompt}</i>\n\n"
             elif similar_to:
-                text = f"🎯 **Música similar a '{similar_to}':**\n\n"
+                text = f"🎯 <b>Música similar a '{similar_to}':</b>\n\n"
             elif rec_type == "album":
-                text = f"📀 **Álbumes recomendados{f' de {genre_filter}' if genre_filter else ''}:**\n\n"
+                text = f"📀 <b>Álbumes recomendados{f' de {genre_filter}' if genre_filter else ''}:</b>\n\n"
             elif rec_type == "artist":
-                text = f"🎤 **Artistas recomendados{f' de {genre_filter}' if genre_filter else ''}:**\n\n"
+                text = f"🎤 <b>Artistas recomendados{f' de {genre_filter}' if genre_filter else ''}:</b>\n\n"
             elif rec_type == "track":
-                text = f"🎵 **Canciones recomendadas{f' de {genre_filter}' if genre_filter else ''}:**\n\n"
+                text = f"🎵 <b>Canciones recomendadas{f' de {genre_filter}' if genre_filter else ''}:</b>\n\n"
             else:
-                text = "🎵 **Tus recomendaciones personalizadas:**\n\n"
+                text = "🎵 <b>Tus recomendaciones personalizadas:</b>\n\n"
             
             for i, rec in enumerate(recommendations, 1):
                 # Formato diferente según el tipo de recomendación
                 if rec_type == "album":
                     # Para álbumes: mostrar prominentemente el nombre del álbum
-                    text += f"**{i}. 📀 {rec.track.title}**\n"
+                    text += f"<b>{i}. 📀 {rec.track.title}</b>\n"
                     text += f"   🎤 Artista: {rec.track.artist}\n"
                 elif rec_type == "artist":
                     # Para artistas: solo el nombre del artista
-                    text += f"**{i}. 🎤 {rec.track.artist}**\n"
+                    text += f"<b>{i}. 🎤 {rec.track.artist}</b>\n"
                 else:
                     # Para canciones y general: formato estándar
-                    text += f"**{i}.** {rec.track.artist} - {rec.track.title}\n"
+                    text += f"<b>{i}.</b> {rec.track.artist} - {rec.track.title}\n"
                     if rec.track.album:
                         text += f"   📀 {rec.track.album}\n"
                 
@@ -474,7 +470,7 @@ Sé todo lo detallado que quieras:
                     text += f"   🔗 Fuente: {rec.source}\n"
                 # Agregar enlace si existe (está en el campo path)
                 if rec.track.path:
-                    text += f"   🌐 [Ver en Last.fm]({rec.track.path})\n"
+                    text += f"   🌐 <a href=\"{rec.track.path}\">Ver en Last.fm</a>\n"
                 text += f"   🎯 {int(rec.confidence * 100)}% match\n\n"
             
             # Botones de interacción (callback_data limitado a 64 bytes)
@@ -485,7 +481,7 @@ Sé todo lo detallado que quieras:
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             
-            await update.message.reply_text(text, reply_markup=reply_markup, parse_mode='Markdown')
+            await update.message.reply_text(text, reply_markup=reply_markup, parse_mode='HTML')
             print("✅ Recomendaciones enviadas correctamente")
             
             # Guardar recomendaciones en la sesión conversacional
@@ -510,18 +506,18 @@ Sé todo lo detallado que quieras:
             albums = await self.navidrome.get_albums(limit=10)
             artists = await self.navidrome.get_artists(limit=10)
             
-            text = "📚 **Tu Biblioteca Musical**\n\n"
+            text = "📚 <b>Tu Biblioteca Musical</b>\n\n"
             
             # Estadísticas generales
-            text += f"🎵 **Canciones recientes:**\n"
+            text += f"🎵 <b>Canciones recientes:</b>\n"
             for track in tracks[:5]:
                 text += f"• {track.artist} - {track.title}\n"
             
-            text += f"\n📀 **Álbumes recientes:**\n"
+            text += f"\n📀 <b>Álbumes recientes:</b>\n"
             for album in albums[:5]:
                 text += f"• {album.artist} - {album.name}\n"
             
-            text += f"\n🎤 **Artistas recientes:**\n"
+            text += f"\n🎤 <b>Artistas recientes:</b>\n"
             for artist in artists[:5]:
                 text += f"• {artist.name}\n"
             
@@ -534,7 +530,7 @@ Sé todo lo detallado que quieras:
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             
-            await update.message.reply_text(text, reply_markup=reply_markup, parse_mode='Markdown')
+            await update.message.reply_text(text, reply_markup=reply_markup, parse_mode='HTML')
             
         except Exception as e:
             await update.message.reply_text(f"❌ Error accediendo a la biblioteca: {str(e)}")
@@ -603,7 +599,7 @@ Sé todo lo detallado que quieras:
         emoji = range_emojis.get(period, "📊")
         range_name = range_names.get(period, "Este Mes")
         
-        await update.message.reply_text(f"{emoji} Calculando tus estadísticas de **{range_name}**...")
+        await update.message.reply_text(f"{emoji} Calculando tus estadísticas de <b>{range_name}</b>...")
         
         try:
             # Verificar que haya servicio de scrobbling configurado
@@ -624,33 +620,33 @@ Sé todo lo detallado que quieras:
             if hasattr(self.music_service, 'get_top_albums'):
                 top_albums = await self.music_service.get_top_albums(period=period, limit=5)
             
-            text = f"{emoji} **Estadísticas de {range_name}**\n"
-            text += f"_Servicio: {self.music_service_name}_\n\n"
+            text = f"{emoji} <b>Estadísticas de {range_name}</b>\n"
+            text += f"<i>Servicio: {self.music_service_name}</i>\n\n"
             
             # Top artistas
             if top_artists:
-                text += f"🏆 **Top 5 Artistas:**\n"
+                text += f"🏆 <b>Top 5 Artistas:</b>\n"
                 for i, artist in enumerate(top_artists[:5], 1):
                     text += f"{i}. {artist.name} - {artist.playcount} escuchas\n"
                 text += "\n"
             
             # Top álbumes (solo ListenBrainz)
             if top_albums:
-                text += f"📀 **Top 3 Álbumes:**\n"
+                text += f"📀 <b>Top 3 Álbumes:</b>\n"
                 for i, album in enumerate(top_albums[:3], 1):
                     text += f"{i}. {album['artist']} - {album['name']} ({album['listen_count']} escuchas)\n"
                 text += "\n"
             
             # Top tracks
             if top_tracks:
-                text += f"🎵 **Top 3 Canciones:**\n"
+                text += f"🎵 <b>Top 3 Canciones:</b>\n"
                 for i, track in enumerate(top_tracks[:3], 1):
                     text += f"{i}. {track.artist} - {track.name} ({track.playcount} escuchas)\n"
                 text += "\n"
             
             # Actividad reciente
             if recent_tracks:
-                text += f"⏰ **Última escucha:**\n"
+                text += f"⏰ <b>Última escucha:</b>\n"
                 last_track = recent_tracks[0]
                 text += f"{last_track.artist} - {last_track.name}\n"
             
@@ -671,7 +667,7 @@ Sé todo lo detallado que quieras:
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             
-            await update.message.reply_text(text, reply_markup=reply_markup, parse_mode='Markdown')
+            await update.message.reply_text(text, reply_markup=reply_markup, parse_mode='HTML')
             
         except Exception as e:
             print(f"❌ Error obteniendo estadísticas: {e}")
@@ -684,11 +680,12 @@ Sé todo lo detallado que quieras:
         """Comando /search - Buscar música"""
         if not context.args:
             await update.message.reply_text(
-                "🔍 **Uso:** `/search <término>`\n\n"
+                "🔍 <b>Uso:</b> <code>/search &lt;término&gt;</code>\n\n"
                 "Ejemplos:\n"
-                "• `/search queen`\n"
-                "• `/search bohemian rhapsody`\n"
-                "• `/search the beatles`"
+                "• <code>/search queen</code>\n"
+                "• <code>/search bohemian rhapsody</code>\n"
+                "• <code>/search the beatles</code>",
+                parse_mode='HTML'
             )
             return
         
@@ -703,25 +700,25 @@ Sé todo lo detallado que quieras:
                 await update.message.reply_text(f"😔 No se encontraron resultados para '{search_term}'")
                 return
             
-            text = f"🔍 **Resultados para '{search_term}':**\n\n"
+            text = f"🔍 <b>Resultados para '{search_term}':</b>\n\n"
             
             # Mostrar canciones
             if results['tracks']:
-                text += "🎵 **Canciones:**\n"
+                text += "🎵 <b>Canciones:</b>\n"
                 for track in results['tracks'][:5]:
                     text += f"• {track.artist} - {track.title}\n"
                 text += "\n"
             
             # Mostrar álbumes
             if results['albums']:
-                text += "📀 **Álbumes:**\n"
+                text += "📀 <b>Álbumes:</b>\n"
                 for album in results['albums'][:5]:
                     text += f"• {album.artist} - {album.name}\n"
                 text += "\n"
             
             # Mostrar artistas
             if results['artists']:
-                text += "🎤 **Artistas:**\n"
+                text += "🎤 <b>Artistas:</b>\n"
                 for artist in results['artists'][:5]:
                     text += f"• {artist.name}\n"
             
@@ -736,7 +733,7 @@ Sé todo lo detallado que quieras:
             
             reply_markup = InlineKeyboardMarkup(keyboard) if keyboard else None
             
-            await update.message.reply_text(text, reply_markup=reply_markup, parse_mode='Markdown')
+            await update.message.reply_text(text, reply_markup=reply_markup, parse_mode='HTML')
             
         except Exception as e:
             await update.message.reply_text(f"❌ Error en la búsqueda: {str(e)}")
@@ -752,23 +749,23 @@ Sé todo lo detallado que quieras:
         """
         if not context.args:
             await update.message.reply_text(
-                "🎵 **Crear Playlist**\n\n"
-                "**Uso:** `/playlist <descripción>`\n\n"
-                "**Ejemplos:**\n"
-                "• `/playlist rock progresivo de los 70s`\n"
-                "• `/playlist música energética para correr`\n"
-                "• `/playlist jazz suave`\n"
-                "• `/playlist similar a Pink Floyd`\n"
-                "• `/playlist 10 canciones de metal melódico`\n"
-                "• `/playlist 25 temas de mujeres, vera fauna y cala vento`\n"
-                "• `/playlist 30 canciones de Pink Floyd y Queen`\n\n"
-                "💡 **Tip:** Puedes especificar la cantidad de canciones (ej: '20 canciones', '15 temas')",
-                parse_mode='Markdown'
+                "🎵 <b>Crear Playlist</b>\n\n"
+                "<b>Uso:</b> <code>/playlist &lt;descripción&gt;</code>\n\n"
+                "<b>Ejemplos:</b>\n"
+                "• <code>/playlist rock progresivo de los 70s</code>\n"
+                "• <code>/playlist música energética para correr</code>\n"
+                "• <code>/playlist jazz suave</code>\n"
+                "• <code>/playlist similar a Pink Floyd</code>\n"
+                "• <code>/playlist 10 canciones de metal melódico</code>\n"
+                "• <code>/playlist 25 temas de mujeres, vera fauna y cala vento</code>\n"
+                "• <code>/playlist 30 canciones de Pink Floyd y Queen</code>\n\n"
+                "💡 <b>Tip:</b> Puedes especificar la cantidad de canciones (ej: '20 canciones', '15 temas')",
+                parse_mode='HTML'
             )
             return
         
         description = " ".join(context.args)
-        await update.message.reply_text(f"🎵 Creando playlist: _{description}_...", parse_mode='Markdown')
+        await update.message.reply_text(f"🎵 Creando playlist: <i>{description}</i>...", parse_mode='HTML')
         
         try:
             # 1. Intentar generar playlist PRIMERO desde la biblioteca local
@@ -805,14 +802,15 @@ Sé todo lo detallado que quieras:
                     
                     await update.message.reply_text(
                         f"😔 No encontré suficiente música en tu biblioteca que coincida con esos criterios.\n\n"
-                        f"🔍 **Debug info:**\n"
+                        f"🔍 <b>Debug info:</b>\n"
                         f"• Géneros detectados en tu biblioteca: {genres_text}\n"
                         f"• Total de canciones en muestra: {len(sample_tracks)}\n\n"
-                        f"💡 **Intenta:**\n"
+                        f"💡 <b>Intenta:</b>\n"
                         f"• Hacer la descripción más general\n"
                         f"• Mencionar artistas que tengas en tu biblioteca\n"
                         f"• Usar géneros que tengas disponibles\n"
-                        f"• Probar: `/playlist rock` o `/playlist pop`"
+                        f"• Probar: <code>/playlist rock</code> o <code>/playlist pop</code>",
+                        parse_mode='HTML'
                     )
                 except Exception as e:
                     await update.message.reply_text(
@@ -847,10 +845,10 @@ Sé todo lo detallado que quieras:
                 return
             
             # 4. Mostrar preview
-            text = f"🎵 **Playlist creada en Navidrome:** {playlist_name}\n\n"
+            text = f"🎵 <b>Playlist creada en Navidrome:</b> {playlist_name}\n\n"
             text += f"📝 {description}\n\n"
-            text += f"📚 **{library_count} canciones de tu biblioteca local**\n\n"
-            text += f"🎼 **Canciones ({len(tracks)}):**\n"
+            text += f"📚 <b>{library_count} canciones de tu biblioteca local</b>\n\n"
+            text += f"🎼 <b>Canciones ({len(tracks)}):</b>\n"
             
             for i, track in enumerate(tracks[:10], 1):
                 text += f"{i}. {track.artist} - {track.title}\n"
@@ -858,11 +856,11 @@ Sé todo lo detallado que quieras:
             if len(tracks) > 10:
                 text += f"\n...y {len(tracks) - 10} más\n"
             
-            text += f"\n✅ **La playlist está disponible en Navidrome**"
-            text += f"\n🆔 Playlist ID: `{playlist_id}`"
+            text += f"\n✅ <b>La playlist está disponible en Navidrome</b>"
+            text += f"\n🆔 Playlist ID: <code>{playlist_id}</code>"
             
             # Enviar mensaje con resultado
-            await update.message.reply_text(text, parse_mode='Markdown')
+            await update.message.reply_text(text, parse_mode='HTML')
             print(f"✅ Playlist creada en Navidrome con ID: {playlist_id}")
         
         except Exception as e:
@@ -963,10 +961,10 @@ Sé todo lo detallado que quieras:
                     recommendations = await self.ai.generate_recommendations(user_profile, limit=5)
                     
                     if recommendations:
-                        text = "🎵 **Nuevas recomendaciones para ti:**\n\n"
+                        text = "🎵 <b>Nuevas recomendaciones para ti:</b>\n\n"
                         
                         for i, rec in enumerate(recommendations, 1):
-                            text += f"**{i}.** {rec.track.artist} - {rec.track.title}\n"
+                            text += f"<b>{i}.</b> {rec.track.artist} - {rec.track.title}\n"
                             if rec.track.album:
                                 text += f"   📀 {rec.track.album}\n"
                             text += f"   💡 {rec.reason}\n"
@@ -980,7 +978,7 @@ Sé todo lo detallado que quieras:
                             [InlineKeyboardButton("🔄 Más recomendaciones", callback_data="more_recommendations")]
                         ]
                         reply_markup = InlineKeyboardMarkup(keyboard)
-                        await query.edit_message_text(text, reply_markup=reply_markup, parse_mode='Markdown')
+                        await query.edit_message_text(text, reply_markup=reply_markup, parse_mode='HTML')
                     else:
                         await query.edit_message_text("😔 No pude generar más recomendaciones en este momento.")
                 else:
@@ -1001,27 +999,27 @@ Sé todo lo detallado que quieras:
                 
                 if category == "tracks":
                     tracks = await self.navidrome.get_tracks(limit=20)
-                    text = "🎵 **Canciones de tu biblioteca:**\n\n"
+                    text = "🎵 <b>Canciones de tu biblioteca:</b>\n\n"
                     for i, track in enumerate(tracks[:15], 1):
                         text += f"{i}. {track.artist} - {track.title}\n"
-                    await query.edit_message_text(text, parse_mode='Markdown')
+                    await query.edit_message_text(text, parse_mode='HTML')
                     
                 elif category == "albums":
                     albums = await self.navidrome.get_albums(limit=20)
-                    text = "📀 **Álbumes de tu biblioteca:**\n\n"
+                    text = "📀 <b>Álbumes de tu biblioteca:</b>\n\n"
                     for i, album in enumerate(albums[:15], 1):
                         text += f"{i}. {album.artist} - {album.name}\n"
-                    await query.edit_message_text(text, parse_mode='Markdown')
+                    await query.edit_message_text(text, parse_mode='HTML')
                     
                 elif category == "artists":
                     artists = await self.navidrome.get_artists(limit=20)
-                    text = "🎤 **Artistas de tu biblioteca:**\n\n"
+                    text = "🎤 <b>Artistas de tu biblioteca:</b>\n\n"
                     for i, artist in enumerate(artists[:15], 1):
                         text += f"{i}. {artist.name}\n"
-                    await query.edit_message_text(text, parse_mode='Markdown')
+                    await query.edit_message_text(text, parse_mode='HTML')
                     
                 elif category == "search":
-                    await query.edit_message_text("🔍 Usa el comando `/search <término>` para buscar música", parse_mode='Markdown')
+                    await query.edit_message_text("🔍 Usa el comando <code>/search &lt;término&gt;</code> para buscar música", parse_mode='HTML')
                 else:
                     await query.edit_message_text(f"📚 Cargando {category}...\n\n⚠️ Funcionalidad en desarrollo")
                 
@@ -1032,14 +1030,14 @@ Sé todo lo detallado que quieras:
                 await query.edit_message_text("📈 Calculando actividad diaria...")
                 if self.music_service:
                     activity = await self.music_service.get_listening_activity(days=30) if hasattr(self.music_service, 'get_listening_activity') else {}
-                    text = "📈 **Actividad de los últimos 30 días**\n\n"
+                    text = "📈 <b>Actividad de los últimos 30 días</b>\n\n"
                     if activity:
                         daily_listens = activity.get("daily_listens", {})
                         text += f"📊 Total de días activos: {activity.get('total_days', 0)}\n"
                         text += f"📊 Promedio diario: {activity.get('avg_daily_listens', 0):.1f} escuchas\n"
                     else:
                         text += "⚠️ No hay datos de actividad disponibles"
-                    await query.edit_message_text(text, parse_mode='Markdown')
+                    await query.edit_message_text(text, parse_mode='HTML')
                     print("   ✅ Daily activity procesado")
                 else:
                     await query.edit_message_text("⚠️ No hay servicio de scrobbling configurado")
@@ -1047,8 +1045,8 @@ Sé todo lo detallado que quieras:
                 
             elif data == "favorite_genres":
                 print("   ➜ Procesando 'favorite_genres'")
-                text = "🎯 **Géneros favoritos**\n\n⚠️ Funcionalidad en desarrollo"
-                await query.edit_message_text(text, parse_mode='Markdown')
+                text = "🎯 <b>Géneros favoritos</b>\n\n⚠️ Funcionalidad en desarrollo"
+                await query.edit_message_text(text, parse_mode='HTML')
                 print("   ✅ Favorite genres procesado")
                 
             elif data == "refresh_stats":
@@ -1060,18 +1058,18 @@ Sé todo lo detallado que quieras:
                     recent_tracks = await self.music_service.get_recent_tracks(limit=100)
                     top_artists = await self.music_service.get_top_artists(limit=10)
                     
-                    text = "📊 **Tus Estadísticas Musicales** (Actualizado)\n\n"
-                    text += f"🎵 **Total de escuchas:** {user_stats.get('total_listens', 'N/A')}\n"
-                    text += f"🎤 **Artistas únicos:** {user_stats.get('total_artists', 'N/A')}\n"
-                    text += f"📀 **Álbumes únicos:** {user_stats.get('total_albums', 'N/A')}\n"
-                    text += f"🎼 **Canciones únicas:** {user_stats.get('total_tracks', 'N/A')}\n\n"
+                    text = "📊 <b>Tus Estadísticas Musicales</b> (Actualizado)\n\n"
+                    text += f"🎵 <b>Total de escuchas:</b> {user_stats.get('total_listens', 'N/A')}\n"
+                    text += f"🎤 <b>Artistas únicos:</b> {user_stats.get('total_artists', 'N/A')}\n"
+                    text += f"📀 <b>Álbumes únicos:</b> {user_stats.get('total_albums', 'N/A')}\n"
+                    text += f"🎼 <b>Canciones únicas:</b> {user_stats.get('total_tracks', 'N/A')}\n\n"
                     
-                    text += f"🏆 **Top 5 Artistas:**\n"
+                    text += f"🏆 <b>Top 5 Artistas:</b>\n"
                     for i, artist in enumerate(top_artists[:5], 1):
                         text += f"{i}. {artist.name} ({artist.playcount} escuchas)\n"
                     
                     if recent_tracks:
-                        text += f"\n⏰ **Última escucha:**\n"
+                        text += f"\n⏰ <b>Última escucha:</b>\n"
                         last_track = recent_tracks[0]
                         text += f"{last_track.artist} - {last_track.name}\n"
                     
@@ -1081,7 +1079,7 @@ Sé todo lo detallado que quieras:
                         [InlineKeyboardButton("🔄 Actualizar", callback_data="refresh_stats")]
                     ]
                     reply_markup = InlineKeyboardMarkup(keyboard)
-                    await query.edit_message_text(text, reply_markup=reply_markup, parse_mode='Markdown')
+                    await query.edit_message_text(text, reply_markup=reply_markup, parse_mode='HTML')
                     print("   ✅ Refresh stats procesado")
                 else:
                     await query.edit_message_text("⚠️ No hay servicio de scrobbling configurado")
@@ -1122,7 +1120,7 @@ Sé todo lo detallado que quieras:
                 emoji = range_emojis.get(period, "📊")
                 range_name = range_names.get(period, "Este Mes")
                 
-                await query.edit_message_text(f"{emoji} Calculando estadísticas de **{range_name}**...")
+                await query.edit_message_text(f"{emoji} Calculando estadísticas de <b>{range_name}</b>...")
                 
                 try:
                     if self.music_service:
@@ -1136,33 +1134,33 @@ Sé todo lo detallado que quieras:
                         if hasattr(self.music_service, 'get_top_albums'):
                             top_albums = await self.music_service.get_top_albums(period=period, limit=5)
                         
-                        text = f"{emoji} **Estadísticas de {range_name}**\n"
-                        text += f"_Servicio: {self.music_service_name}_\n\n"
+                        text = f"{emoji} <b>Estadísticas de {range_name}</b>\n"
+                        text += f"<i>Servicio: {self.music_service_name}</i>\n\n"
                         
                         # Top artistas
                         if top_artists:
-                            text += f"🏆 **Top 5 Artistas:**\n"
+                            text += f"🏆 <b>Top 5 Artistas:</b>\n"
                             for i, artist in enumerate(top_artists[:5], 1):
                                 text += f"{i}. {artist.name} - {artist.playcount} escuchas\n"
                             text += "\n"
                         
                         # Top álbumes
                         if top_albums:
-                            text += f"📀 **Top 3 Álbumes:**\n"
+                            text += f"📀 <b>Top 3 Álbumes:</b>\n"
                             for i, album in enumerate(top_albums[:3], 1):
                                 text += f"{i}. {album['artist']} - {album['name']} ({album['listen_count']} escuchas)\n"
                             text += "\n"
                         
                         # Top tracks
                         if top_tracks:
-                            text += f"🎵 **Top 3 Canciones:**\n"
+                            text += f"🎵 <b>Top 3 Canciones:</b>\n"
                             for i, track in enumerate(top_tracks[:3], 1):
                                 text += f"{i}. {track.artist} - {track.name} ({track.playcount} escuchas)\n"
                             text += "\n"
                         
                         # Actividad reciente
                         if recent_tracks:
-                            text += f"⏰ **Última escucha:**\n"
+                            text += f"⏰ <b>Última escucha:</b>\n"
                             last_track = recent_tracks[0]
                             text += f"{last_track.artist} - {last_track.name}\n"
                         
@@ -1183,7 +1181,7 @@ Sé todo lo detallado que quieras:
                         ]
                         reply_markup = InlineKeyboardMarkup(keyboard)
                         
-                        await query.edit_message_text(text, reply_markup=reply_markup, parse_mode='Markdown')
+                        await query.edit_message_text(text, reply_markup=reply_markup, parse_mode='HTML')
                     else:
                         await query.edit_message_text("⚠️ No hay servicio de scrobbling configurado")
                     
