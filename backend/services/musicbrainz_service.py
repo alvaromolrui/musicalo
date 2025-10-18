@@ -1,6 +1,9 @@
 import httpx
 import os
 import asyncio
+import json
+import time
+from pathlib import Path
 from typing import Optional, Dict, Any, List
 
 class MusicBrainzService:
@@ -10,6 +13,12 @@ class MusicBrainzService:
     que cumplan con criterios específicos (género, país, época) cuando los metadatos
     locales son insuficientes o inexactos.
     """
+    
+    # Cache persistente compartido entre todas las instancias
+    _CACHE_FILE = Path("/app/logs/musicbrainz_cache.json")
+    _CACHE_EXPIRY_DAYS = 30
+    _persistent_cache = None
+    _cache_loaded = False
     
     def __init__(self):
         self.base_url = "https://musicbrainz.org/ws/2"
@@ -23,11 +32,106 @@ class MusicBrainzService:
         }
         self.client = httpx.AsyncClient(timeout=15.0, headers=self.headers)
         
-        # Cache persistente en memoria para toda la sesión
-        self._cache = {}
+        # Cargar cache persistente solo una vez
+        if not MusicBrainzService._cache_loaded:
+            self._load_cache()
+            MusicBrainzService._cache_loaded = True
         
         # Rate limiting: última petición
         self._last_request_time = 0
+    
+    def _load_cache(self):
+        """Cargar cache desde archivo"""
+        try:
+            if MusicBrainzService._CACHE_FILE.exists():
+                with open(MusicBrainzService._CACHE_FILE, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    MusicBrainzService._persistent_cache = data.get('cache', {})
+                    print(f"✅ Cache MusicBrainz cargado: {len(MusicBrainzService._persistent_cache)} artistas")
+            else:
+                MusicBrainzService._persistent_cache = {}
+                print("📝 Cache MusicBrainz inicializado vacío")
+        except Exception as e:
+            print(f"⚠️ Error cargando cache MusicBrainz: {e}")
+            MusicBrainzService._persistent_cache = {}
+    
+    def _save_cache(self):
+        """Guardar cache en archivo"""
+        try:
+            # Crear directorio si no existe
+            MusicBrainzService._CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Limpiar entradas expiradas antes de guardar
+            self._clean_expired_cache()
+            
+            data = {
+                'cache': MusicBrainzService._persistent_cache,
+                'last_updated': time.time()
+            }
+            
+            with open(MusicBrainzService._CACHE_FILE, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+            
+            print(f"💾 Cache MusicBrainz guardado: {len(MusicBrainzService._persistent_cache)} artistas")
+        except Exception as e:
+            print(f"⚠️ Error guardando cache MusicBrainz: {e}")
+    
+    def _clean_expired_cache(self):
+        """Eliminar entradas del cache que han expirado"""
+        if not MusicBrainzService._persistent_cache:
+            return
+        
+        current_time = time.time()
+        expiry_seconds = MusicBrainzService._CACHE_EXPIRY_DAYS * 24 * 60 * 60
+        
+        expired_keys = []
+        for key, value in MusicBrainzService._persistent_cache.items():
+            if 'cached_at' in value:
+                age = current_time - value['cached_at']
+                if age > expiry_seconds:
+                    expired_keys.append(key)
+        
+        for key in expired_keys:
+            del MusicBrainzService._persistent_cache[key]
+        
+        if expired_keys:
+            print(f"🧹 Limpiadas {len(expired_keys)} entradas expiradas del cache")
+    
+    def _get_from_cache(self, cache_key: str) -> Optional[Dict[str, Any]]:
+        """Obtener valor del cache persistente"""
+        if not MusicBrainzService._persistent_cache:
+            return None
+        
+        cached_data = MusicBrainzService._persistent_cache.get(cache_key)
+        if cached_data:
+            # Verificar si ha expirado
+            current_time = time.time()
+            expiry_seconds = MusicBrainzService._CACHE_EXPIRY_DAYS * 24 * 60 * 60
+            
+            if 'cached_at' in cached_data:
+                age = current_time - cached_data['cached_at']
+                if age > expiry_seconds:
+                    # Expirado, eliminar
+                    del MusicBrainzService._persistent_cache[cache_key]
+                    return None
+            
+            return cached_data.get('data')
+        
+        return None
+    
+    def _save_to_cache(self, cache_key: str, data: Dict[str, Any]):
+        """Guardar valor en cache persistente"""
+        if MusicBrainzService._persistent_cache is None:
+            MusicBrainzService._persistent_cache = {}
+        
+        MusicBrainzService._persistent_cache[cache_key] = {
+            'data': data,
+            'cached_at': time.time()
+        }
+        
+        # Guardar en archivo cada 10 entradas nuevas para no escribir constantemente
+        if len(MusicBrainzService._persistent_cache) % 10 == 0:
+            self._save_cache()
     
     async def _rate_limit(self):
         """Asegurar que respetamos el rate limit de MusicBrainz (1 req/seg)"""
@@ -44,8 +148,9 @@ class MusicBrainzService:
         self,
         library_artists: List[str],
         filters: Dict[str, Any],
-        max_artists: int = 50
-    ) -> List[Dict[str, Any]]:
+        max_artists: int = None,
+        offset: int = 0
+    ) -> Dict[str, Any]:
         """Buscar qué artistas de la biblioteca cumplen con filtros específicos
         
         Este es el método clave para la búsqueda "inversa":
@@ -56,20 +161,49 @@ class MusicBrainzService:
         Args:
             library_artists: Lista de nombres de artistas de tu biblioteca
             filters: Filtros a aplicar (genre, country, year_from, year_to)
-            max_artists: Máximo de artistas a verificar (para no hacer miles de requests)
+            max_artists: Máximo de artistas a verificar (si None, usa MUSICBRAINZ_BATCH_SIZE)
+            offset: Desde qué artista empezar (para búsquedas incrementales)
         
         Returns:
-            Lista de artistas que cumplen con los filtros, con su info de MusicBrainz
+            Diccionario con artistas que cumplen y metadata de búsqueda:
+            {
+                "artists": List[Dict],
+                "offset": int,
+                "next_offset": int,
+                "has_more": bool,
+                "total_artists": int,
+                "checked_this_batch": int
+            }
         """
         try:
-            print(f"🔍 MusicBrainz: Verificando {len(library_artists)} artistas de biblioteca...")
+            # Usar variable de entorno si no se especifica max_artists
+            if max_artists is None:
+                max_artists = int(os.getenv("MUSICBRAINZ_BATCH_SIZE", "20"))
+            
+            # Verificar límite máximo total
+            max_total = int(os.getenv("MUSICBRAINZ_MAX_TOTAL", "100"))
+            if offset >= max_total:
+                print(f"   ⚠️ Límite máximo alcanzado ({max_total} artistas)")
+                return {
+                    "artists": [],
+                    "offset": offset,
+                    "next_offset": offset,
+                    "has_more": False,
+                    "total_artists": len(library_artists),
+                    "checked_this_batch": 0,
+                    "max_reached": True
+                }
+            
+            # Calcular slice de artistas a verificar
+            end_index = min(offset + max_artists, len(library_artists), max_total)
+            artists_to_check = library_artists[offset:end_index]
+            
+            print(f"🔍 MusicBrainz: Verificando artistas {offset+1} a {end_index} de {len(library_artists)}...")
             print(f"   Filtros: {filters}")
+            print(f"   Batch size: {max_artists}")
             
             matching_artists = []
             checked_count = 0
-            
-            # Limitar la cantidad para no hacer demasiadas requests
-            artists_to_check = library_artists[:max_artists]
             
             for i, artist_name in enumerate(artists_to_check):
                 checked_count += 1
@@ -82,23 +216,41 @@ class MusicBrainzService:
                         "name": artist_name,
                         "mb_data": verification
                     })
-                    print(f"   ✅ [{i+1}/{len(artists_to_check)}] {artist_name} - CUMPLE")
+                    print(f"   ✅ [{offset+i+1}/{len(library_artists)}] {artist_name} - CUMPLE")
                 else:
-                    print(f"   ❌ [{i+1}/{len(artists_to_check)}] {artist_name} - no cumple")
+                    print(f"   ❌ [{offset+i+1}/{len(library_artists)}] {artist_name} - no cumple")
                 
                 # Mostrar progreso cada 10 artistas
                 if (i + 1) % 10 == 0:
-                    print(f"   📊 Progreso: {i+1}/{len(artists_to_check)} verificados, {len(matching_artists)} coinciden")
+                    print(f"   📊 Progreso: {offset+i+1}/{len(library_artists)} verificados, {len(matching_artists)} coinciden")
             
+            has_more = end_index < len(library_artists) and end_index < max_total
             print(f"✅ MusicBrainz: {len(matching_artists)}/{checked_count} artistas cumplen los filtros")
+            if has_more:
+                remaining = min(len(library_artists) - end_index, max_total - end_index)
+                print(f"💡 Quedan {remaining} artistas por verificar. Di 'busca más' para continuar")
             
-            return matching_artists
+            return {
+                "artists": matching_artists,
+                "offset": offset,
+                "next_offset": end_index,
+                "has_more": has_more,
+                "total_artists": len(library_artists),
+                "checked_this_batch": checked_count
+            }
             
         except Exception as e:
             print(f"❌ Error en búsqueda inversa de MusicBrainz: {e}")
             import traceback
             traceback.print_exc()
-            return []
+            return {
+                "artists": [],
+                "offset": offset,
+                "next_offset": offset,
+                "has_more": False,
+                "total_artists": 0,
+                "checked_this_batch": 0
+            }
     
     async def verify_artist_metadata(
         self,
@@ -129,10 +281,12 @@ class MusicBrainzService:
             }
         """
         try:
-            # Verificar cache
+            # Verificar cache PERSISTENTE
             cache_key = f"artist_{artist_name.lower()}"
-            if cache_key in self._cache:
-                artist_info = self._cache[cache_key]
+            cached_data = self._get_from_cache(cache_key)
+            
+            if cached_data:
+                artist_info = cached_data
             else:
                 # Buscar artista
                 artist_info = await self._search_and_get_artist(artist_name)
@@ -144,8 +298,8 @@ class MusicBrainzService:
                         "artist_name": artist_name
                     }
                 
-                # Guardar en cache
-                self._cache[cache_key] = artist_info
+                # Guardar en cache PERSISTENTE
+                self._save_to_cache(cache_key, artist_info)
             
             # Si no hay filtros, solo devolver la info
             if not filters:
@@ -360,6 +514,8 @@ class MusicBrainzService:
             return {}
     
     async def close(self):
-        """Cerrar conexión"""
+        """Cerrar conexión y guardar cache"""
         await self.client.aclose()
+        # Guardar cache al cerrar
+        self._save_cache()
 

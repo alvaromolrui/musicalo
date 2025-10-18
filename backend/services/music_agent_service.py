@@ -131,7 +131,17 @@ class MusicAgentService:
         session.add_message("user", user_question)
         
         # 1. Recopilar datos de todas las fuentes
-        data_context = await self._gather_all_data(user_question)
+        data_context = await self._gather_all_data(user_question, user_id)
+        
+        # Si el usuario pidió "busca más" pero no hay búsqueda anterior
+        if data_context.get("no_active_search"):
+            return {
+                "answer": data_context.get("message"),
+                "data_used": {},
+                "links": [],
+                "success": True,
+                "session_id": user_id
+            }
         
         # 2. Obtener estadísticas del usuario para personalización
         user_stats = {}
@@ -246,11 +256,12 @@ Responde ahora de forma natural y conversacional:"""
                 "success": False
             }
     
-    async def _gather_all_data(self, query: str) -> Dict[str, Any]:
+    async def _gather_all_data(self, query: str, user_id: int) -> Dict[str, Any]:
         """Recopilar datos de todas las fuentes disponibles
         
         Args:
             query: Consulta del usuario para determinar qué datos recopilar
+            user_id: ID del usuario (para mantener contexto de búsqueda)
             
         Returns:
             Diccionario con todos los datos relevantes
@@ -266,11 +277,41 @@ Responde ahora de forma natural y conversacional:"""
         # Detectar palabras clave para optimizar búsquedas
         query_lower = query.lower()
         
-        # Detectar si es una petición de RECOMENDACIÓN
-        is_recommendation_request = any(word in query_lower for word in [
-            "recomienda", "recomiéndame", "sugerencia", "sugiere", "sugiéreme",
-            "ponme", "pon", "quiero escuchar", "dame"
+        # Detectar comando "busca más"
+        is_search_more = any(phrase in query_lower for phrase in [
+            "busca más", "buscar más", "busca mas", "buscar mas",
+            "más resultados", "más artistas", "continuar", "sigue buscando"
         ])
+        
+        # Obtener sesión para contexto
+        session = self.conversation_manager.get_session(user_id)
+        
+        if is_search_more:
+            print(f"🔍 Comando 'busca más' detectado")
+            last_search = session.context.get("last_mb_search", {})
+            
+            if last_search.get("genre") and last_search.get("has_more"):
+                # Continuar búsqueda anterior
+                detected_genre = last_search["genre"]
+                needs_library_search = True
+                is_recommendation_request = False
+                search_term = None
+                mb_offset = last_search["next_offset"]
+                print(f"   Continuando búsqueda de '{detected_genre}' desde artista {mb_offset}")
+            else:
+                print(f"   ⚠️ No hay búsqueda anterior para continuar")
+                # Responder que no hay búsqueda activa
+                data["no_active_search"] = True
+                data["message"] = "No hay ninguna búsqueda activa que continuar. Primero pregunta por un género, por ejemplo: '¿tengo algo de jazz?'"
+                return data
+        else:
+            mb_offset = 0  # Nueva búsqueda, empezar desde 0
+            
+            # Detectar si es una petición de RECOMENDACIÓN
+            is_recommendation_request = any(word in query_lower for word in [
+                "recomienda", "recomiéndame", "sugerencia", "sugiere", "sugiéreme",
+                "ponme", "pon", "quiero escuchar", "dame"
+            ])
         print(f"🔍 DEBUG - is_recommendation_request: {is_recommendation_request}")
         
         # Detectar géneros musicales comunes
@@ -355,13 +396,33 @@ Responde ahora de forma natural y conversacional:"""
                         # FALLBACK: Usar MusicBrainz para verificar si hay artistas del género
                         if self.musicbrainz:
                             print(f"   🎯 Activando MusicBrainz para verificar género '{detected_genre}'...")
-                            mb_results = await self._search_genre_with_musicbrainz(detected_genre)
-                            if mb_results:
+                            mb_results = await self._search_genre_with_musicbrainz(detected_genre, offset=mb_offset)
+                            if mb_results and mb_results.get("results"):
                                 # Si MusicBrainz encuentra artistas, actualizar los resultados
-                                data["library"]["search_results"] = mb_results
+                                results_data = mb_results["results"]
+                                data["library"]["search_results"] = results_data
                                 data["library"]["has_content"] = True
                                 data["library"]["musicbrainz_verified"] = True
-                                print(f"   ✅ MusicBrainz encontró {len(mb_results.get('albums', []))} álbumes, {len(mb_results.get('artists', []))} artistas de '{detected_genre}'")
+                                print(f"   ✅ MusicBrainz encontró {len(results_data.get('albums', []))} álbumes, {len(results_data.get('artists', []))} artistas de '{detected_genre}'")
+                                
+                                # Guardar contexto para "busca más"
+                                session.context["last_mb_search"] = {
+                                    "genre": detected_genre,
+                                    "offset": mb_results["offset"],
+                                    "next_offset": mb_results["next_offset"],
+                                    "has_more": mb_results["has_more"],
+                                    "total_artists": mb_results["total_artists"],
+                                    "checked_total": mb_results["next_offset"]
+                                }
+                                
+                                # Información para el prompt de la IA
+                                if mb_results["has_more"]:
+                                    data["library"]["can_search_more"] = True
+                                    data["library"]["mb_stats"] = {
+                                        "checked": mb_results["next_offset"],
+                                        "total": mb_results["total_artists"],
+                                        "remaining": mb_results["total_artists"] - mb_results["next_offset"]
+                                    }
                 
                 # Si detectó un género pero NO es recomendación (ej: "tengo algo de jazz?")
                 elif detected_genre and not search_term:
@@ -383,13 +444,33 @@ Responde ahora de forma natural y conversacional:"""
                         # FALLBACK: Usar MusicBrainz para verificar si hay artistas del género
                         if self.musicbrainz:
                             print(f"   🎯 Activando MusicBrainz para verificar género '{detected_genre}'...")
-                            mb_results = await self._search_genre_with_musicbrainz(detected_genre)
-                            if mb_results and any(mb_results.values()):
+                            mb_results = await self._search_genre_with_musicbrainz(detected_genre, offset=mb_offset)
+                            if mb_results and mb_results.get("results"):
                                 # Si MusicBrainz encuentra artistas, actualizar los resultados
-                                data["library"]["search_results"] = mb_results
+                                results_data = mb_results["results"]
+                                data["library"]["search_results"] = results_data
                                 data["library"]["has_content"] = True
                                 data["library"]["musicbrainz_verified"] = True
-                                print(f"   ✅ MusicBrainz encontró {len(mb_results.get('albums', []))} álbumes, {len(mb_results.get('artists', []))} artistas de '{detected_genre}'")
+                                print(f"   ✅ MusicBrainz encontró {len(results_data.get('albums', []))} álbumes, {len(results_data.get('artists', []))} artistas de '{detected_genre}'")
+                                
+                                # Guardar contexto para "busca más"
+                                session.context["last_mb_search"] = {
+                                    "genre": detected_genre,
+                                    "offset": mb_results["offset"],
+                                    "next_offset": mb_results["next_offset"],
+                                    "has_more": mb_results["has_more"],
+                                    "total_artists": mb_results["total_artists"],
+                                    "checked_total": mb_results["next_offset"]
+                                }
+                                
+                                # Información para el prompt de la IA
+                                if mb_results["has_more"]:
+                                    data["library"]["can_search_more"] = True
+                                    data["library"]["mb_stats"] = {
+                                        "checked": mb_results["next_offset"],
+                                        "total": mb_results["total_artists"],
+                                        "remaining": mb_results["total_artists"] - mb_results["next_offset"]
+                                    }
                 
                 # Si hay un artista específico, buscar por artista
                 elif search_term:
@@ -757,6 +838,15 @@ Responde ahora de forma natural y conversacional:"""
         if not formatted:
             formatted = "\n⚠️ No hay datos disponibles para responder esta consulta.\n"
         
+        # Información sobre búsqueda incremental disponible
+        if data.get("library", {}).get("can_search_more"):
+            stats = data["library"]["mb_stats"]
+            formatted += f"\n💡 === BÚSQUEDA INCREMENTAL DISPONIBLE ===\n"
+            formatted += f"✓ Verificados hasta ahora: {stats['checked']}/{stats['total']} artistas\n"
+            formatted += f"✓ Quedan por verificar: {stats['remaining']} artistas\n"
+            formatted += f"\n💬 IMPORTANTE: Menciona al usuario que puede decir 'busca más' para verificar más artistas.\n"
+            formatted += f"Ejemplo: 'He verificado {stats['checked']} artistas de tu biblioteca. Si quieres que busque más a fondo, dime \"busca más\".'\n\n"
+        
         return formatted
     
     def _extract_lastfm_links(self, data: Dict[str, Any]) -> List[str]:
@@ -1110,38 +1200,52 @@ Responde ahora de forma natural y conversacional:"""
         print(f"🔍 Término extraído (filtrado): '{result}'")
         return result if result else query
     
-    async def _search_genre_with_musicbrainz(self, genre: str) -> Dict[str, List]:
+    async def _search_genre_with_musicbrainz(
+        self, 
+        genre: str, 
+        offset: int = 0
+    ) -> Dict[str, Any]:
         """Usar MusicBrainz para buscar artistas de un género en la biblioteca
         
         Args:
             genre: Género musical a buscar
+            offset: Desde qué artista empezar (para búsquedas incrementales)
             
         Returns:
-            Diccionario con resultados {tracks: [], albums: [], artists: []}
+            Diccionario con resultados y metadata de búsqueda
         """
         try:
             # Obtener muestra de la biblioteca
-            library_tracks = await self.navidrome.get_tracks(limit=300)
+            library_tracks = await self.navidrome.get_tracks(limit=500)
             
             # Extraer artistas únicos
             unique_artists = list(set([track.artist for track in library_tracks if track.artist]))
-            print(f"      Verificando {len(unique_artists)} artistas con MusicBrainz...")
+            print(f"      Total de artistas en biblioteca: {len(unique_artists)}")
             
             # Preparar filtros
             filters = {"genre": genre}
             
-            # Verificar artistas (limitar a 50 para mayor precisión)
-            matching_artists_data = await self.musicbrainz.find_matching_artists_in_library(
+            # Verificar artistas usando batch size configurable
+            mb_data = await self.musicbrainz.find_matching_artists_in_library(
                 unique_artists,
                 filters,
-                max_artists=50
+                max_artists=None,  # Usará MUSICBRAINZ_BATCH_SIZE
+                offset=offset
             )
             
-            if not matching_artists_data:
-                return {"tracks": [], "albums": [], "artists": []}
+            if not mb_data or not mb_data.get("artists"):
+                return {
+                    "results": {"tracks": [], "albums": [], "artists": []},
+                    "offset": mb_data.get("offset", offset) if mb_data else offset,
+                    "next_offset": mb_data.get("next_offset", offset) if mb_data else offset,
+                    "has_more": mb_data.get("has_more", False) if mb_data else False,
+                    "total_artists": mb_data.get("total_artists", 0) if mb_data else 0,
+                    "checked_this_batch": mb_data.get("checked_this_batch", 0) if mb_data else 0
+                }
             
             # Extraer nombres de artistas que coinciden
-            matching_artist_names = set([a["name"].lower() for a in matching_artists_data])
+            matching_artist_names = set([a["name"].lower() for a in mb_data["artists"]])
+            print(f"      ✅ Artistas coincidentes: {list(matching_artist_names)}")
             
             # Buscar en Navidrome los artistas verificados
             results = {"tracks": [], "albums": [], "artists": []}
@@ -1162,11 +1266,25 @@ Responde ahora de forma natural y conversacional:"""
                     if artist not in results["artists"]:
                         results["artists"].append(artist)
             
-            return results
+            return {
+                "results": results,
+                "offset": mb_data["offset"],
+                "next_offset": mb_data["next_offset"],
+                "has_more": mb_data["has_more"],
+                "total_artists": mb_data["total_artists"],
+                "checked_this_batch": mb_data["checked_this_batch"]
+            }
             
         except Exception as e:
             print(f"      ❌ Error en búsqueda MusicBrainz: {e}")
-            return {"tracks": [], "albums": [], "artists": []}
+            return {
+                "results": {"tracks": [], "albums": [], "artists": []},
+                "offset": offset,
+                "next_offset": offset,
+                "has_more": False,
+                "total_artists": 0,
+                "checked_this_batch": 0
+            }
     
     async def close(self):
         """Cerrar todas las conexiones"""
