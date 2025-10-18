@@ -427,50 +427,93 @@ Responde ahora de forma natural y conversacional:"""
                 # Si detectó un género pero NO es recomendación (ej: "tengo algo de jazz?")
                 elif detected_genre and not search_term:
                     print(f"🔍 Buscando en biblioteca por GÉNERO (no recomendación): '{detected_genre}' (query: '{query}')")
-                    # Buscar por género en Navidrome
+                    # Buscar por género en Navidrome primero
                     search_results = await self.navidrome.search(detected_genre, limit=50)
-                    data["library"]["search_results"] = search_results
                     data["library"]["search_term"] = detected_genre
                     data["library"]["is_genre_search"] = True
                     data["library"]["detected_genre"] = detected_genre
                     
+                    local_albums_count = len(search_results.get('albums', []))
+                    local_artists_count = len(search_results.get('artists', []))
+                    
                     if any(search_results.values()):
-                        data["library"]["has_content"] = True
-                        print(f"✅ Encontrado {len(search_results.get('albums', []))} álbumes, {len(search_results.get('artists', []))} artistas de género '{detected_genre}'")
+                        print(f"✅ Búsqueda local: {local_albums_count} álbumes, {local_artists_count} artistas de '{detected_genre}'")
                     else:
-                        data["library"]["has_content"] = False
-                        print(f"⚠️ No se encontraron resultados para género '{detected_genre}'")
+                        print(f"⚠️ Búsqueda local: 0 resultados para '{detected_genre}'")
+                    
+                    # SIEMPRE usar MusicBrainz para géneros (para complementar y permitir "busca más")
+                    if self.musicbrainz:
+                        print(f"   🎯 Usando MusicBrainz para verificar más artistas de '{detected_genre}'...")
+                        mb_results = await self._search_genre_with_musicbrainz(detected_genre, offset=mb_offset)
                         
-                        # FALLBACK: Usar MusicBrainz para verificar si hay artistas del género
-                        if self.musicbrainz:
-                            print(f"   🎯 Activando MusicBrainz para verificar género '{detected_genre}'...")
-                            mb_results = await self._search_genre_with_musicbrainz(detected_genre, offset=mb_offset)
-                            if mb_results and mb_results.get("results"):
-                                # Si MusicBrainz encuentra artistas, actualizar los resultados
-                                results_data = mb_results["results"]
-                                data["library"]["search_results"] = results_data
-                                data["library"]["has_content"] = True
-                                data["library"]["musicbrainz_verified"] = True
-                                print(f"   ✅ MusicBrainz encontró {len(results_data.get('albums', []))} álbumes, {len(results_data.get('artists', []))} artistas de '{detected_genre}'")
-                                
-                                # Guardar contexto para "busca más"
-                                session.context["last_mb_search"] = {
-                                    "genre": detected_genre,
-                                    "offset": mb_results["offset"],
-                                    "next_offset": mb_results["next_offset"],
-                                    "has_more": mb_results["has_more"],
-                                    "total_artists": mb_results["total_artists"],
-                                    "checked_total": mb_results["next_offset"]
+                        if mb_results and mb_results.get("results"):
+                            # Combinar resultados locales + MusicBrainz (evitando duplicados)
+                            results_data = mb_results["results"]
+                            
+                            # Combinar albums
+                            combined_albums = list(search_results.get('albums', []))
+                            existing_album_ids = {a.id for a in combined_albums}
+                            for album in results_data.get('albums', []):
+                                if album.id not in existing_album_ids:
+                                    combined_albums.append(album)
+                                    existing_album_ids.add(album.id)
+                            
+                            # Combinar artists
+                            combined_artists = list(search_results.get('artists', []))
+                            existing_artist_ids = {a.id for a in combined_artists}
+                            for artist in results_data.get('artists', []):
+                                if artist.id not in existing_artist_ids:
+                                    combined_artists.append(artist)
+                                    existing_artist_ids.add(artist.id)
+                            
+                            # Combinar tracks
+                            combined_tracks = list(search_results.get('tracks', []))
+                            existing_track_ids = {t.id for t in combined_tracks}
+                            for track in results_data.get('tracks', []):
+                                if track.id not in existing_track_ids:
+                                    combined_tracks.append(track)
+                                    existing_track_ids.add(track.id)
+                            
+                            # Usar resultados combinados
+                            data["library"]["search_results"] = {
+                                "albums": combined_albums,
+                                "artists": combined_artists,
+                                "tracks": combined_tracks
+                            }
+                            data["library"]["has_content"] = True
+                            data["library"]["musicbrainz_verified"] = True
+                            
+                            mb_albums = len(results_data.get('albums', []))
+                            mb_artists = len(results_data.get('artists', []))
+                            print(f"   ✅ MusicBrainz agregó: {mb_albums} álbumes, {mb_artists} artistas")
+                            print(f"   📊 Total combinado: {len(combined_albums)} álbumes, {len(combined_artists)} artistas")
+                            
+                            # Guardar contexto para "busca más" SIEMPRE
+                            session.context["last_mb_search"] = {
+                                "genre": detected_genre,
+                                "offset": mb_results["offset"],
+                                "next_offset": mb_results["next_offset"],
+                                "has_more": mb_results["has_more"],
+                                "total_artists": mb_results["total_artists"],
+                                "checked_total": mb_results["next_offset"]
+                            }
+                            
+                            # Información para el prompt de la IA
+                            if mb_results["has_more"]:
+                                data["library"]["can_search_more"] = True
+                                data["library"]["mb_stats"] = {
+                                    "checked": mb_results["next_offset"],
+                                    "total": mb_results["total_artists"],
+                                    "remaining": mb_results["total_artists"] - mb_results["next_offset"]
                                 }
-                                
-                                # Información para el prompt de la IA
-                                if mb_results["has_more"]:
-                                    data["library"]["can_search_more"] = True
-                                    data["library"]["mb_stats"] = {
-                                        "checked": mb_results["next_offset"],
-                                        "total": mb_results["total_artists"],
-                                        "remaining": mb_results["total_artists"] - mb_results["next_offset"]
-                                    }
+                        else:
+                            # MusicBrainz no encontró nada adicional, usar solo resultados locales
+                            data["library"]["search_results"] = search_results
+                            data["library"]["has_content"] = any(search_results.values())
+                    else:
+                        # MusicBrainz no disponible, usar solo resultados locales
+                        data["library"]["search_results"] = search_results
+                        data["library"]["has_content"] = any(search_results.values())
                 
                 # Si hay un artista específico, buscar por artista
                 elif search_term:
