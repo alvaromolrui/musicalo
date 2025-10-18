@@ -1,6 +1,6 @@
 # Musicalo 🎵🤖
 
-[![Version](https://img.shields.io/badge/Version-1.1.1--alpha-orange.svg)](VERSION)
+[![Version](https://img.shields.io/badge/Version-2.0.0--alpha-orange.svg)](VERSION)
 [![Docker Hub](https://img.shields.io/badge/Docker%20Hub-alvaromolrui%2Fmusicalo-blue?logo=docker)](https://hub.docker.com/r/alvaromolrui/musicalo)
 [![GitHub](https://img.shields.io/badge/GitHub-alvaromolrui%2Fmusicalo-black?logo=github)](https://github.com/alvaromolrui/musicalo)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
@@ -12,14 +12,15 @@ Un bot de Telegram inteligente que utiliza IA para generar recomendaciones music
 ## ✨ Características
 
 - **🤖 Lenguaje Natural**: Habla directamente con el bot sin necesidad de comandos
-- **🎨 Peticiones Específicas (NUEVO)**: Describe exactamente lo que buscas con todos los detalles
+- **🎨 Peticiones Específicas**: Describe exactamente lo que buscas con todos los detalles
 - **🎯 IA Contextual**: Gemini AI entiende intenciones y responde con tus datos reales
 - **🎵 Integración con Navidrome**: Acceso completo a tu biblioteca musical autoalojada
 - **📊 Scrobbles de Last.fm/ListenBrainz**: Análisis de tus hábitos de escucha y patrones
 - **🧠 Recomendaciones Inteligentes**: Sistema usando Google Gemini que aprende de tus gustos
 - **🔄 Variedad**: Diferentes recomendaciones cada vez
 - **📱 Acceso móvil**: Optimizado para usar desde tu smartphone
-- **🔒 Bot Privado (NUEVO)**: Restringe el acceso solo a usuarios autorizados
+- **🔒 Bot Privado**: Restringe el acceso solo a usuarios autorizados
+- **🎵 Playlists M3U**: Generación automática de playlists compatibles con Navidrome
 
 ### 🎨 Recomendaciones Ultra-Específicas
 
@@ -64,8 +65,6 @@ La IA entiende múltiples criterios y genera recomendaciones precisas que cumple
 
 ### 🐳 Opción 1: Docker (Recomendado)
 
-**Usando imagen de Docker Hub (más rápido):**
-
 ```bash
 # 1. Clonar repositorio
 git clone https://github.com/alvaromolrui/musicalo.git
@@ -75,20 +74,7 @@ cd musicalo
 cp env.example .env
 nano .env  # Editar con tus credenciales
 
-# 3. Iniciar con imagen pre-construida
-docker-compose -f docker-compose.production.yml up -d
-```
-
-**Construyendo imagen localmente:**
-
-```bash
-# 1. Clonar y configurar (igual que arriba)
-git clone https://github.com/alvaromolrui/musicalo.git
-cd musicalo
-cp env.example .env
-nano .env
-
-# 2. Construir e iniciar
+# 3. Iniciar bot (usa imagen pre-construida de Docker Hub)
 docker-compose up -d
 ```
 
@@ -97,6 +83,7 @@ docker-compose up -d
 docker-compose logs -f      # Ver logs
 docker-compose restart      # Reiniciar
 docker-compose down         # Detener
+docker-compose pull         # Actualizar a última versión
 ```
 
 ### 📦 Opción 2: Instalación Manual (Sin Docker)
@@ -189,7 +176,7 @@ TELEGRAM_ALLOWED_USER_IDS=123456789,987654321,555444333
 
 ```bash
 # Si usas Docker
-./docker-restart.sh
+docker-compose restart
 
 # Si lo ejecutas manualmente
 python start-bot.py
@@ -217,7 +204,7 @@ del bot y proporciona tu ID de usuario.
 
 ## 📱 Uso del Bot
 
-### 💬 Lenguaje Natural (NUEVO - v1.1.0)
+### 💬 Lenguaje Natural
 
 ¡Ahora puedes hablar directamente con el bot sin comandos!
 
@@ -252,7 +239,6 @@ La IA entiende tu intención y responde usando tus datos reales de Last.fm/Liste
 /library                      # Ver biblioteca
 /stats                        # Ver estadísticas
 /search queen                 # Buscar Queen
-/ask ¿qué es el blues?       # Pregunta sobre música
 ```
 
 ### 🔘 Interacciones
@@ -382,27 +368,24 @@ Este proyecto está bajo la Licencia MIT. Ver `LICENSE` para más detalles.
 
 ## 🐳 Gestión con Docker
 
-### Archivos Docker Compose
-
-El proyecto incluye dos configuraciones:
-
-- **`docker-compose.yml`**: Construye la imagen localmente (para desarrollo)
-- **`docker-compose.production.yml`**: Usa imagen de Docker Hub (para producción)
-
-Usa el que prefieras según tus necesidades.
-
 ### Comandos Docker Compose
 
 ```bash
-# Con imagen de Docker Hub (producción)
-docker-compose -f docker-compose.production.yml up -d
-docker-compose -f docker-compose.production.yml logs -f
-docker-compose -f docker-compose.production.yml down
-
-# Con build local (desarrollo)
+# Iniciar bot
 docker-compose up -d
+
+# Ver logs en tiempo real
 docker-compose logs -f
+
+# Detener bot
 docker-compose down
+
+# Actualizar a última versión
+docker-compose pull
+docker-compose up -d
+
+# Reiniciar bot
+docker-compose restart
 ```
 
 ---
