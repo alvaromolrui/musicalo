@@ -390,14 +390,24 @@ Sé todo lo detallado que quieras:
                     )
                     return
                 
-                # Obtener datos del usuario
+                # Obtener datos del usuario con fallback
                 recent_tracks = await self.music_service.get_recent_tracks(limit=20)
                 top_artists = await self.music_service.get_top_artists(limit=10)
                 
+                # FALLBACK: Si ListenBrainz falla o no devuelve datos, intentar con Last.fm
+                if not recent_tracks and self.lastfm:
+                    print(f"⚠️ {self.music_service_name} no devolvió escuchas, intentando con Last.fm...")
+                    try:
+                        recent_tracks = await self.lastfm.get_recent_tracks(limit=20)
+                        top_artists = await self.lastfm.get_top_artists(limit=10)
+                        print(f"✅ Fallback exitoso: {len(recent_tracks)} tracks de Last.fm")
+                    except Exception as e:
+                        print(f"❌ Fallback a Last.fm también falló: {e}")
+                
                 if not recent_tracks:
                     await update.message.reply_text(
-                        f"⚠️ No se encontraron escuchas recientes en {self.music_service_name}.\n\n"
-                        "Asegúrate de tener escuchas registradas para recibir recomendaciones personalizadas."
+                        f"⚠️ No se encontraron escuchas recientes.\n\n"
+                        "Asegúrate de tener escuchas registradas en ListenBrainz o Last.fm para recibir recomendaciones personalizadas."
                     )
                     return
                 
