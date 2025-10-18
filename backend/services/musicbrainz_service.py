@@ -590,6 +590,7 @@ class MusicBrainzService:
         try:
             from datetime import datetime, timedelta
             import logging
+            import os
             logger = logging.getLogger(__name__)
             
             # Calcular rango de fechas
@@ -663,9 +664,11 @@ class MusicBrainzService:
                 
                 offset += limit
                 
-                # Límite de seguridad: máximo 500 releases
-                if offset >= 500:
-                    logger.warning(f"   ⚠️ Límite de seguridad alcanzado (500 releases)")
+                # Límite de seguridad: máximo 2000 releases (configurable)
+                max_releases = int(os.getenv("MUSICBRAINZ_MAX_RELEASES", "2000"))
+                if offset >= max_releases:
+                    logger.warning(f"   ⚠️ Límite de seguridad alcanzado ({max_releases} releases)")
+                    logger.info(f"   💡 Puedes aumentar este límite con MUSICBRAINZ_MAX_RELEASES en .env")
                     break
             
             logger.info(f"✅ Total de releases encontrados: {len(all_releases)}")
