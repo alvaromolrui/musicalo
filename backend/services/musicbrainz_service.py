@@ -575,6 +575,182 @@ class MusicBrainzService:
             print(f"❌ Error en petición MusicBrainz ({endpoint}): {e}")
             return {}
     
+    async def get_all_recent_releases(self, days: int = 30) -> List[Dict[str, Any]]:
+        """Obtener todos los releases recientes del período especificado
+        
+        Este método realiza UNA búsqueda global a MusicBrainz para obtener
+        todos los lanzamientos del período, en lugar de consultar artista por artista.
+        
+        Args:
+            days: Días hacia atrás desde hoy (default: 30)
+        
+        Returns:
+            Lista de releases con información completa
+        """
+        try:
+            from datetime import datetime, timedelta
+            
+            # Calcular rango de fechas
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=days)
+            
+            print(f"🔍 Buscando releases en MusicBrainz desde {start_date.strftime('%Y-%m-%d')} hasta {end_date.strftime('%Y-%m-%d')}...")
+            
+            # Construcción de query Lucene para MusicBrainz
+            # firstreleasedate: fecha de primer lanzamiento
+            # status:official: solo lanzamientos oficiales (no bootlegs)
+            # type:album OR type:ep: álbumes y EPs
+            query = (
+                f'firstreleasedate:[{start_date.strftime("%Y-%m-%d")} TO {end_date.strftime("%Y-%m-%d")}] '
+                f'AND status:official AND (type:album OR type:ep)'
+            )
+            
+            all_releases = []
+            offset = 0
+            limit = 100  # MusicBrainz permite máximo 100 por request
+            
+            # Paginación para obtener todos los resultados
+            while True:
+                await self._rate_limit()
+                
+                data = await self._make_request(
+                    "release-group",
+                    {
+                        "query": query,
+                        "limit": limit,
+                        "offset": offset
+                    }
+                )
+                
+                release_groups = data.get("release-groups", [])
+                
+                if not release_groups:
+                    break
+                
+                # Parsear releases
+                for rg in release_groups:
+                    # Extraer información del artista
+                    artist_credit = rg.get("artist-credit", [])
+                    artist_name = None
+                    artist_mbid = None
+                    
+                    if artist_credit and len(artist_credit) > 0:
+                        artist_info = artist_credit[0].get("artist", {})
+                        artist_name = artist_info.get("name")
+                        artist_mbid = artist_info.get("id")
+                    
+                    # Solo agregar si tiene artista
+                    if artist_name:
+                        all_releases.append({
+                            "title": rg.get("title"),
+                            "artist": artist_name,
+                            "artist_mbid": artist_mbid,
+                            "date": rg.get("first-release-date"),
+                            "type": rg.get("primary-type"),
+                            "mbid": rg.get("id"),
+                            "url": f"https://musicbrainz.org/release-group/{rg.get('id')}"
+                        })
+                
+                print(f"   📊 Obtenidos {len(release_groups)} releases (offset: {offset}, total acumulado: {len(all_releases)})")
+                
+                # Si obtuvimos menos del límite, ya no hay más
+                if len(release_groups) < limit:
+                    break
+                
+                offset += limit
+                
+                # Límite de seguridad: máximo 500 releases
+                if offset >= 500:
+                    print(f"   ⚠️ Límite de seguridad alcanzado (500 releases)")
+                    break
+            
+            print(f"✅ Total de releases encontrados: {len(all_releases)}")
+            return all_releases
+            
+        except Exception as e:
+            print(f"❌ Error obteniendo releases recientes: {e}")
+            import traceback
+            traceback.print_exc()
+            return []
+    
+    def match_releases_with_library(
+        self, 
+        recent_releases: List[Dict[str, Any]], 
+        library_artists: List[Any]
+    ) -> List[Dict[str, Any]]:
+        """Hacer matching de releases con artistas de la biblioteca
+        
+        Usa normalización de texto para comparar nombres de artistas,
+        manejando variaciones comunes (mayúsculas, "The", acentos, etc.)
+        
+        Args:
+            recent_releases: Lista de releases de MusicBrainz
+            library_artists: Lista de artistas de Navidrome
+        
+        Returns:
+            Lista de releases que coinciden con la biblioteca
+        """
+        import unicodedata
+        import re
+        
+        def normalize_artist_name(name: str) -> str:
+            """Normalizar nombre de artista para comparación
+            
+            Ejemplos:
+                "The Beatles" -> "beatles"
+                "Café Tacvba" -> "cafe tacvba"
+                "MGMT" -> "mgmt"
+            """
+            if not name:
+                return ""
+            
+            # Convertir a minúsculas
+            normalized = name.lower()
+            
+            # Eliminar "the" al inicio
+            normalized = re.sub(r'^\s*the\s+', '', normalized)
+            
+            # Normalizar Unicode (eliminar acentos)
+            nfd = unicodedata.normalize('NFD', normalized)
+            normalized = ''.join(c for c in nfd if unicodedata.category(c) != 'Mn')
+            
+            # Eliminar puntuación excepto espacios
+            normalized = re.sub(r'[^\w\s]', '', normalized)
+            
+            # Normalizar espacios
+            normalized = re.sub(r'\s+', ' ', normalized).strip()
+            
+            return normalized
+        
+        # Crear conjunto de nombres normalizados de la biblioteca
+        library_names = set()
+        library_name_map = {}  # normalizado -> nombre original
+        
+        for artist in library_artists:
+            original = artist.name if hasattr(artist, 'name') else str(artist)
+            normalized = normalize_artist_name(original)
+            library_names.add(normalized)
+            if normalized not in library_name_map:
+                library_name_map[normalized] = original
+        
+        print(f"📚 Artistas en biblioteca: {len(library_names)}")
+        print(f"🔍 Releases a verificar: {len(recent_releases)}")
+        
+        # Filtrar releases que coincidan
+        matching_releases = []
+        
+        for release in recent_releases:
+            artist_normalized = normalize_artist_name(release["artist"])
+            
+            if artist_normalized in library_names:
+                # Agregar el nombre original de la biblioteca
+                release["matched_library_name"] = library_name_map.get(artist_normalized)
+                matching_releases.append(release)
+        
+        print(f"✅ Releases coincidentes: {len(matching_releases)}")
+        
+        return matching_releases
+    
     async def close(self):
         """Cerrar conexión y guardar cache"""
         await self.client.aclose()
