@@ -24,36 +24,31 @@ El comando utiliza una estrategia eficiente de búsqueda:
 ### Comandos disponibles
 
 ```bash
-/releases              # Lanzamientos del último mes (30 días)
-/releases 7            # Lanzamientos de la última semana
-/releases 60           # Lanzamientos de los últimos 60 días
+/releases              # Lanzamientos de esta semana (7 días, por defecto)
+/releases 30           # Lanzamientos del último mes
+/releases 60           # Lanzamientos de los últimos 2 meses
 /releases 90           # Lanzamientos de los últimos 3 meses
 ```
 
 ### Ejemplo de respuesta
 
 ```
-🎵 Lanzamientos recientes (30 días)
+🎵 Lanzamientos recientes (7 días)
 
-✅ Encontrados 5 lanzamientos de artistas en tu biblioteca
-📊 Total verificado: 287 releases globales
+✅ Encontrados 3 lanzamientos de artistas en tu biblioteca
+📊 Total verificado: 150 releases globales
 
-🎤 King Gizzard & The Lizard Wizard
-   📀 Flight b741 (Album)
-      📅 2024-08-09
+🎤 The Cure
+   📀 Songs of a Lost World (Album)
+      📅 2025-10-15
       🔗 Ver en MusicBrainz
 
-🎤 Fontaines D.C.
-   📀 Romance (Album)
-      📅 2024-08-23
+🎤 Nick Cave & The Bad Seeds
+   📀 Wild God (Album)
+      📅 2025-10-12
       🔗 Ver en MusicBrainz
 
-🎤 The Smile
-   💿 Wall of Eyes (EP)
-      📅 2024-01-26
-      🔗 Ver en MusicBrainz
-
-💡 Usa /releases <días> para cambiar el rango (ej: /releases 7 para última semana)
+💡 Usa /releases <días> para cambiar el rango (ej: /releases 30 para el mes completo)
 ```
 
 ## Requisitos
@@ -138,8 +133,8 @@ Para probar la funcionalidad:
 
 ```bash
 # En tu bot de Telegram
-/releases          # Ver lanzamientos del mes
-/releases 7        # Ver lanzamientos de la semana
+/releases          # Ver lanzamientos de esta semana (7 días)
+/releases 30       # Ver lanzamientos del mes
 /releases 90       # Ver lanzamientos del trimestre
 ```
 

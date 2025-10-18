@@ -122,7 +122,7 @@ Puedes dar todos los detalles que quieras:
 /playlist &lt;descripción&gt; - Crear playlist M3U 🎵
 /library - Explorar tu biblioteca musical
 /stats - Ver estadísticas de escucha
-/releases - Ver lanzamientos recientes de tus artistas 🆕
+/releases - Ver lanzamientos de esta semana de tus artistas 🆕
 /search &lt;término&gt; - Buscar música en tu biblioteca
 /help - Mostrar ayuda
 
@@ -192,9 +192,9 @@ Sé todo lo detallado que quieras:
 • /playlist 20 canciones de Queen - Playlist con cantidad específica
 
 <b>Lanzamientos Recientes (🆕):</b>
-• /releases - Últimos lanzamientos del mes (30 días)
-• /releases 7 - Lanzamientos de la última semana
-• /releases 60 - Lanzamientos de los últimos 2 meses
+• /releases - Lanzamientos de esta semana (7 días por defecto)
+• /releases 30 - Lanzamientos del último mes
+• /releases 90 - Lanzamientos de los últimos 3 meses
 💡 Ve los álbumes y EPs nuevos de artistas en tu biblioteca
 
 <b>Botones interactivos:</b>
@@ -698,28 +698,38 @@ Sé todo lo detallado que quieras:
         """Comando /releases - Mostrar lanzamientos recientes de artistas en biblioteca
         
         Uso:
-        - /releases → Lanzamientos del último mes (30 días)
-        - /releases 7 → Lanzamientos de la última semana
+        - /releases → Lanzamientos de la última semana (7 días)
+        - /releases 30 → Lanzamientos del último mes
         - /releases 60 → Lanzamientos de los últimos 60 días
         """
-        # Parsear días (default: 30)
-        days = 30
+        # Parsear días (default: 7 = última semana)
+        days = 7
         if context.args:
             try:
                 days = int(context.args[0])
                 if days < 1 or days > 365:
                     await update.message.reply_text(
                         "⚠️ El número de días debe estar entre 1 y 365.\n"
-                        "Usando 30 días por defecto."
+                        "Usando 7 días por defecto (esta semana)."
                     )
-                    days = 30
+                    days = 7
             except ValueError:
                 await update.message.reply_text(
-                    "⚠️ Número de días inválido. Usando 30 días por defecto."
+                    "⚠️ Número de días inválido. Usando 7 días por defecto (esta semana)."
                 )
         
+        # Mensaje adaptado según el período
+        if days == 7:
+            period_msg = "esta semana"
+        elif days == 30:
+            period_msg = "este mes"
+        elif days <= 10:
+            period_msg = f"los últimos {days} días"
+        else:
+            period_msg = f"los últimos {days} días"
+        
         await update.message.reply_text(
-            f"🔍 Buscando lanzamientos de los últimos {days} días...\n"
+            f"🔍 Buscando lanzamientos de {period_msg}...\n"
             "Esto puede tardar unos segundos."
         )
         
@@ -747,7 +757,8 @@ Sé todo lo detallado que quieras:
                 await update.message.reply_text(
                     f"😔 No se encontraron lanzamientos en MusicBrainz en los últimos {days} días.\n\n"
                     "Esto puede indicar un problema con la fecha del sistema o la consulta.\n"
-                    "Intenta con un rango de días mayor (ej: /releases 60)"
+                    "Intenta con un rango mayor (ej: <code>/releases 30</code> o <code>/releases 90</code>)",
+                    parse_mode='HTML'
                 )
                 await mb.close()
                 return
@@ -793,8 +804,8 @@ Sé todo lo detallado que quieras:
                     "💡 <b>Posibles razones:</b>\n"
                     "• Tus artistas no han lanzado nada recientemente\n"
                     "• Los nombres en MusicBrainz no coinciden con Navidrome\n"
-                    "• Problema con la fecha del sistema\n\n"
-                    "Intenta con un rango mayor (ej: <code>/releases 60</code> o <code>/releases 180</code>)"
+                    "• El límite de releases se alcanzó antes de llegar a tus artistas\n\n"
+                    "Intenta con un rango mayor: <code>/releases 30</code>, <code>/releases 90</code> o <code>/releases 180</code>"
                 )
                 await update.message.reply_text(debug_msg, parse_mode='HTML')
                 return
@@ -839,7 +850,7 @@ Sé todo lo detallado que quieras:
             if len(matching_releases) > 20:
                 text += f"...y {len(matching_releases) - 20} lanzamientos más\n\n"
             
-            text += "💡 Usa <code>/releases &lt;días&gt;</code> para cambiar el rango (ej: /releases 7 para última semana)"
+            text += "💡 Usa <code>/releases &lt;días&gt;</code> para cambiar el rango (ej: <code>/releases 30</code> para el mes completo)"
             
             await update.message.reply_text(text, parse_mode='HTML')
             
