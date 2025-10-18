@@ -497,16 +497,47 @@ class MusicBrainzService:
                 {"inc": "tags+genres+ratings+url-rels"}
             )
             
-            if not details:
+            if not details or not isinstance(details, dict) or "id" not in details:
+                print(f"   ⚠️ MusicBrainz no devolvió detalles válidos para '{artist_name}'")
                 return {"found": False}
             
-            # Extraer géneros
-            genres = [g.get("name") for g in details.get("genres", [])]
-            if not genres:  # Fallback a tags
-                genres = [t.get("name") for t in details.get("tags", [])][:5]
+            # Extraer géneros con manejo seguro
+            genres = []
+            try:
+                genres = [g.get("name") for g in details.get("genres", []) if isinstance(g, dict) and g.get("name")]
+                if not genres:  # Fallback a tags
+                    genres = [t.get("name") for t in details.get("tags", [])[:5] if isinstance(t, dict) and t.get("name")]
+            except Exception as e:
+                print(f"   ⚠️ Error extrayendo géneros para '{artist_name}': {e}")
             
-            # Extraer todos los tags
-            tags = [t.get("name") for t in details.get("tags", [])]
+            # Extraer todos los tags con manejo seguro
+            tags = []
+            try:
+                tags = [t.get("name") for t in details.get("tags", []) if isinstance(t, dict) and t.get("name")]
+            except Exception as e:
+                print(f"   ⚠️ Error extrayendo tags para '{artist_name}': {e}")
+            
+            # Extraer area de forma segura
+            area_name = None
+            try:
+                area_data = details.get("area")
+                if isinstance(area_data, dict):
+                    area_name = area_data.get("name")
+            except:
+                pass
+            
+            # Extraer life-span de forma segura
+            life_span_data = {"begin": None, "end": None, "ended": False}
+            try:
+                life_span = details.get("life-span")
+                if isinstance(life_span, dict):
+                    life_span_data = {
+                        "begin": life_span.get("begin"),
+                        "end": life_span.get("end"),
+                        "ended": life_span.get("ended", False)
+                    }
+            except:
+                pass
             
             return {
                 "found": True,
@@ -514,12 +545,8 @@ class MusicBrainzService:
                 "name": details.get("name"),
                 "type": details.get("type"),
                 "country": details.get("country"),
-                "area": details.get("area", {}).get("name"),
-                "life_span": {
-                    "begin": details.get("life-span", {}).get("begin"),
-                    "end": details.get("life-span", {}).get("end"),
-                    "ended": details.get("life-span", {}).get("ended", False)
-                },
+                "area": area_name,
+                "life_span": life_span_data,
                 "genres": genres,
                 "tags": tags,
                 "url": f"https://musicbrainz.org/artist/{details.get('id')}"
