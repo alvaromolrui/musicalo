@@ -20,6 +20,7 @@ class ConversationSession:
         self.preferences: Dict = {}  # Preferencias detectadas en la sesión
         self.last_action: Optional[str] = None  # Última acción realizada
         self.action_params: Dict = {}  # Parámetros de la última acción
+        self.context: Dict = {}  # Contexto general (para MusicBrainz, etc.)
     
     def add_message(self, role: str, content: str):
         """Agregar mensaje al historial
@@ -130,6 +131,7 @@ class ConversationSession:
         self.preferences = {}
         self.last_action = None
         self.action_params = {}
+        self.context = {}
         logger.info(f"Sesión {self.user_id} limpiada completamente")
 
 
