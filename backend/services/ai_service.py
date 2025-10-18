@@ -9,6 +9,7 @@ from models.schemas import UserProfile, Recommendation, Track, LastFMTrack, Last
 from services.navidrome_service import NavidromeService
 from services.listenbrainz_service import ListenBrainzService
 from services.lastfm_service import LastFMService
+from services.musicbrainz_service import MusicBrainzService
 
 class MusicRecommendationService:
     def __init__(self):
@@ -23,6 +24,15 @@ class MusicRecommendationService:
         if os.getenv("LASTFM_API_KEY") and os.getenv("LASTFM_USERNAME"):
             self.lastfm = LastFMService()
             print("✅ Servicio de recomendaciones con Last.fm habilitado")
+        
+        # Inicializar MusicBrainz para verificación de metadatos
+        self.musicbrainz = None
+        if os.getenv("ENABLE_MUSICBRAINZ", "true").lower() == "true":
+            try:
+                self.musicbrainz = MusicBrainzService()
+                print("✅ MusicBrainz habilitado para verificación de metadatos")
+            except Exception as e:
+                print(f"⚠️ Error inicializando MusicBrainz: {e}")
     
     async def analyze_user_profile(self, user_profile: UserProfile) -> MusicAnalysis:
         """Analizar el perfil musical del usuario"""
@@ -842,6 +852,29 @@ Genera las {limit} recomendaciones ahora:"""
                                     print(f"   ✓ Género '{genre}' (sin filtro): {added_count} canciones nuevas")
                                 except Exception as e:
                                     print(f"   ⚠️ Error sin filtro para '{genre}': {e}")
+                        
+                        # ESTRATEGIA 2.75: Si aún hay pocas canciones, usar MusicBrainz
+                        if len(all_tracks) < 15 and self.musicbrainz:
+                            print(f"   🎯 Pocas canciones encontradas ({len(all_tracks)}), activando MusicBrainz...")
+                            
+                            # Extraer filtros adicionales de la descripción
+                            additional_filters = self._extract_filters_from_description(description)
+                            
+                            # Usar MusicBrainz para cada género válido
+                            for genre in valid_genres[:2]:  # Limitar a 2 géneros para no tardar mucho
+                                mb_tracks = await self._find_genre_artists_with_musicbrainz(
+                                    genre,
+                                    additional_filters,
+                                    max_artists=30
+                                )
+                                
+                                for track in mb_tracks:
+                                    if track.id not in seen_ids:
+                                        all_tracks.append(track)
+                                        seen_ids.add(track.id)
+                                
+                                if mb_tracks:
+                                    print(f"   ✅ MusicBrainz agregó {len(mb_tracks)} canciones para '{genre}'")
                     else:
                         print(f"⚠️ Ninguno de los géneros detectados existe literalmente en la biblioteca")
                         print(f"   Detectados: {genres_detected}")
@@ -861,6 +894,29 @@ Genera las {limit} recomendaciones ahora:"""
                                 seen_ids.add(track.id)
                         
                         print(f"   ✅ IA identificó {len(ai_matched_tracks)} canciones del género solicitado")
+                        
+                        # ESTRATEGIA MUSICBRAINZ: Si aún hay pocas canciones, usar MusicBrainz como complemento
+                        if len(all_tracks) < 20 and self.musicbrainz:
+                            print(f"   🎯 Complementando con MusicBrainz ({len(all_tracks)} canciones hasta ahora)...")
+                            
+                            # Extraer filtros adicionales de la descripción
+                            additional_filters = self._extract_filters_from_description(description)
+                            
+                            # Usar MusicBrainz para cada género detectado
+                            for genre in genres_detected[:2]:  # Limitar a 2 géneros
+                                mb_tracks = await self._find_genre_artists_with_musicbrainz(
+                                    genre,
+                                    additional_filters,
+                                    max_artists=30
+                                )
+                                
+                                for track in mb_tracks:
+                                    if track.id not in seen_ids:
+                                        all_tracks.append(track)
+                                        seen_ids.add(track.id)
+                                
+                                if mb_tracks:
+                                    print(f"   ✅ MusicBrainz agregó {len(mb_tracks)} canciones para '{genre}'")
                 
                 # ESTRATEGIA 3: Buscar por keywords generales
                 keywords = self._extract_keywords(description)
@@ -1728,6 +1784,120 @@ Números de artistas en {language_name}:"""
             print(f"   ⚠️ Error filtrando por idioma: {e}")
             # Si falla, devolver todas
             return tracks
+    
+    async def _find_genre_artists_with_musicbrainz(
+        self,
+        genre: str,
+        additional_filters: Optional[Dict[str, Any]] = None,
+        max_artists: int = 30
+    ) -> List[Track]:
+        """Usar MusicBrainz para identificar artistas del género en la biblioteca
+        
+        Se usa cuando la búsqueda local no encuentra resultados para un género.
+        
+        Args:
+            genre: Género musical a buscar
+            additional_filters: Filtros adicionales (country, year_from, year_to)
+            max_artists: Máximo de artistas a verificar
+            
+        Returns:
+            Lista de tracks de artistas que cumplen
+        """
+        if not self.musicbrainz:
+            print("   ⚠️ MusicBrainz no disponible")
+            return []
+        
+        try:
+            print(f"🎯 MusicBrainz: Buscando artistas de '{genre}' en tu biblioteca...")
+            
+            # Paso 1: Obtener lista de artistas de la biblioteca
+            print(f"   📚 Obteniendo artistas de la biblioteca...")
+            library_tracks = await self.navidrome.get_tracks(limit=500)
+            
+            # Extraer artistas únicos
+            unique_artists = list(set([track.artist for track in library_tracks if track.artist]))
+            print(f"   🎤 {len(unique_artists)} artistas únicos en biblioteca")
+            
+            # Paso 2: Preparar filtros para MusicBrainz
+            filters = {"genre": genre}
+            if additional_filters:
+                filters.update(additional_filters)
+            
+            # Paso 3: Consultar MusicBrainz para identificar cuáles son del género
+            matching_artists_data = await self.musicbrainz.find_matching_artists_in_library(
+                unique_artists,
+                filters,
+                max_artists=max_artists
+            )
+            
+            if not matching_artists_data:
+                print(f"   ❌ Ningún artista de tu biblioteca cumple con '{genre}'")
+                return []
+            
+            # Extraer nombres de artistas que coinciden
+            matching_artist_names = set([a["name"].lower() for a in matching_artists_data])
+            print(f"   ✅ Artistas coincidentes: {list(matching_artist_names)}")
+            
+            # Paso 4: Filtrar tracks solo de esos artistas
+            matching_tracks = []
+            for track in library_tracks:
+                if track.artist and track.artist.lower() in matching_artist_names:
+                    matching_tracks.append(track)
+            
+            print(f"   🎵 {len(matching_tracks)} canciones de {len(matching_artist_names)} artistas verificados")
+            
+            return matching_tracks
+            
+        except Exception as e:
+            print(f"   ❌ Error en búsqueda con MusicBrainz: {e}")
+            import traceback
+            traceback.print_exc()
+            return []
+    
+    def _extract_filters_from_description(self, description: str) -> Dict[str, Any]:
+        """Extraer filtros estructurados de la descripción
+        
+        Ejemplos:
+            "indie español de los 2000" → {genre: "indie", country: "ES", year_from: 2000, year_to: 2009}
+            "rock británico de los 70" → {genre: "rock", country: "GB", year_from: 1970, year_to: 1979}
+        """
+        import re
+        
+        filters = {}
+        desc_lower = description.lower()
+        
+        # Detectar país/idioma
+        country_map = {
+            "español": "ES", "española": "ES", "castellano": "ES",
+            "británico": "GB", "británica": "GB", "inglés": "GB", "inglesa": "GB",
+            "americano": "US", "americana": "US",
+            "francés": "FR", "francesa": "FR",
+            "italiano": "IT", "italiana": "IT",
+            "alemán": "DE", "alemana": "DE"
+        }
+        
+        for keyword, country_code in country_map.items():
+            if keyword in desc_lower:
+                filters["country"] = country_code
+                break
+        
+        # Detectar década
+        decade_patterns = [
+            (r'(de los |años? )?(60|60s|sesentas?)', 1960, 1969),
+            (r'(de los |años? )?(70|70s|setentas?)', 1970, 1979),
+            (r'(de los |años? )?(80|80s|ochentas?)', 1980, 1989),
+            (r'(de los |años? )?(90|90s|noventas?)', 1990, 1999),
+            (r'(de los |años? )?(2000|2000s|dos mil)', 2000, 2009),
+            (r'(de los |años? )?(2010|2010s)', 2010, 2019),
+        ]
+        
+        for pattern, year_from, year_to in decade_patterns:
+            if re.search(pattern, desc_lower):
+                filters["year_from"] = year_from
+                filters["year_to"] = year_to
+                break
+        
+        return filters
     
     def _parse_selection(self, text: str) -> List[int]:
         """Parsear la selección de índices de la IA
