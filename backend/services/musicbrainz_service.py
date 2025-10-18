@@ -575,6 +575,116 @@ class MusicBrainzService:
             print(f"❌ Error en petición MusicBrainz ({endpoint}): {e}")
             return {}
     
+    async def get_recent_releases_for_artists(
+        self, 
+        artist_names: List[str], 
+        days: int = 30
+    ) -> List[Dict[str, Any]]:
+        """Obtener releases recientes de una lista específica de artistas
+        
+        Este método es MUCHO más eficiente que buscar todos los releases globales.
+        En lugar de descargar miles de releases y filtrar, solo busca releases
+        de los artistas específicos de tu biblioteca.
+        
+        Args:
+            artist_names: Lista de nombres de artistas de tu biblioteca
+            days: Días hacia atrás desde hoy (default: 30)
+        
+        Returns:
+            Lista de releases de esos artistas específicos
+        """
+        try:
+            from datetime import datetime, timedelta
+            import logging
+            import os
+            logger = logging.getLogger(__name__)
+            
+            # Calcular rango de fechas
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=days)
+            
+            logger.info(f"🔍 Buscando releases de {len(artist_names)} artistas desde {start_date.strftime('%Y-%m-%d')} hasta {end_date.strftime('%Y-%m-%d')}...")
+            logger.info(f"   📅 DEBUG: Fecha actual del sistema: {end_date}")
+            logger.info(f"   📅 DEBUG: Fecha inicio: {start_date}")
+            
+            all_releases = []
+            
+            # Procesar artistas en lotes (chunks) para no hacer queries demasiado largas
+            chunk_size = 10  # 10 artistas por query
+            total_chunks = (len(artist_names) + chunk_size - 1) // chunk_size
+            
+            for chunk_idx in range(0, len(artist_names), chunk_size):
+                chunk = artist_names[chunk_idx:chunk_idx + chunk_size]
+                chunk_num = (chunk_idx // chunk_size) + 1
+                
+                # Construcción de query con OR para múltiples artistas
+                # Ejemplo: (artist:"Pink Floyd" OR artist:"Queen" OR ...)
+                artist_queries = ' OR '.join([f'artist:"{name}"' for name in chunk])
+                
+                query = (
+                    f'firstreleasedate:[{start_date.strftime("%Y-%m-%d")} TO {end_date.strftime("%Y-%m-%d")}] '
+                    f'AND status:official '
+                    f'AND (type:album OR type:ep) '
+                    f'AND ({artist_queries})'
+                )
+                
+                logger.info(f"   🔍 Chunk {chunk_num}/{total_chunks}: Buscando releases de {len(chunk)} artistas...")
+                
+                # Hacer request a MusicBrainz
+                await self._rate_limit()
+                
+                data = await self._make_request(
+                    "release-group",
+                    {
+                        "query": query,
+                        "limit": 100  # Suficiente para 10 artistas en un período corto
+                    }
+                )
+                
+                release_groups = data.get("release-groups", [])
+                
+                # Parsear releases
+                for rg in release_groups:
+                    # Extraer información del artista
+                    artist_credit = rg.get("artist-credit", [])
+                    artist_name = None
+                    artist_mbid = None
+                    
+                    if artist_credit and len(artist_credit) > 0:
+                        artist_info = artist_credit[0].get("artist", {})
+                        artist_name = artist_info.get("name")
+                        artist_mbid = artist_info.get("id")
+                    
+                    # Solo agregar si tiene artista
+                    if artist_name:
+                        all_releases.append({
+                            "title": rg.get("title"),
+                            "artist": artist_name,
+                            "artist_mbid": artist_mbid,
+                            "date": rg.get("first-release-date"),
+                            "type": rg.get("primary-type"),
+                            "mbid": rg.get("id"),
+                            "url": f"https://musicbrainz.org/release-group/{rg.get('id')}"
+                        })
+                
+                logger.info(f"      ✅ {len(release_groups)} releases encontrados en este chunk")
+            
+            logger.info(f"✅ Total de releases encontrados: {len(all_releases)}")
+            
+            # DEBUG: Mostrar algunos ejemplos
+            if all_releases:
+                logger.info(f"   📝 DEBUG - Primeros 5 releases encontrados:")
+                for r in all_releases[:5]:
+                    logger.info(f"      {r.get('artist')} - {r.get('title')} ({r.get('date')})")
+            
+            return all_releases
+            
+        except Exception as e:
+            logger.error(f"❌ Error obteniendo releases de artistas: {e}")
+            import traceback
+            traceback.print_exc()
+            return []
+    
     async def get_all_recent_releases(self, days: int = 30) -> List[Dict[str, Any]]:
         """Obtener todos los releases recientes del período especificado
         

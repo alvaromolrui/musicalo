@@ -747,25 +747,11 @@ Sé todo lo detallado que quieras:
             
             mb = MusicBrainzService()
             
-            # 1. Obtener todos los releases recientes de MusicBrainz (búsqueda global)
+            # Nuevo enfoque: Primero obtener artistas, luego buscar releases de ESOS artistas
             import logging
             logger = logging.getLogger(__name__)
-            logger.info(f"📅 Obteniendo releases de los últimos {days} días...")
-            all_recent_releases = await mb.get_all_recent_releases(days=days)
             
-            if not all_recent_releases:
-                await update.message.reply_text(
-                    f"😔 No se encontraron lanzamientos en MusicBrainz en los últimos {days} días.\n\n"
-                    "Esto puede indicar un problema con la fecha del sistema o la consulta.\n"
-                    "Intenta con un rango mayor (ej: <code>/releases 30</code> o <code>/releases 90</code>)",
-                    parse_mode='HTML'
-                )
-                await mb.close()
-                return
-            
-            logger.info(f"✅ Encontrados {len(all_recent_releases)} releases en MusicBrainz")
-            
-            # 2. Obtener artistas de la biblioteca
+            # 1. Obtener artistas de la biblioteca
             logger.info(f"📚 Obteniendo artistas de tu biblioteca...")
             library_artists = await self.navidrome.get_artists(limit=9999)
             
@@ -785,32 +771,25 @@ Sé todo lo detallado que quieras:
                 for artist in library_artists[:10]:
                     logger.info(f"      {artist.name}")
             
-            # 3. Hacer matching (comparar releases con biblioteca)
-            matching_releases = mb.match_releases_with_library(
-                all_recent_releases,
-                library_artists
-            )
+            # 2. Buscar releases SOLO de esos artistas específicos (MUCHO más eficiente)
+            artist_names = [artist.name for artist in library_artists]
+            logger.info(f"🔍 Buscando releases de {len(artist_names)} artistas de los últimos {days} días...")
+            
+            matching_releases = await mb.get_recent_releases_for_artists(artist_names, days=days)
             
             await mb.close()
             
             if not matching_releases:
-                # Mensaje más informativo cuando no encuentra matches
+                # Mensaje cuando no hay releases
                 debug_msg = (
-                    f"😔 No hay lanzamientos nuevos de artistas en tu biblioteca en los últimos {days} días.\n\n"
-                    f"📊 <b>Información de debug:</b>\n"
-                    f"• Releases encontrados en MusicBrainz: {len(all_recent_releases)}\n"
-                    f"• Artistas en tu biblioteca: {len(library_artists)}\n"
-                    f"• Coincidencias: 0\n\n"
-                    "💡 <b>Posibles razones:</b>\n"
-                    "• Tus artistas no han lanzado nada recientemente\n"
-                    "• Los nombres en MusicBrainz no coinciden con Navidrome\n"
-                    "• El límite de releases se alcanzó antes de llegar a tus artistas\n\n"
+                    f"😔 No hay lanzamientos nuevos de tus {len(library_artists)} artistas en los últimos {days} días.\n\n"
+                    "💡 Tus artistas no han sacado álbumes o EPs recientemente.\n\n"
                     "Intenta con un rango mayor: <code>/releases 30</code>, <code>/releases 90</code> o <code>/releases 180</code>"
                 )
                 await update.message.reply_text(debug_msg, parse_mode='HTML')
                 return
             
-            # 4. Formatear respuesta
+            # 3. Formatear respuesta
             # Ordenar por fecha (más reciente primero)
             matching_releases.sort(key=lambda x: x.get("date", ""), reverse=True)
             
@@ -818,13 +797,13 @@ Sé todo lo detallado que quieras:
             releases_to_show = matching_releases[:20]
             
             text = f"🎵 <b>Lanzamientos recientes ({days} días)</b>\n\n"
-            text += f"✅ Encontrados <b>{len(matching_releases)}</b> lanzamientos de artistas en tu biblioteca\n"
-            text += f"📊 Total verificado: {len(all_recent_releases)} releases globales\n\n"
+            text += f"✅ Encontrados <b>{len(matching_releases)}</b> lanzamientos\n"
+            text += f"📚 De <b>{len(library_artists)}</b> artistas verificados en tu biblioteca\n\n"
             
             # Agrupar por artista
             releases_by_artist = {}
             for release in releases_to_show:
-                artist = release.get("matched_library_name") or release.get("artist")
+                artist = release.get("artist")
                 if artist not in releases_by_artist:
                     releases_by_artist[artist] = []
                 releases_by_artist[artist].append(release)
