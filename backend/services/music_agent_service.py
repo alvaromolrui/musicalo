@@ -324,6 +324,9 @@ Responde ahora de forma natural y conversacional:"""
             search_term = None  # No buscar artista específico
         elif needs_library_search:
             search_term = self._extract_search_term(query)
+            # Si el término extraído coincide con el género detectado, priorizar género
+            if detected_genre and search_term and detected_genre.lower() in search_term.lower():
+                search_term = None  # Es una búsqueda de género, no de artista
         else:
             search_term = None
         
