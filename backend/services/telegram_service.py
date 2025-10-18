@@ -738,7 +738,9 @@ Sé todo lo detallado que quieras:
             mb = MusicBrainzService()
             
             # 1. Obtener todos los releases recientes de MusicBrainz (búsqueda global)
-            print(f"📅 Obteniendo releases de los últimos {days} días...")
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"📅 Obteniendo releases de los últimos {days} días...")
             all_recent_releases = await mb.get_all_recent_releases(days=days)
             
             if not all_recent_releases:
@@ -750,16 +752,10 @@ Sé todo lo detallado que quieras:
                 await mb.close()
                 return
             
-            print(f"✅ Encontrados {len(all_recent_releases)} releases en MusicBrainz")
-            
-            # DEBUG: Mostrar algunos ejemplos
-            if len(all_recent_releases) > 0:
-                print(f"   📝 DEBUG - Primeros 3 releases de MusicBrainz:")
-                for r in all_recent_releases[:3]:
-                    print(f"      {r.get('artist')} - {r.get('title')} ({r.get('date')})")
+            logger.info(f"✅ Encontrados {len(all_recent_releases)} releases en MusicBrainz")
             
             # 2. Obtener artistas de la biblioteca
-            print(f"📚 Obteniendo artistas de tu biblioteca...")
+            logger.info(f"📚 Obteniendo artistas de tu biblioteca...")
             library_artists = await self.navidrome.get_artists(limit=9999)
             
             if not library_artists:
@@ -770,13 +766,13 @@ Sé todo lo detallado que quieras:
                 await mb.close()
                 return
             
-            print(f"✅ Encontrados {len(library_artists)} artistas en tu biblioteca")
+            logger.info(f"✅ Encontrados {len(library_artists)} artistas en tu biblioteca")
             
             # DEBUG: Mostrar algunos artistas de ejemplo
             if len(library_artists) > 0:
-                print(f"   📝 DEBUG - Primeros 5 artistas en biblioteca:")
-                for artist in library_artists[:5]:
-                    print(f"      {artist.name}")
+                logger.info(f"   📝 DEBUG - Primeros 10 artistas en biblioteca:")
+                for artist in library_artists[:10]:
+                    logger.info(f"      {artist.name}")
             
             # 3. Hacer matching (comparar releases con biblioteca)
             matching_releases = mb.match_releases_with_library(

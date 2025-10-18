@@ -589,14 +589,16 @@ class MusicBrainzService:
         """
         try:
             from datetime import datetime, timedelta
+            import logging
+            logger = logging.getLogger(__name__)
             
             # Calcular rango de fechas
             end_date = datetime.now()
             start_date = end_date - timedelta(days=days)
             
-            print(f"🔍 Buscando releases en MusicBrainz desde {start_date.strftime('%Y-%m-%d')} hasta {end_date.strftime('%Y-%m-%d')}...")
-            print(f"   📅 DEBUG: Fecha actual del sistema: {end_date}")
-            print(f"   📅 DEBUG: Fecha inicio: {start_date}")
+            logger.info(f"🔍 Buscando releases en MusicBrainz desde {start_date.strftime('%Y-%m-%d')} hasta {end_date.strftime('%Y-%m-%d')}...")
+            logger.info(f"   📅 DEBUG: Fecha actual del sistema: {end_date}")
+            logger.info(f"   📅 DEBUG: Fecha inicio: {start_date}")
             
             # Construcción de query Lucene para MusicBrainz
             # firstreleasedate: fecha de primer lanzamiento
@@ -653,7 +655,7 @@ class MusicBrainzService:
                             "url": f"https://musicbrainz.org/release-group/{rg.get('id')}"
                         })
                 
-                print(f"   📊 Obtenidos {len(release_groups)} releases (offset: {offset}, total acumulado: {len(all_releases)})")
+                logger.info(f"   📊 Obtenidos {len(release_groups)} releases (offset: {offset}, total acumulado: {len(all_releases)})")
                 
                 # Si obtuvimos menos del límite, ya no hay más
                 if len(release_groups) < limit:
@@ -663,10 +665,16 @@ class MusicBrainzService:
                 
                 # Límite de seguridad: máximo 500 releases
                 if offset >= 500:
-                    print(f"   ⚠️ Límite de seguridad alcanzado (500 releases)")
+                    logger.warning(f"   ⚠️ Límite de seguridad alcanzado (500 releases)")
                     break
             
-            print(f"✅ Total de releases encontrados: {len(all_releases)}")
+            logger.info(f"✅ Total de releases encontrados: {len(all_releases)}")
+            
+            # DEBUG: Mostrar algunos ejemplos
+            if all_releases:
+                logger.info(f"   📝 DEBUG - Primeros 5 releases encontrados:")
+                for r in all_releases[:5]:
+                    logger.info(f"      {r.get('artist')} - {r.get('title')} ({r.get('date')})")
             return all_releases
             
         except Exception as e:
@@ -735,19 +743,23 @@ class MusicBrainzService:
             if normalized not in library_name_map:
                 library_name_map[normalized] = original
         
-        print(f"📚 Artistas en biblioteca: {len(library_names)}")
-        print(f"🔍 Releases a verificar: {len(recent_releases)}")
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        logger.info(f"📚 Artistas en biblioteca: {len(library_names)}")
+        logger.info(f"🔍 Releases a verificar: {len(recent_releases)}")
         
         # DEBUG: Mostrar algunos ejemplos de artistas de biblioteca
         library_sample = list(library_names)[:10]
-        print(f"   📝 DEBUG - Muestra de artistas en biblioteca (normalizados): {library_sample}")
+        logger.info(f"   📝 DEBUG - Muestra de artistas en biblioteca (normalizados):")
+        for artist in library_sample:
+            logger.info(f"      '{artist}'")
         
         # DEBUG: Mostrar algunos ejemplos de releases
         if recent_releases:
-            releases_sample = [f"{r['artist']} - {r['title']} ({r['date']})" for r in recent_releases[:5]]
-            print(f"   📝 DEBUG - Muestra de releases encontrados:")
-            for rs in releases_sample:
-                print(f"      {rs}")
+            logger.info(f"   📝 DEBUG - Muestra de releases encontrados:")
+            for r in recent_releases[:5]:
+                logger.info(f"      {r['artist']} - {r['title']} ({r['date']})")
         
         # Filtrar releases que coincidan
         matching_releases = []
@@ -759,16 +771,17 @@ class MusicBrainzService:
                 # Agregar el nombre original de la biblioteca
                 release["matched_library_name"] = library_name_map.get(artist_normalized)
                 matching_releases.append(release)
-                print(f"   ✅ MATCH: '{release['artist']}' → '{artist_normalized}' encontrado en biblioteca")
+                logger.info(f"   ✅ MATCH: '{release['artist']}' → '{artist_normalized}' encontrado en biblioteca")
         
-        print(f"✅ Releases coincidentes: {len(matching_releases)}")
+        logger.info(f"✅ Releases coincidentes: {len(matching_releases)}")
         
         # DEBUG: Si no hay matches, mostrar más info
         if not matching_releases and recent_releases:
-            print(f"   ⚠️ DEBUG - No se encontraron matches. Verificando normalización...")
-            for release in recent_releases[:3]:
+            logger.warning(f"   ⚠️ DEBUG - No se encontraron matches. Verificando normalización...")
+            for release in recent_releases[:10]:
                 artist_norm = normalize_artist_name(release["artist"])
-                print(f"      '{release['artist']}' → normalizado: '{artist_norm}' | en biblioteca: {artist_norm in library_names}")
+                in_lib = artist_norm in library_names
+                logger.info(f"      '{release['artist']}' → '{artist_norm}' | en biblioteca: {in_lib}")
         
         return matching_releases
     
