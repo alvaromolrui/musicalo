@@ -122,7 +122,7 @@ Puedes dar todos los detalles que quieras:
 /playlist &lt;descripción&gt; - Crear playlist M3U 🎵
 /library - Explorar tu biblioteca musical
 /stats - Ver estadísticas de escucha
-/releases - Ver lanzamientos de esta semana de tus artistas 🆕
+/releases [week/month/year] - Lanzamientos recientes 🆕
 /search &lt;término&gt; - Buscar música en tu biblioteca
 /help - Mostrar ayuda
 
@@ -192,9 +192,12 @@ Sé todo lo detallado que quieras:
 • /playlist 20 canciones de Queen - Playlist con cantidad específica
 
 <b>Lanzamientos Recientes (🆕):</b>
-• /releases - Lanzamientos de esta semana (7 días por defecto)
-• /releases 30 - Lanzamientos del último mes
-• /releases 90 - Lanzamientos de los últimos 3 meses
+• /releases - Esta semana (por defecto)
+• /releases week - Esta semana
+• /releases month - Este mes
+• /releases last_month - Últimos 2 meses
+• /releases year - Todo el año
+• /releases 90 - Días específicos (ej: 90 días)
 💡 Ve los álbumes y EPs nuevos de artistas en tu biblioteca
 
 <b>Botones interactivos:</b>
@@ -698,38 +701,81 @@ Sé todo lo detallado que quieras:
         """Comando /releases - Mostrar lanzamientos recientes de artistas en biblioteca
         
         Uso:
-        - /releases → Lanzamientos de la última semana (7 días)
-        - /releases 30 → Lanzamientos del último mes
-        - /releases 60 → Lanzamientos de los últimos 60 días
+        - /releases → Esta semana (7 días)
+        - /releases week → Esta semana
+        - /releases month → Este mes
+        - /releases last_week → Semana pasada
+        - /releases last_month → Mes pasado
+        - /releases year → Este año
+        - /releases 30 → 30 días específicos
         """
-        # Parsear días (default: 7 = última semana)
+        # Mapeo de períodos a días
+        period_mapping = {
+            "week": 7,
+            "this_week": 7,
+            "semana": 7,
+            "month": 30,
+            "this_month": 30,
+            "mes": 30,
+            "last_week": 14,
+            "lastweek": 14,
+            "semana_pasada": 14,
+            "last_month": 60,
+            "lastmonth": 60,
+            "mes_pasado": 60,
+            "year": 365,
+            "this_year": 365,
+            "año": 365,
+            "anio": 365
+        }
+        
+        # Parsear argumento (default: 7 = última semana)
         days = 7
+        period_name = "esta semana"
+        
         if context.args:
-            try:
-                days = int(context.args[0])
-                if days < 1 or days > 365:
+            arg = context.args[0].lower()
+            
+            # Intentar primero como período con nombre
+            if arg in period_mapping:
+                days = period_mapping[arg]
+                
+                # Determinar nombre del período
+                if arg in ["week", "this_week", "semana"]:
+                    period_name = "esta semana"
+                elif arg in ["month", "this_month", "mes"]:
+                    period_name = "este mes"
+                elif arg in ["last_week", "lastweek", "semana_pasada"]:
+                    period_name = "las últimas 2 semanas"
+                elif arg in ["last_month", "lastmonth", "mes_pasado"]:
+                    period_name = "los últimos 2 meses"
+                elif arg in ["year", "this_year", "año", "anio"]:
+                    period_name = "este año"
+            else:
+                # Si no es un período conocido, intentar como número
+                try:
+                    days = int(arg)
+                    if days < 1 or days > 365:
+                        await update.message.reply_text(
+                            "⚠️ El número de días debe estar entre 1 y 365.\n"
+                            "Usando 7 días por defecto (esta semana)."
+                        )
+                        days = 7
+                        period_name = "esta semana"
+                    else:
+                        period_name = f"los últimos {days} días"
+                except ValueError:
                     await update.message.reply_text(
-                        "⚠️ El número de días debe estar entre 1 y 365.\n"
+                        f"⚠️ Período '{context.args[0]}' no reconocido.\n\n"
+                        "Usa: week, month, last_week, last_month, year\n"
+                        "O un número de días (ej: 30, 90)\n\n"
                         "Usando 7 días por defecto (esta semana)."
                     )
                     days = 7
-            except ValueError:
-                await update.message.reply_text(
-                    "⚠️ Número de días inválido. Usando 7 días por defecto (esta semana)."
-                )
-        
-        # Mensaje adaptado según el período
-        if days == 7:
-            period_msg = "esta semana"
-        elif days == 30:
-            period_msg = "este mes"
-        elif days <= 10:
-            period_msg = f"los últimos {days} días"
-        else:
-            period_msg = f"los últimos {days} días"
+                    period_name = "esta semana"
         
         await update.message.reply_text(
-            f"🔍 Buscando lanzamientos de {period_msg}...\n"
+            f"🔍 Buscando lanzamientos de {period_name}...\n"
             "Esto puede tardar unos segundos."
         )
         
@@ -782,9 +828,12 @@ Sé todo lo detallado que quieras:
             if not matching_releases:
                 # Mensaje cuando no hay releases
                 debug_msg = (
-                    f"😔 No hay lanzamientos nuevos de tus {len(library_artists)} artistas en los últimos {days} días.\n\n"
+                    f"😔 No hay lanzamientos nuevos de tus {len(library_artists)} artistas en {period_name}.\n\n"
                     "💡 Tus artistas no han sacado álbumes o EPs recientemente.\n\n"
-                    "Intenta con un rango mayor: <code>/releases 30</code>, <code>/releases 90</code> o <code>/releases 180</code>"
+                    "Intenta con un período mayor:\n"
+                    "• <code>/releases month</code> - Este mes completo\n"
+                    "• <code>/releases last_month</code> - Últimos 2 meses\n"
+                    "• <code>/releases year</code> - Todo el año"
                 )
                 await update.message.reply_text(debug_msg, parse_mode='HTML')
                 return
@@ -796,7 +845,7 @@ Sé todo lo detallado que quieras:
             # Limitar a 20 releases para no sobrecargar el mensaje
             releases_to_show = matching_releases[:20]
             
-            text = f"🎵 <b>Lanzamientos recientes ({days} días)</b>\n\n"
+            text = f"🎵 <b>Lanzamientos de {period_name}</b>\n\n"
             text += f"✅ Encontrados <b>{len(matching_releases)}</b> lanzamientos\n"
             text += f"📚 De <b>{len(library_artists)}</b> artistas verificados en tu biblioteca\n\n"
             
@@ -829,7 +878,13 @@ Sé todo lo detallado que quieras:
             if len(matching_releases) > 20:
                 text += f"...y {len(matching_releases) - 20} lanzamientos más\n\n"
             
-            text += "💡 Usa <code>/releases &lt;días&gt;</code> para cambiar el rango (ej: <code>/releases 30</code> para el mes completo)"
+            text += (
+                "💡 <b>Otros períodos:</b> "
+                "<code>/releases month</code>, "
+                "<code>/releases last_month</code>, "
+                "<code>/releases year</code>, "
+                "o usa días: <code>/releases 90</code>"
+            )
             
             await update.message.reply_text(text, parse_mode='HTML')
             

@@ -25,16 +25,24 @@ El comando utiliza una estrategia ultra-eficiente de búsqueda dirigida:
 ### Comandos disponibles
 
 ```bash
-/releases              # Lanzamientos de esta semana (7 días, por defecto)
-/releases 30           # Lanzamientos del último mes
-/releases 60           # Lanzamientos de los últimos 2 meses
-/releases 90           # Lanzamientos de los últimos 3 meses
+# Períodos con nombre (recomendado)
+/releases              # Esta semana (7 días, por defecto)
+/releases week         # Esta semana
+/releases month        # Este mes (30 días)
+/releases last_week    # Últimas 2 semanas (14 días)
+/releases last_month   # Últimos 2 meses (60 días)
+/releases year         # Todo el año (365 días)
+
+# También puedes usar días específicos
+/releases 30           # 30 días exactos
+/releases 90           # 90 días exactos
+/releases 180          # 6 meses exactos
 ```
 
 ### Ejemplo de respuesta
 
 ```
-🎵 Lanzamientos recientes (7 días)
+🎵 Lanzamientos de esta semana
 
 ✅ Encontrados 3 lanzamientos
 📚 De 83 artistas verificados en tu biblioteca
@@ -49,7 +57,8 @@ El comando utiliza una estrategia ultra-eficiente de búsqueda dirigida:
       📅 2025-10-12
       🔗 Ver en MusicBrainz
 
-💡 Usa /releases <días> para cambiar el rango (ej: /releases 30 para el mes completo)
+💡 Otros períodos: /releases month, /releases last_month, 
+   /releases year, o usa días: /releases 90
 ```
 
 ## Requisitos
@@ -137,9 +146,17 @@ Para probar la funcionalidad:
 
 ```bash
 # En tu bot de Telegram
-/releases          # Ver lanzamientos de esta semana (7 días)
-/releases 30       # Ver lanzamientos del mes
-/releases 90       # Ver lanzamientos del trimestre
+
+# Con períodos con nombre (más intuitivo)
+/releases              # Esta semana (7 días)
+/releases week         # Esta semana
+/releases month        # Este mes (30 días)
+/releases last_month   # Últimos 2 meses (60 días)
+/releases year         # Todo el año
+
+# Con días específicos (también funciona)
+/releases 30           # 30 días exactos
+/releases 90           # 90 días exactos
 ```
 
 Verifica que:
