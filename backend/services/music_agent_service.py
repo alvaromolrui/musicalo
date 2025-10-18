@@ -1,6 +1,8 @@
 import google.generativeai as genai
 import os
+import asyncio
 from typing import Dict, Any, List, Optional
+from datetime import datetime, timedelta
 from services.lastfm_service import LastFMService
 from services.navidrome_service import NavidromeService
 from services.listenbrainz_service import ListenBrainzService
@@ -67,8 +69,40 @@ class MusicAgentService:
             except Exception as e:
                 print(f"⚠️ Agente musical: Error inicializando MusicBrainz: {e}")
         
+        # Sistema de caché simple con TTL para optimizar rendimiento
+        self._cache = {}
+        self._cache_ttl = {}
+        
         print(f"📊 Servicio de historial: {self.history_service_name if self.history_service_name else 'No disponible'}")
         print(f"🔍 Servicio de descubrimiento: {'Last.fm' if self.discovery_service else 'No disponible'}")
+    
+    def _get_cache(self, key: str, ttl_seconds: int = 300):
+        """Obtener del caché si no ha expirado
+        
+        Args:
+            key: Clave del caché
+            ttl_seconds: Tiempo de vida en segundos (default: 5 minutos)
+            
+        Returns:
+            Valor del caché o None si expiró o no existe
+        """
+        if key in self._cache:
+            if key in self._cache_ttl:
+                if datetime.now() < self._cache_ttl[key]:
+                    print(f"⚡ Cache hit: {key}")
+                    return self._cache[key]
+        return None
+    
+    def _set_cache(self, key: str, value: any, ttl_seconds: int = 300):
+        """Guardar en caché con TTL
+        
+        Args:
+            key: Clave del caché
+            value: Valor a guardar
+            ttl_seconds: Tiempo de vida en segundos (default: 5 minutos)
+        """
+        self._cache[key] = value
+        self._cache_ttl[key] = datetime.now() + timedelta(seconds=ttl_seconds)
     
     async def _get_with_fallback(self, primary_method, fallback_method, *args, **kwargs):
         """Intenta ejecutar un método con fallback automático si falla
@@ -131,7 +165,21 @@ class MusicAgentService:
         session.add_message("user", user_question)
         
         # 1. Recopilar datos de todas las fuentes
-        data_context = await self._gather_all_data(user_question, user_id)
+        # OPTIMIZACIÓN: Agregar timeout de 20 segundos para evitar esperas muy largas
+        try:
+            data_context = await asyncio.wait_for(
+                self._gather_all_data(user_question, user_id),
+                timeout=20.0
+            )
+        except asyncio.TimeoutError:
+            print("⚠️ Timeout obteniendo datos (20s), usando datos parciales")
+            data_context = {
+                "library": {},
+                "listening_history": {},
+                "search_results": {},
+                "similar_content": [],
+                "new_discoveries": []
+            }
         
         # Si el usuario pidió "busca más" pero no hay búsqueda anterior
         if data_context.get("no_active_search"):
@@ -144,7 +192,7 @@ class MusicAgentService:
             }
         
         # 2. Obtener estadísticas del usuario para personalización
-        # OPTIMIZACIÓN: Solo obtener stats cuando realmente se necesiten
+        # OPTIMIZACIÓN: Solo obtener stats cuando realmente se necesiten + Caché + Paralelización
         user_stats = {}
         
         # Detectar si la consulta necesita contexto del usuario
@@ -155,25 +203,42 @@ class MusicAgentService:
         ])
         
         if needs_user_context:
-            print("📊 Obteniendo contexto del usuario (consulta lo requiere)...")
-            try:
-                # Usar fallback automático entre ListenBrainz y Last.fm
-                primary_service = self.listenbrainz.get_top_artists if self.listenbrainz else None
-                fallback_service = self.lastfm.get_top_artists if self.lastfm else None
-                
-                top_artists_data = await self._get_with_fallback(primary_service, fallback_service, limit=5)
-                if top_artists_data:
-                    user_stats['top_artists'] = [a.name for a in top_artists_data]
-                
-                # Obtener último track escuchado
-                primary_recent = self.listenbrainz.get_recent_tracks if self.listenbrainz else None
-                fallback_recent = self.lastfm.get_recent_tracks if self.lastfm else None
-                
-                recent_tracks = await self._get_with_fallback(primary_recent, fallback_recent, limit=1)
-                if recent_tracks:
-                    user_stats['last_track'] = f"{recent_tracks[0].artist} - {recent_tracks[0].name}"
-            except Exception as e:
-                print(f"⚠️ Error obteniendo stats para contexto: {e}")
+            # OPTIMIZACIÓN: Intentar obtener del caché primero
+            cache_key = f"user_stats_{user_id}"
+            user_stats = self._get_cache(cache_key, ttl_seconds=600)  # 10 minutos
+            
+            if not user_stats:
+                print("📊 Obteniendo contexto del usuario (consulta lo requiere)...")
+                user_stats = {}
+                try:
+                    # OPTIMIZACIÓN: Paralelizar las 2 llamadas
+                    tasks = []
+                    
+                    # Top artists
+                    primary_service = self.listenbrainz.get_top_artists if self.listenbrainz else None
+                    fallback_service = self.lastfm.get_top_artists if self.lastfm else None
+                    tasks.append(self._get_with_fallback(primary_service, fallback_service, limit=5))
+                    
+                    # Recent tracks
+                    primary_recent = self.listenbrainz.get_recent_tracks if self.listenbrainz else None
+                    fallback_recent = self.lastfm.get_recent_tracks if self.lastfm else None
+                    tasks.append(self._get_with_fallback(primary_recent, fallback_recent, limit=1))
+                    
+                    # Ejecutar en paralelo
+                    results = await asyncio.gather(*tasks, return_exceptions=True)
+                    
+                    # Procesar resultados
+                    if len(results) > 0 and not isinstance(results[0], Exception) and results[0]:
+                        user_stats['top_artists'] = [a.name for a in results[0]]
+                    
+                    if len(results) > 1 and not isinstance(results[1], Exception) and results[1]:
+                        user_stats['last_track'] = f"{results[1][0].artist} - {results[1][0].name}"
+                    
+                    # Guardar en caché
+                    self._set_cache(cache_key, user_stats, ttl_seconds=600)
+                    
+                except Exception as e:
+                    print(f"⚠️ Error obteniendo stats para contexto: {e}")
         else:
             print("⚡ Consulta simple: saltando obtención de stats del usuario (optimización)")
         
@@ -592,29 +657,48 @@ Responde ahora de forma natural y conversacional:"""
             try:
                 print(f"📊 Obteniendo historial de escucha...")
                 
-                # Obtener datos básicos del historial con fallback automático
+                # OPTIMIZACIÓN: Paralelizar todas las llamadas
+                tasks = []
+                task_names = []
+                
+                # Recent tracks (siempre)
                 primary_recent = self.listenbrainz.get_recent_tracks if self.listenbrainz else None
                 fallback_recent = self.lastfm.get_recent_tracks if self.lastfm else None
-                data["listening_history"]["recent_tracks"] = await self._get_with_fallback(primary_recent, fallback_recent, limit=20)
+                tasks.append(self._get_with_fallback(primary_recent, fallback_recent, limit=20))
+                task_names.append("recent_tracks")
                 
+                # Top artists (siempre)
                 primary_artists = self.listenbrainz.get_top_artists if self.listenbrainz else None
                 fallback_artists = self.lastfm.get_top_artists if self.lastfm else None
-                data["listening_history"]["top_artists"] = await self._get_with_fallback(primary_artists, fallback_artists, limit=10)
+                tasks.append(self._get_with_fallback(primary_artists, fallback_artists, limit=10))
+                task_names.append("top_artists")
                 
-                # Si preguntan por tracks específicos
+                # Top tracks (solo si se necesita)
                 if "canción" in query_lower or "track" in query_lower or "tema" in query_lower:
                     primary_tracks = self.listenbrainz.get_top_tracks if self.listenbrainz else None
                     fallback_tracks = self.lastfm.get_top_tracks if self.lastfm else None
-                    data["listening_history"]["top_tracks"] = await self._get_with_fallback(primary_tracks, fallback_tracks, limit=10)
+                    tasks.append(self._get_with_fallback(primary_tracks, fallback_tracks, limit=10))
+                    task_names.append("top_tracks")
                 
-                # Si preguntan por estadísticas
+                # Stats (solo si se necesita)
                 if "estadística" in query_lower or "stats" in query_lower or "cuánto" in query_lower:
                     primary_stats = self.listenbrainz.get_user_stats if self.listenbrainz and hasattr(self.listenbrainz, 'get_user_stats') else None
                     fallback_stats = self.lastfm.get_user_stats if self.lastfm and hasattr(self.lastfm, 'get_user_stats') else None
                     if primary_stats or fallback_stats:
-                        data["listening_history"]["stats"] = await self._get_with_fallback(primary_stats, fallback_stats)
+                        tasks.append(self._get_with_fallback(primary_stats, fallback_stats))
+                        task_names.append("stats")
                 
-                service_used = "ListenBrainz" if self.listenbrainz and data["listening_history"]["recent_tracks"] else "Last.fm" if self.lastfm else "Ninguno"
+                # Ejecutar todas las tareas en paralelo
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+                
+                # Procesar resultados
+                for i, result in enumerate(results):
+                    if not isinstance(result, Exception) and result:
+                        data["listening_history"][task_names[i]] = result
+                    else:
+                        data["listening_history"][task_names[i]] = [] if task_names[i] != "stats" else {}
+                
+                service_used = "ListenBrainz" if self.listenbrainz and data["listening_history"].get("recent_tracks") else "Last.fm" if self.lastfm else "Ninguno"
                 print(f"✅ Historial obtenido desde: {service_used}")
                 
             except Exception as e:
@@ -664,26 +748,57 @@ Responde ahora de forma natural y conversacional:"""
                 
                 # Buscar artistas similares usando Last.fm para descubrimiento
                 if top_artists and self.discovery_service:
-                    # Buscar artistas similares a sus favoritos
-                    new_discoveries = []
+                    # OPTIMIZACIÓN: Paralelizar búsqueda de artistas similares
+                    similar_tasks = []
                     for top_artist in top_artists[:3]:  # Solo los top 3
-                        similar = await self.discovery_service.get_similar_artists(top_artist.name, limit=3)
-                        for artist in similar:
-                            # Agregar solo si no está duplicado
-                            if artist.name not in [d.get('artist') for d in new_discoveries]:
-                                # Obtener el álbum top del artista para dar recomendación concreta
-                                top_albums = await self.discovery_service.get_artist_top_albums(artist.name, limit=1)
-                                
-                                discovery = {
-                                    'artist': artist.name,
-                                    'url': artist.url if hasattr(artist, 'url') else None,
-                                    'top_album': top_albums[0].get('name') if top_albums else None,
-                                    'album_url': top_albums[0].get('url') if top_albums else None,
-                                    'similar_to': top_artist.name  # Para contexto
-                                }
-                                new_discoveries.append(discovery)
+                        similar_tasks.append(
+                            self.discovery_service.get_similar_artists(top_artist.name, limit=3)
+                        )
+                    
+                    # Ejecutar búsquedas en paralelo
+                    similar_results = await asyncio.gather(*similar_tasks, return_exceptions=True)
+                    
+                    # Procesar resultados
+                    new_discoveries = []
+                    for i, similar_artists in enumerate(similar_results):
+                        if isinstance(similar_artists, Exception):
+                            print(f"⚠️ Error obteniendo similares: {similar_artists}")
+                            continue
                         
-                        # Limitar a 8 descubrimientos total
+                        top_artist = top_artists[i]
+                        
+                        # OPTIMIZACIÓN: Paralelizar obtención de álbumes top
+                        album_tasks = []
+                        valid_artists = []
+                        for artist in similar_artists:
+                            if artist.name not in [d.get('artist') for d in new_discoveries]:
+                                valid_artists.append(artist)
+                                album_tasks.append(
+                                    self.discovery_service.get_artist_top_albums(artist.name, limit=1)
+                                )
+                            
+                            if len(valid_artists) >= 3:  # Máximo 3 por top artist
+                                break
+                        
+                        # Obtener álbumes en paralelo
+                        if album_tasks:
+                            album_results = await asyncio.gather(*album_tasks, return_exceptions=True)
+                            
+                            for j, top_albums in enumerate(album_results):
+                                if not isinstance(top_albums, Exception) and j < len(valid_artists):
+                                    artist = valid_artists[j]
+                                    discovery = {
+                                        'artist': artist.name,
+                                        'url': artist.url if hasattr(artist, 'url') else None,
+                                        'top_album': top_albums[0].get('name') if top_albums else None,
+                                        'album_url': top_albums[0].get('url') if top_albums else None,
+                                        'similar_to': top_artist.name
+                                    }
+                                    new_discoveries.append(discovery)
+                                    
+                                    if len(new_discoveries) >= 8:
+                                        break
+                        
                         if len(new_discoveries) >= 8:
                             break
                     
@@ -1271,8 +1386,8 @@ Responde ahora de forma natural y conversacional:"""
             Diccionario con resultados y metadata de búsqueda
         """
         try:
-            # Obtener muestra de la biblioteca
-            library_tracks = await self.navidrome.get_tracks(limit=500)
+            # OPTIMIZACIÓN: Reducir de 500 a 300 tracks para mejorar velocidad
+            library_tracks = await self.navidrome.get_tracks(limit=300)
             
             # Extraer artistas únicos
             unique_artists = list(set([track.artist for track in library_tracks if track.artist]))
