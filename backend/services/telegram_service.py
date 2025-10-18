@@ -122,6 +122,7 @@ Puedes dar todos los detalles que quieras:
 /playlist &lt;descripción&gt; - Crear playlist M3U 🎵
 /library - Explorar tu biblioteca musical
 /stats - Ver estadísticas de escucha
+/releases [week/month/year] - Lanzamientos recientes 🆕
 /search &lt;término&gt; - Buscar música en tu biblioteca
 /help - Mostrar ayuda
 
@@ -167,6 +168,7 @@ Sé todo lo detallado que quieras:
 • /playlist &lt;descripción&gt; - Crear playlist M3U 🎵
 • /library - Ver tu biblioteca musical
 • /stats - Estadísticas de escucha
+• /releases - Lanzamientos recientes de tus artistas 🆕
 • /search &lt;término&gt; - Buscar en tu biblioteca
 
 <b>Recomendaciones con filtros:</b>
@@ -188,6 +190,15 @@ Sé todo lo detallado que quieras:
 • /playlist rock de los 80s - Playlist de rock ochentero
 • /playlist jazz suave - Música jazz relajante
 • /playlist 20 canciones de Queen - Playlist con cantidad específica
+
+<b>Lanzamientos Recientes (🆕):</b>
+• /releases - Esta semana (por defecto)
+• /releases week - Esta semana
+• /releases month - Este mes
+• /releases last_month - Últimos 2 meses
+• /releases year - Todo el año
+• /releases 90 - Días específicos (ej: 90 días)
+💡 Ve los álbumes y EPs nuevos de artistas en tu biblioteca
 
 <b>Botones interactivos:</b>
 • ❤️ Me gusta / 👎 No me gusta
@@ -684,6 +695,207 @@ Sé todo lo detallado que quieras:
             import traceback
             traceback.print_exc()
             await update.message.reply_text(f"❌ Error obteniendo estadísticas: {str(e)}")
+    
+    @_check_authorization
+    async def releases_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Comando /releases - Mostrar lanzamientos recientes de artistas en biblioteca
+        
+        Uso:
+        - /releases → Esta semana (7 días)
+        - /releases week → Esta semana
+        - /releases month → Este mes
+        - /releases last_week → Semana pasada
+        - /releases last_month → Mes pasado
+        - /releases year → Este año
+        - /releases 30 → 30 días específicos
+        """
+        # Mapeo de períodos a días
+        period_mapping = {
+            "week": 7,
+            "this_week": 7,
+            "semana": 7,
+            "month": 30,
+            "this_month": 30,
+            "mes": 30,
+            "last_week": 14,
+            "lastweek": 14,
+            "semana_pasada": 14,
+            "last_month": 60,
+            "lastmonth": 60,
+            "mes_pasado": 60,
+            "year": 365,
+            "this_year": 365,
+            "año": 365,
+            "anio": 365
+        }
+        
+        # Parsear argumento (default: 7 = última semana)
+        days = 7
+        period_name = "esta semana"
+        
+        if context.args:
+            arg = context.args[0].lower()
+            
+            # Intentar primero como período con nombre
+            if arg in period_mapping:
+                days = period_mapping[arg]
+                
+                # Determinar nombre del período
+                if arg in ["week", "this_week", "semana"]:
+                    period_name = "esta semana"
+                elif arg in ["month", "this_month", "mes"]:
+                    period_name = "este mes"
+                elif arg in ["last_week", "lastweek", "semana_pasada"]:
+                    period_name = "las últimas 2 semanas"
+                elif arg in ["last_month", "lastmonth", "mes_pasado"]:
+                    period_name = "los últimos 2 meses"
+                elif arg in ["year", "this_year", "año", "anio"]:
+                    period_name = "este año"
+            else:
+                # Si no es un período conocido, intentar como número
+                try:
+                    days = int(arg)
+                    if days < 1 or days > 365:
+                        await update.message.reply_text(
+                            "⚠️ El número de días debe estar entre 1 y 365.\n"
+                            "Usando 7 días por defecto (esta semana)."
+                        )
+                        days = 7
+                        period_name = "esta semana"
+                    else:
+                        period_name = f"los últimos {days} días"
+                except ValueError:
+                    await update.message.reply_text(
+                        f"⚠️ Período '{context.args[0]}' no reconocido.\n\n"
+                        "Usa: week, month, last_week, last_month, year\n"
+                        "O un número de días (ej: 30, 90)\n\n"
+                        "Usando 7 días por defecto (esta semana)."
+                    )
+                    days = 7
+                    period_name = "esta semana"
+        
+        await update.message.reply_text(
+            f"🔍 Buscando lanzamientos de {period_name}...\n"
+            "Esto puede tardar unos segundos."
+        )
+        
+        try:
+            # Importar MusicBrainzService
+            from services.musicbrainz_service import MusicBrainzService
+            
+            # Verificar si MusicBrainz está habilitado
+            if os.getenv("ENABLE_MUSICBRAINZ", "true").lower() != "true":
+                await update.message.reply_text(
+                    "⚠️ MusicBrainz no está habilitado.\n\n"
+                    "Para usar /releases, configura ENABLE_MUSICBRAINZ=true en tu archivo .env"
+                )
+                return
+            
+            mb = MusicBrainzService()
+            
+            # Nuevo enfoque: Primero obtener artistas, luego buscar releases de ESOS artistas
+            import logging
+            logger = logging.getLogger(__name__)
+            
+            # 1. Obtener artistas de la biblioteca
+            logger.info(f"📚 Obteniendo artistas de tu biblioteca...")
+            library_artists = await self.navidrome.get_artists(limit=9999)
+            
+            if not library_artists:
+                await update.message.reply_text(
+                    "⚠️ No se pudieron obtener los artistas de tu biblioteca.\n"
+                    "Verifica tu configuración de Navidrome."
+                )
+                await mb.close()
+                return
+            
+            logger.info(f"✅ Encontrados {len(library_artists)} artistas en tu biblioteca")
+            
+            # DEBUG: Mostrar algunos artistas de ejemplo
+            if len(library_artists) > 0:
+                logger.info(f"   📝 DEBUG - Primeros 10 artistas en biblioteca:")
+                for artist in library_artists[:10]:
+                    logger.info(f"      {artist.name}")
+            
+            # 2. Buscar releases SOLO de esos artistas específicos (MUCHO más eficiente)
+            artist_names = [artist.name for artist in library_artists]
+            logger.info(f"🔍 Buscando releases de {len(artist_names)} artistas de los últimos {days} días...")
+            
+            matching_releases = await mb.get_recent_releases_for_artists(artist_names, days=days)
+            
+            await mb.close()
+            
+            if not matching_releases:
+                # Mensaje cuando no hay releases
+                debug_msg = (
+                    f"😔 No hay lanzamientos nuevos de tus {len(library_artists)} artistas en {period_name}.\n\n"
+                    "💡 Tus artistas no han sacado álbumes o EPs recientemente.\n\n"
+                    "Intenta con un período mayor:\n"
+                    "• <code>/releases month</code> - Este mes completo\n"
+                    "• <code>/releases last_month</code> - Últimos 2 meses\n"
+                    "• <code>/releases year</code> - Todo el año"
+                )
+                await update.message.reply_text(debug_msg, parse_mode='HTML')
+                return
+            
+            # 3. Formatear respuesta
+            # Ordenar por fecha (más reciente primero)
+            matching_releases.sort(key=lambda x: x.get("date", ""), reverse=True)
+            
+            # Limitar a 20 releases para no sobrecargar el mensaje
+            releases_to_show = matching_releases[:20]
+            
+            text = f"🎵 <b>Lanzamientos de {period_name}</b>\n\n"
+            text += f"✅ Encontrados <b>{len(matching_releases)}</b> lanzamientos\n"
+            text += f"📚 De <b>{len(library_artists)}</b> artistas verificados en tu biblioteca\n\n"
+            
+            # Agrupar por artista
+            releases_by_artist = {}
+            for release in releases_to_show:
+                artist = release.get("artist")
+                if artist not in releases_by_artist:
+                    releases_by_artist[artist] = []
+                releases_by_artist[artist].append(release)
+            
+            # Mostrar releases agrupados por artista
+            for artist, releases in releases_by_artist.items():
+                text += f"🎤 <b>{artist}</b>\n"
+                for release in releases:
+                    release_type = release.get("type", "Album")
+                    release_title = release.get("title", "Sin título")
+                    release_date = release.get("date", "Fecha desconocida")
+                    release_url = release.get("url", "")
+                    
+                    # Emoji según el tipo
+                    type_emoji = "📀" if release_type == "Album" else "💿"
+                    
+                    text += f"   {type_emoji} {release_title} ({release_type})\n"
+                    text += f"      📅 {release_date}\n"
+                    if release_url:
+                        text += f"      🔗 <a href=\"{release_url}\">Ver en MusicBrainz</a>\n"
+                text += "\n"
+            
+            if len(matching_releases) > 20:
+                text += f"...y {len(matching_releases) - 20} lanzamientos más\n\n"
+            
+            text += (
+                "💡 <b>Otros períodos:</b> "
+                "<code>/releases month</code>, "
+                "<code>/releases last_month</code>, "
+                "<code>/releases year</code>, "
+                "o usa días: <code>/releases 90</code>"
+            )
+            
+            await update.message.reply_text(text, parse_mode='HTML')
+            
+        except Exception as e:
+            print(f"❌ Error en releases_command: {e}")
+            import traceback
+            traceback.print_exc()
+            await update.message.reply_text(
+                f"❌ Error obteniendo lanzamientos: {str(e)}\n\n"
+                "Verifica que MusicBrainz esté configurado correctamente."
+            )
     
     @_check_authorization
     async def search_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):

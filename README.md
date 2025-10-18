@@ -275,6 +275,7 @@ La IA entiende tu intención y responde usando tus datos reales de Last.fm/Liste
 - **`/library`** - Explorar biblioteca
 - **`/stats`** - Estadísticas en Listenbrainz • Ej: /stats week
 - **`/search`** - Buscar música en la biblioteca • Ej: /search queen
+- **`/releases`** - Consultar nuevos lanzamientos de artistas de la biblioteca • Ej: /releases week
 - **`/start`** - Iniciar el bot
 - **`/help`** - Mostrar ayuda completa
 
