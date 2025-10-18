@@ -4,6 +4,7 @@ from typing import Dict, Any, List, Optional
 from services.lastfm_service import LastFMService
 from services.navidrome_service import NavidromeService
 from services.listenbrainz_service import ListenBrainzService
+from services.musicbrainz_service import MusicBrainzService
 from services.conversation_manager import ConversationManager
 from services.system_prompts import SystemPrompts
 
@@ -56,6 +57,15 @@ class MusicAgentService:
         
         # RECOMENDACIONES Y METADATOS: Solo Last.fm (tiene mejores APIs para esto)
         self.discovery_service = self.lastfm
+        
+        # MUSICBRAINZ: Para verificación de metadatos
+        self.musicbrainz = None
+        if os.getenv("ENABLE_MUSICBRAINZ", "true").lower() == "true":
+            try:
+                self.musicbrainz = MusicBrainzService()
+                print("✅ Agente musical: MusicBrainz habilitado para verificación de metadatos")
+            except Exception as e:
+                print(f"⚠️ Agente musical: Error inicializando MusicBrainz: {e}")
         
         print(f"📊 Servicio de historial: {self.history_service_name if self.history_service_name else 'No disponible'}")
         print(f"🔍 Servicio de descubrimiento: {'Last.fm' if self.discovery_service else 'No disponible'}")
@@ -338,6 +348,45 @@ Responde ahora de forma natural y conversacional:"""
                     else:
                         data["library"]["has_content"] = False
                         print(f"⚠️ No se encontraron resultados para género '{detected_genre}'")
+                        
+                        # FALLBACK: Usar MusicBrainz para verificar si hay artistas del género
+                        if self.musicbrainz:
+                            print(f"   🎯 Activando MusicBrainz para verificar género '{detected_genre}'...")
+                            mb_results = await self._search_genre_with_musicbrainz(detected_genre)
+                            if mb_results:
+                                # Si MusicBrainz encuentra artistas, actualizar los resultados
+                                data["library"]["search_results"] = mb_results
+                                data["library"]["has_content"] = True
+                                data["library"]["musicbrainz_verified"] = True
+                                print(f"   ✅ MusicBrainz encontró {len(mb_results.get('albums', []))} álbumes, {len(mb_results.get('artists', []))} artistas de '{detected_genre}'")
+                
+                # Si detectó un género pero NO es recomendación (ej: "tengo algo de jazz?")
+                elif detected_genre and not search_term:
+                    print(f"🔍 Buscando en biblioteca por GÉNERO (no recomendación): '{detected_genre}' (query: '{query}')")
+                    # Buscar por género en Navidrome
+                    search_results = await self.navidrome.search(detected_genre, limit=50)
+                    data["library"]["search_results"] = search_results
+                    data["library"]["search_term"] = detected_genre
+                    data["library"]["is_genre_search"] = True
+                    data["library"]["detected_genre"] = detected_genre
+                    
+                    if any(search_results.values()):
+                        data["library"]["has_content"] = True
+                        print(f"✅ Encontrado {len(search_results.get('albums', []))} álbumes, {len(search_results.get('artists', []))} artistas de género '{detected_genre}'")
+                    else:
+                        data["library"]["has_content"] = False
+                        print(f"⚠️ No se encontraron resultados para género '{detected_genre}'")
+                        
+                        # FALLBACK: Usar MusicBrainz para verificar si hay artistas del género
+                        if self.musicbrainz:
+                            print(f"   🎯 Activando MusicBrainz para verificar género '{detected_genre}'...")
+                            mb_results = await self._search_genre_with_musicbrainz(detected_genre)
+                            if mb_results and any(mb_results.values()):
+                                # Si MusicBrainz encuentra artistas, actualizar los resultados
+                                data["library"]["search_results"] = mb_results
+                                data["library"]["has_content"] = True
+                                data["library"]["musicbrainz_verified"] = True
+                                print(f"   ✅ MusicBrainz encontró {len(mb_results.get('albums', []))} álbumes, {len(mb_results.get('artists', []))} artistas de '{detected_genre}'")
                 
                 # Si hay un artista específico, buscar por artista
                 elif search_term:
@@ -1058,6 +1107,64 @@ Responde ahora de forma natural y conversacional:"""
         print(f"🔍 Término extraído (filtrado): '{result}'")
         return result if result else query
     
+    async def _search_genre_with_musicbrainz(self, genre: str) -> Dict[str, List]:
+        """Usar MusicBrainz para buscar artistas de un género en la biblioteca
+        
+        Args:
+            genre: Género musical a buscar
+            
+        Returns:
+            Diccionario con resultados {tracks: [], albums: [], artists: []}
+        """
+        try:
+            # Obtener muestra de la biblioteca
+            library_tracks = await self.navidrome.get_tracks(limit=300)
+            
+            # Extraer artistas únicos
+            unique_artists = list(set([track.artist for track in library_tracks if track.artist]))
+            print(f"      Verificando {len(unique_artists)} artistas con MusicBrainz...")
+            
+            # Preparar filtros
+            filters = {"genre": genre}
+            
+            # Verificar artistas (limitar a 20 para no tardar demasiado)
+            matching_artists_data = await self.musicbrainz.find_matching_artists_in_library(
+                unique_artists,
+                filters,
+                max_artists=20
+            )
+            
+            if not matching_artists_data:
+                return {"tracks": [], "albums": [], "artists": []}
+            
+            # Extraer nombres de artistas que coinciden
+            matching_artist_names = set([a["name"].lower() for a in matching_artists_data])
+            
+            # Buscar en Navidrome los artistas verificados
+            results = {"tracks": [], "albums": [], "artists": []}
+            
+            for artist_name in list(matching_artist_names)[:10]:  # Limitar a 10 artistas
+                artist_results = await self.navidrome.search(artist_name, limit=20)
+                
+                # Combinar resultados
+                for track in artist_results.get("tracks", []):
+                    if track not in results["tracks"]:
+                        results["tracks"].append(track)
+                
+                for album in artist_results.get("albums", []):
+                    if album not in results["albums"]:
+                        results["albums"].append(album)
+                
+                for artist in artist_results.get("artists", []):
+                    if artist not in results["artists"]:
+                        results["artists"].append(artist)
+            
+            return results
+            
+        except Exception as e:
+            print(f"      ❌ Error en búsqueda MusicBrainz: {e}")
+            return {"tracks": [], "albums": [], "artists": []}
+    
     async def close(self):
         """Cerrar todas las conexiones"""
         try:
@@ -1066,6 +1173,8 @@ Responde ahora de forma natural y conversacional:"""
                 await self.lastfm.close()
             if self.listenbrainz:
                 await self.listenbrainz.close()
+            if self.musicbrainz:
+                await self.musicbrainz.close()
         except Exception as e:
             print(f"Error cerrando conexiones: {e}")
 
