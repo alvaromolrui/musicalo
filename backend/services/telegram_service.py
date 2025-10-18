@@ -891,11 +891,11 @@ Sé todo lo detallado que quieras:
                 # Agregar enlaces si hay
                 links = result.get("links", [])
                 if links:
-                    answer += "\n\n🔗 **Enlaces relevantes:**\n"
+                    answer += "\n\n🔗 <b>Enlaces relevantes:</b>\n"
                     for link in links[:5]:  # Máximo 5 enlaces
                         answer += f"• {link}\n"
                 
-                await update.message.reply_text(answer)
+                await update.message.reply_text(answer, parse_mode='HTML')
                 print(f"✅ Respuesta del agente enviada")
             else:
                 await update.message.reply_text(
