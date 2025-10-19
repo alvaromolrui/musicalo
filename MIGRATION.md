@@ -110,11 +110,11 @@ Esta rama (`remove-lastfm-use-listenbrainz`) migra completamente el proyecto de 
 ## 📊 Estadísticas
 
 ```
-16 commits totales
+19 commits totales
 13 archivos modificados  
 1 archivo eliminado (lastfm_service.py)
-+1,630 líneas agregadas
--930 líneas eliminadas
++1,740 líneas agregadas
+-976 líneas eliminadas
 ```
 
 ## ⚡ Optimizaciones de Rendimiento
@@ -145,11 +145,11 @@ Esta rama (`remove-lastfm-use-listenbrainz`) migra completamente el proyecto de 
 
 | Operación | Primera vez | Siguientes (cache) |
 |-----------|-------------|-------------------|
-| `/recommend` | ~15-20s | ~5-8s |
-| `/recommend electrónica` | ~8-12s | ~3-5s |
-| `similar a X` (con tags) | ~5-7s | ~3-5s |
-| `similar a X` (sin tags, IA) | ~3-5s | ~3-5s |
-| Recomendación conversacional | ~10-15s | ~5-8s |
+| `/recommend` (sin filtros) | ~8-12s | **~3-5s** ✨ (NO usa IA) |
+| `/recommend electrónica` | ~12-18s | **~5-8s** ✨ (usa IA) |
+| `similar a X` (con tags) | ~5-7s | **~3-5s** ✨ |
+| `similar a X` (sin tags, IA) | ~3-5s | **~3-5s** |
+| Conversacional "algo nuevo" | ~10-15s | **~5-8s** ✨ (usa IA) |
 
 ### Configuración de IA Optimizada
 
@@ -171,8 +171,16 @@ generation_config = {
 3. Biblioteca local
 
 **AHORA (mejor)**:
-1. **IA primero SIEMPRE** (entiende contexto, excluye biblioteca)
-2. ListenBrainz CF como complemento (solo si IA no generó suficientes)
+
+Para `/recommend` sin filtros:
+1. **ListenBrainz+MusicBrainz SOLO** (basado en historial real de escucha)
+2. Artistas similares a los que escuchas activamente
+3. Biblioteca local como último recurso
+4. **NO usa IA** (más rápido, basado en datos reales)
+
+Para `/recommend [género]` o peticiones específicas:
+1. **IA primero** (entiende criterio específico)
+2. ListenBrainz+MusicBrainz como complemento
 3. Biblioteca local como último recurso
 
 ### Mejoras en Parseo de IA
@@ -260,30 +268,35 @@ ENABLE_MUSICBRAINZ=true
 
 Prueba estos casos después de desplegar:
 
-1. **Recomendaciones por género**:
+1. **Recomendaciones generales** (basadas en historial):
    ```
-   /recommend electrónica
-   → Debería dar Daft Punk, Aphex Twin, etc. (NO hip-hop)
+   /recommend
+   → Fuente: ListenBrainz+MusicBrainz (NO AI)
+   → Artistas similares a los que escuchas (SFDK, Extremoduro, etc.)
+   → Solo artistas que NO tienes en biblioteca
+   → Más rápido (~8-12s primera vez, ~3-5s con cache)
    ```
 
-2. **Búsqueda de similares**:
+2. **Recomendaciones por género** (usa IA):
+   ```
+   /recommend electrónica
+   → Fuente: AI (Gemini) + ListenBrainz+MusicBrainz
+   → Debería dar Daft Punk, Aphex Twin, etc. (NO hip-hop)
+   → Razones completas sin fragmentos
+   ```
+
+3. **Búsqueda de similares con tags**:
    ```
    similar a Oasis
+   → Estrategia 2: MusicBrainz tags (rock, britpop)
    → Debería dar Blur, The Verve, etc. (NO miembros de Oasis)
    ```
 
-3. **Búsqueda de similares para artistas nicho (SIN tags en MusicBrainz)**:
+4. **Búsqueda de similares SIN tags** (artistas nicho):
    ```
    similar a Mujeres
-   → Usará Estrategia 3 (IA)
+   → Estrategia 3: IA fallback
    → Debería dar: Savages, The Courtneys, Parquet Courts, etc.
-   ```
-
-4. **Recomendaciones generales**:
-   ```
-   /recommend
-   → NO debería repetir el mismo artista 3 veces
-   → Razones deberían estar completas (no cortadas)
    ```
 
 5. **Enlaces**:
