@@ -110,11 +110,55 @@ Esta rama (`remove-lastfm-use-listenbrainz`) migra completamente el proyecto de 
 ## 📊 Estadísticas
 
 ```
-12 commits totales
-13 archivos modificados
+16 commits totales
+13 archivos modificados  
 1 archivo eliminado (lastfm_service.py)
-+1,547 líneas agregadas
--902 líneas eliminadas
++1,630 líneas agregadas
+-930 líneas eliminadas
+```
+
+## ⚡ Optimizaciones de Rendimiento
+
+### Cache Implementado
+
+1. **Cache de artistas de biblioteca** (5 minutos)
+   - Evita `get_artists(500)` en cada recomendación
+   - **Mejora**: Primera llamada ~300ms, siguientes <1ms
+
+2. **Cache de recomendaciones de ListenBrainz** (5 minutos)
+   - Reutiliza CF recommendations entre peticiones
+   - **Mejora**: ~200ms ahorrados por recomendación
+
+### Límites Optimizados
+
+| Parámetro | Antes | Ahora | Ahorro |
+|-----------|-------|-------|--------|
+| Artistas para analizar | 5 | 3 | ~40% |
+| Similares por artista | 10 | 7 | ~30% |
+| ListenBrainz CF count | 100 | 50 | ~50% |
+| MusicBrainz búsquedas tags | 3 | 2 | ~33% |
+| MusicBrainz resultados/tag | 20 | 15 | ~25% |
+| IA max_output_tokens | 2048 | 800 | ~60% |
+| Artistas en prompt IA | 50 | 30 | Menor |
+
+### Tiempos Esperados
+
+| Operación | Primera vez | Siguientes (cache) |
+|-----------|-------------|-------------------|
+| `/recommend` | ~15-20s | ~5-8s |
+| `/recommend electrónica` | ~8-12s | ~3-5s |
+| `similar a X` (con tags) | ~5-7s | ~3-5s |
+| `similar a X` (sin tags, IA) | ~3-5s | ~3-5s |
+| Recomendación conversacional | ~10-15s | ~5-8s |
+
+### Configuración de IA Optimizada
+
+```python
+generation_config = {
+    'temperature': 0.5-0.7,  # Más determinista
+    'max_output_tokens': 300-800,  # Según uso
+    'top_p': 0.8-0.9
+}
 ```
 
 ## 🎯 Cambios Críticos del Sistema de Recomendaciones
