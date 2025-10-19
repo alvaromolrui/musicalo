@@ -267,6 +267,7 @@ La IA entiende tu intención y responde usando tus datos reales de ListenBrainz 
 - **`/stats`** - Estadísticas en Listenbrainz • Ej: /stats week
 - **`/search`** - Buscar música en la biblioteca • Ej: /search queen
 - **`/releases`** - Consultar nuevos lanzamientos de artistas de la biblioteca • Ej: /releases week
+- **`/share`** - Crear enlace para compartir música • Ej: /share The dark side of the moon
 - **`/start`** - Iniciar el bot
 - **`/help`** - Mostrar ayuda completa
 
