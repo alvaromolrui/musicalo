@@ -418,59 +418,37 @@ class MusicRecommendationService:
             library_artists_set = await self._get_library_artists_cached()
             library_artists_list = list(library_artists_set)
             
-            # Crear un prompt inteligente para la IA que entienda las especificaciones
-            ai_prompt = f"""Eres un experto curador musical. Tu ÚNICA tarea es generar una lista de recomendaciones.
+            # Crear un prompt MUY estricto para evitar análisis
+            ai_prompt = f"""TAREA: Genera {limit} recomendaciones musicales.
 
 PERFIL DEL USUARIO:
-- Top artistas: {', '.join(top_artists[:5]) if top_artists else 'Desconocidos'}
-- Artistas recientes: {', '.join(set(recent_artists[:10])) if recent_artists else 'Desconocidos'}
+Top artistas: {', '.join(top_artists[:5]) if top_artists else 'Desconocidos'}
 
-ARTISTAS QUE YA TIENE EN BIBLIOTECA (NO recomendar estos):
-{', '.join(library_artists_list[:30]) if library_artists_list else 'No disponible'}
-(mostrados solo los primeros 30 de {len(library_artists_list)} total)
+EXCLUIR (ya los tiene): {', '.join(library_artists_list[:20]) if library_artists_list else 'Ninguno'}
 
-PETICIÓN DEL USUARIO:
-"{custom_prompt}"
+CRITERIO: {custom_prompt}
 
-TIPO DE RECOMENDACIÓN:
-{recommendation_type} (album = álbumes, artist = artistas, track = canciones, general = cualquiera)
+INSTRUCCIONES:
+1. Recomienda {limit} artistas/álbumes DIFERENTES
+2. NO recomiendes artistas que ya tiene
+3. Si pide un género, IGNORA su perfil y recomienda SOLO ese género
+4. Genera SOLO la lista, SIN análisis previo
 
-TU TAREA:
-1. **PRIORIDAD ABSOLUTA**: Lo que el usuario está pidiendo ahora es MÁS IMPORTANTE que su perfil actual
-2. Si pide un género específico (ej: "electrónica"), IGNORA su perfil de rock/hip-hop y recomienda SOLO ese género
-3. Si menciona características específicas (época, estilo, instrumentos, mood, energía, etc.), enfócate EXCLUSIVAMENTE en eso
-4. El perfil del usuario es solo referencia de contexto, NO lo uses si contradice la petición actual
-5. Genera exactamente {limit} recomendaciones DIFERENTES que cumplan con TODOS los criterios mencionados
+FORMATO OBLIGATORIO (cada línea):
+[Artista] - [Álbum/Nombre] | [Razón de 15-40 palabras con mayúscula inicial y punto final.]
 
-IMPORTANTE - EVITAR ERRORES COMUNES:
-- ❌ NO recomiendes artistas que YA TIENE en biblioteca
-- ❌ NO recomiendes el perfil del usuario si pide otro género (ej: si pide electrónica, NO recomiendes hip-hop)
-- ❌ NO repitas el mismo artista/álbum múltiples veces
-- ❌ NO generes análisis del perfil ANTES de las recomendaciones
-- ✅ Sé ESPECÍFICO con nombres de artistas, álbumes y canciones reales
-- ✅ Si pide características específicas (ej: "rock progresivo de los 70s"), busca artistas que cumplan EXACTAMENTE eso
-- ✅ Las recomendaciones deben ser VARIADAS entre sí pero todas cumplir los criterios
-- ✅ Genera SOLO las recomendaciones, nada más
+EJEMPLOS VÁLIDOS:
+Radiohead - OK Computer | Rock alternativo innovador de 1997 con experimentación electrónica y letras introspectivas que definen una generación.
+Aphex Twin - Selected Ambient Works | Electrónica ambient pionera con texturas sonoras profundas y atmósferas envolventes perfectas para inmersión.
 
-FORMATO DE SALIDA:
-Genera EXACTAMENTE {limit} recomendaciones usando SOLO este formato (sin numerar):
+❌ NO HAGAS:
+- Análisis del perfil
+- Explicaciones
+- Introducciones
+- Numeración
 
-[ARTISTA] - [NOMBRE] | [RAZÓN COMPLETA]
-
-REGLAS ESTRICTAS:
-1. NO generes ningún texto antes de las recomendaciones
-2. NO analices el perfil del usuario
-3. NO agregues introducciones
-4. NO uses numeración (1., 2., etc)
-5. Empieza directamente con la primera recomendación
-6. Una recomendación por línea
-7. Razón completa de 15-40 palabras (sin cortar)
-
-EJEMPLOS (copia este formato EXACTO):
-Pink Floyd - The Dark Side of the Moon | Álbum conceptual de rock progresivo de 1973 con sintetizadores atmosféricos y producción innovadora
-Daft Punk - Discovery | Electrónica francesa con influencias funk y disco, producción impecable y melodías pegajosas que definen el house francés
-
-GENERA {limit} RECOMENDACIONES AHORA (sin texto adicional):"""
+✅ EMPIEZA DIRECTAMENTE:
+"""
 
             # Generar con Gemini con configuración para respuestas más predecibles y rápidas
             # OPTIMIZACIÓN: Reducido max_output_tokens para respuestas más rápidas
@@ -488,6 +466,7 @@ GENERA {limit} RECOMENDACIONES AHORA (sin texto adicional):"""
             ai_response = response.text.strip()
             
             print(f"📝 Respuesta de IA recibida (longitud: {len(ai_response)})")
+            print(f"📝 DEBUG - Respuesta completa:\n{ai_response}\n---END---")
             
             # Procesar las recomendaciones de la IA
             recommendations = []
@@ -546,6 +525,35 @@ GENERA {limit} RECOMENDACIONES AHORA (sin texto adicional):"""
                     artist = artist.strip()
                     name = name.strip()
                     
+                    # VALIDACIÓN POST-PARSEO: Verificar que la razón NO sea un fragmento de análisis
+                    # Los fragmentos tienen patrones específicos:
+                    is_invalid = False
+                    
+                    # Patrones de fragmento
+                    if any(pattern in reason for pattern in ['):**', '**', 'céntrico', 'fi:', 'hop:', 'rock:', 'punk:']):
+                        is_invalid = True
+                    
+                    # Empieza con minúscula (fragmento de oración)
+                    if reason and reason[0].islower():
+                        is_invalid = True
+                    
+                    # Frases de análisis
+                    if any(phrase in reason for phrase in ['La lista de', 'El usuario', 'Artistas recientes', 'demuestran', 'sugiere']):
+                        is_invalid = True
+                    
+                    # Razón muy corta (menos de 8 palabras)
+                    if len(reason.split()) < 8:
+                        is_invalid = True
+                    
+                    if is_invalid:
+                        print(f"   ⚠️ Razón inválida (fragmento/análisis), skipping: {reason[:60]}")
+                        continue
+                    
+                    # VALIDACIÓN: Verificar que el artista NO esté en biblioteca
+                    if artist.lower() in library_artists_set:
+                        print(f"   ⏭️ Skipping {artist}: ya está en biblioteca")
+                        continue
+                    
                     # Verificar duplicados
                     track_key = f"{artist.lower()}|{name.lower()}"
                     if track_key in seen_tracks:
@@ -581,6 +589,7 @@ GENERA {limit} RECOMENDACIONES AHORA (sin texto adicional):"""
                     )
                     recommendations.append(recommendation)
                     print(f"   ✅ Agregada: {artist} - {name}")
+                    print(f"      Razón: {reason[:80]}...")
                     
                 except Exception as e:
                     print(f"   ⚠️ Error parseando línea: {line[:100]} | {e}")
