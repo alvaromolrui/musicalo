@@ -960,8 +960,9 @@ The Beatles - Hey Jude | Clásico del rock con melodías memorables y letras emo
                 candidate_items = rediscovery_items
             
             # Crear lista formateada de items disponibles
+            # OPTIMIZACIÓN: Reducir a 30 items para evitar bloqueos de seguridad de Gemini
             available_items_list = []
-            for item in candidate_items[:100]:  # Limitar a 100 para el prompt
+            for item in candidate_items[:30]:  # Limitar a 30 para evitar bloqueos
                 if recommendation_type == "album":
                     available_items_list.append(f"{item.artist} - {item.name}")
                 elif recommendation_type == "artist":
@@ -985,7 +986,7 @@ PERFIL DEL USUARIO:
 CRITERIO: {criteria}
 
 {item_type.upper()} DISPONIBLES EN BIBLIOTECA:
-{chr(10).join(available_items_list[:50])}
+{chr(10).join(available_items_list[:30])}
 
 INSTRUCCIONES:
 1. Recomienda {limit} {item_type} DIFERENTES de la lista
@@ -1023,10 +1024,45 @@ Pink Floyd - Wish You Were Here | Rock progresivo atmosférico con guitarras emo
                 'max_output_tokens': 800,
             }
             
-            response = self.model.generate_content(prompt, generation_config=generation_config)
-            ai_response = response.text.strip()
-            
-            print(f"📝 Respuesta de IA recibida (longitud: {len(ai_response)})")
+            # Intentar generar respuesta con manejo de bloqueo de seguridad
+            try:
+                response = self.model.generate_content(prompt, generation_config=generation_config)
+                ai_response = response.text.strip()
+                print(f"📝 Respuesta de IA recibida (longitud: {len(ai_response)})")
+            except ValueError as e:
+                # Si fue bloqueado por seguridad, intentar con prompt más simple
+                if "finish_reason" in str(e) or "response.text" in str(e):
+                    print(f"⚠️ Respuesta bloqueada por filtros de seguridad de Gemini")
+                    print(f"   Reintentando con prompt simplificado...")
+                    
+                    # Prompt mucho más simple sin listas largas
+                    simple_prompt = f"""Recomienda {limit} {item_type} de música para redescubrir.
+
+PERFIL: Escucha {', '.join(top_artists[:3])}
+CRITERIO: {criteria}
+TIPO: {item_type}
+
+FORMATO (cada línea):"""
+                    
+                    if recommendation_type == "artist":
+                        simple_prompt += "\n[Artista] | [Razón corta]"
+                    else:
+                        simple_prompt += "\n[Artista] - [Nombre] | [Razón corta]"
+                    
+                    simple_prompt += "\n\nEMPIEZA DIRECTAMENTE:"
+                    
+                    try:
+                        response = self.model.generate_content(simple_prompt, generation_config=generation_config)
+                        ai_response = response.text.strip()
+                        print(f"📝 Respuesta de IA recibida con prompt simple (longitud: {len(ai_response)})")
+                    except:
+                        print(f"❌ Fallo también con prompt simple, usando fallback básico")
+                        # Fallback: recomendar aleatoriamente de los candidatos
+                        return await self._generate_random_library_recommendations(
+                            candidate_items, limit, recommendation_type
+                        )
+                else:
+                    raise
             
             # Parsear recomendaciones
             recommendations = []
@@ -1175,6 +1211,82 @@ Pink Floyd - Wish You Were Here | Rock progresivo atmosférico con guitarras emo
             import traceback
             traceback.print_exc()
             return []
+    
+    async def _generate_random_library_recommendations(
+        self,
+        candidate_items: List,
+        limit: int,
+        recommendation_type: str
+    ) -> List[Recommendation]:
+        """Generar recomendaciones aleatorias de biblioteca como fallback
+        
+        Usado cuando la IA falla o es bloqueada por filtros de seguridad.
+        
+        Args:
+            candidate_items: Lista de items disponibles en biblioteca
+            limit: Número de recomendaciones
+            recommendation_type: Tipo de recomendación
+            
+        Returns:
+            Lista de recomendaciones aleatorias
+        """
+        print(f"🎲 Generando {limit} recomendaciones aleatorias de biblioteca (fallback)")
+        
+        recommendations = []
+        
+        # Seleccionar items aleatorios
+        import random
+        selected_items = random.sample(candidate_items, min(limit, len(candidate_items)))
+        
+        for item in selected_items:
+            try:
+                # Convertir a Track según el tipo
+                if recommendation_type == "artist":
+                    track = Track(
+                        id=item.id,
+                        title=f"Descubre {item.name}",
+                        artist=item.name,
+                        album="",
+                        duration=None,
+                        year=None,
+                        genre=getattr(item, 'genre', ''),
+                        play_count=getattr(item, 'play_count', None),
+                        path=getattr(item, 'path', ''),
+                        cover_url=getattr(item, 'cover_url', None)
+                    )
+                    reason = f"Artista de tu biblioteca que no has escuchado recientemente."
+                elif recommendation_type == "album":
+                    track = Track(
+                        id=item.id,
+                        title=item.name,
+                        artist=item.artist,
+                        album=item.name,
+                        duration=None,
+                        year=getattr(item, 'year', None),
+                        genre=getattr(item, 'genre', ''),
+                        play_count=getattr(item, 'play_count', None),
+                        path=getattr(item, 'path', ''),
+                        cover_url=getattr(item, 'cover_url', None),
+                        track_count=getattr(item, 'track_count', None)
+                    )
+                    reason = f"Álbum de {item.artist} que no has escuchado recientemente."
+                else:  # track
+                    track = item
+                    reason = f"Canción de {item.artist} que no has escuchado recientemente."
+                
+                recommendations.append(Recommendation(
+                    track=track,
+                    reason=reason,
+                    confidence=0.7,
+                    source="biblioteca",
+                    tags=["library-recommendation", "random"]
+                ))
+            except Exception as e:
+                print(f"   ⚠️ Error creando recomendación aleatoria: {e}")
+                continue
+        
+        print(f"🎲 Generadas {len(recommendations)} recomendaciones aleatorias")
+        return recommendations
     
     async def _generate_similarity_recommendations(
         self, 
