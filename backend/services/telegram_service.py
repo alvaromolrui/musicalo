@@ -108,7 +108,7 @@ Puedes dar todos los detalles que quieras:
 <b>📝 Comandos disponibles:</b>
 /recommend - Obtener recomendaciones personalizadas
 /playlist &lt;descripción&gt; - Crear playlist M3U 🎵
-/share &lt;nombre&gt; - Generar enlaces de reproducción + descarga 🎧📥
+/share &lt;nombre&gt; - Compartir música con enlace público 🔗
 /library - Explorar tu biblioteca musical
 /stats - Ver estadísticas de escucha
 /releases [week/month/year] - Lanzamientos recientes 🆕
@@ -155,7 +155,7 @@ Sé todo lo detallado que quieras:
 • /recommend artist - Recomendar artistas
 • /recommend track - Recomendar canciones
 • /playlist &lt;descripción&gt; - Crear playlist M3U 🎵
-• /share &lt;nombre&gt; - Generar enlaces (reproducir + descargar) 🎧📥
+• /share &lt;nombre&gt; - Compartir música con enlace público 🔗
 • /library - Ver tu biblioteca musical
 • /stats - Estadísticas de escucha
 • /releases - Lanzamientos recientes de tus artistas 🆕
@@ -191,7 +191,7 @@ Sé todo lo detallado que quieras:
 • /share The Dark Side of the Moon - Compartir álbum
 • /share Bohemian Rhapsody - Compartir canción
 • /share Queen - Compartir todas las canciones del artista
-💡 Genera 2 enlaces: uno para reproducir 🎧 y otro para descargar 📥
+💡 Genera enlace público con reproducción y descarga habilitadas 🎧📥
 
 <b>Lanzamientos Recientes (🆕):</b>
 • /releases - Esta semana (por defecto)
@@ -1193,11 +1193,12 @@ Sé todo lo detallado que quieras:
                 "• Canciones: <code>/share Bohemian Rhapsody</code>\n"
                 "• Artistas: <code>/share Queen</code> (todas sus canciones)\n\n"
                 "💡 <b>Qué obtienes:</b>\n"
-                "  🔗 Enlace al share con interfaz web\n"
-                "  🎧 En el share: botón para reproducir\n"
-                "  📥 En el share: botón para descargar\n"
-                "  ⚡ Enlace de descarga directa\n\n"
-                "✨ Enlaces públicos - no requieren autenticación",
+                "  🔗 Enlace público con interfaz web de Navidrome\n"
+                "  🎧 Reproducir música en streaming\n"
+                "  📥 Descargar los archivos\n"
+                "  📋 Ver lista completa de canciones\n\n"
+                "✨ El enlace es público - no requiere autenticación\n"
+                "⚙️ Asegúrate de tener ND_DEFAULTDOWNLOADABLESHARE=true en tu configuración",
                 parse_mode='HTML'
             )
             return
@@ -1270,26 +1271,23 @@ Sé todo lo detallado que quieras:
                 return
             
             # 3. Formatear respuesta
-            text = f"""✅ <b>Enlace creado para compartir</b>
+            text = f"""✅ <b>Enlace compartido creado</b>
 
 {found_name}
 📦 <b>{len(items_to_share)}</b> {'canción' if len(items_to_share) == 1 else 'canciones'}
 
-🔗 <b>Enlace principal del share:</b>
+🔗 <b>Enlace del share:</b>
 <code>{share_info['url']}</code>
 
-💡 <b>Al abrir este enlace verás:</b>
-• 🎧 Botón para reproducir en streaming
-• 📥 Botón para descargar los archivos
-• 📋 Lista de todas las canciones
-
-⚡ <b>Descarga directa (sin abrir interfaz):</b>
-<code>{share_info['download_url']}</code>
+💡 <b>Al abrir este enlace:</b>
+• 🎧 Podrás reproducir la música en streaming
+• 📥 Podrás descargar los archivos
+• 📋 Verás la lista completa de canciones
 
 📋 <b>Información:</b>
 • Tipo: {share_type}
 • ID: <code>{share_info['id']}</code>
-• Enlaces públicos sin autenticación"""
+• Enlace público sin autenticación"""
 
             # Si es un enlace con muchas canciones, agregar detalles
             if len(items_to_share) > 1:

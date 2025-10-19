@@ -353,8 +353,7 @@ class NavidromeService:
         self, 
         item_ids: List[str], 
         description: Optional[str] = None,
-        expires: Optional[int] = None,
-        downloadable: bool = True
+        expires: Optional[int] = None
     ) -> Optional[Dict[str, str]]:
         """Crear enlace compartible para canciones o álbumes
         
@@ -362,13 +361,16 @@ class NavidromeService:
             item_ids: Lista de IDs de canciones o álbumes a compartir
             description: Descripción opcional del share
             expires: Tiempo de expiración en milisegundos desde epoch (opcional)
-            downloadable: Si True, permite descargar la música desde el share (default: True)
             
         Returns:
-            Dict con 'id', 'url', 'download_url' y 'description' del share, o None si falla
+            Dict con 'id', 'url' y 'description' del share, o None si falla
+            
+        Nota:
+            Para que los shares sean downloadable, asegúrate de tener
+            ND_DEFAULTDOWNLOADABLESHARE=true en la configuración de Navidrome
         """
         try:
-            print(f"🔗 Creando share para {len(item_ids)} items (downloadable: {downloadable})...")
+            print(f"🔗 Creando share para {len(item_ids)} items...")
             
             # Construir parámetros
             params = self._get_auth_params()
@@ -381,13 +383,7 @@ class NavidromeService:
             url = f"{self.base_url}/rest/createShare.view"
             url_params = "&".join([f"{k}={v}" for k, v in params.items()])
             id_params = "&".join([f"id={item_id}" for item_id in item_ids])
-            
-            # Agregar parámetro downloadable al final (debe ir después de los IDs)
-            downloadable_param = "downloadable=true" if downloadable else "downloadable=false"
-            full_url = f"{url}?{url_params}&{id_params}&{downloadable_param}"
-            
-            print(f"📝 DEBUG - URL completa: {full_url[:100]}... (truncada)")
-            print(f"📝 DEBUG - Parámetro downloadable: {downloadable_param}")
+            full_url = f"{url}?{url_params}&{id_params}"
             
             response = await self.client.get(full_url)
             
@@ -416,14 +412,9 @@ class NavidromeService:
             share_id = share.get("id", "")
             share_url = share.get("url", "")
             
-            # Crear URL de descarga directa usando el endpoint download
-            # La URL de descarga usa el share ID para acceso público sin autenticación
-            download_url = f"{self.base_url}/share/{share_id}/download"
-            
             share_info = {
                 "id": share_id,
                 "url": share_url,
-                "download_url": download_url,
                 "description": share.get("description", description or ""),
                 "created": share.get("created", ""),
                 "expires": share.get("expires"),
@@ -431,7 +422,6 @@ class NavidromeService:
             }
             
             print(f"✅ Share creado: {share_url}")
-            print(f"📥 URL de descarga: {download_url}")
             return share_info
             
         except Exception as e:
