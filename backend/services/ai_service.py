@@ -8,7 +8,6 @@ import random
 from models.schemas import UserProfile, Recommendation, Track, LastFMTrack, LastFMArtist, MusicAnalysis
 from services.navidrome_service import NavidromeService
 from services.listenbrainz_service import ListenBrainzService
-from services.lastfm_service import LastFMService
 from services.musicbrainz_service import MusicBrainzService
 
 class MusicRecommendationService:
@@ -19,20 +18,16 @@ class MusicRecommendationService:
         self.navidrome = NavidromeService()
         self.listenbrainz = ListenBrainzService()
         
-        # Inicializar Last.fm si está configurado
-        self.lastfm = None
-        if os.getenv("LASTFM_API_KEY") and os.getenv("LASTFM_USERNAME"):
-            self.lastfm = LastFMService()
-            print("✅ Servicio de recomendaciones con Last.fm habilitado")
-        
-        # Inicializar MusicBrainz para verificación de metadatos
+        # Inicializar MusicBrainz para metadatos y descubrimiento
         self.musicbrainz = None
         if os.getenv("ENABLE_MUSICBRAINZ", "true").lower() == "true":
             try:
                 self.musicbrainz = MusicBrainzService()
-                print("✅ MusicBrainz habilitado para verificación de metadatos")
+                print("✅ MusicBrainz habilitado para metadatos y descubrimiento")
             except Exception as e:
                 print(f"⚠️ Error inicializando MusicBrainz: {e}")
+        
+        print("✅ Servicio de recomendaciones usando ListenBrainz + MusicBrainz")
     
     async def analyze_user_profile(self, user_profile: UserProfile) -> MusicAnalysis:
         """Analizar el perfil musical del usuario"""
@@ -97,7 +92,7 @@ class MusicRecommendationService:
         Args:
             user_profile: Perfil del usuario con sus gustos
             limit: Número de recomendaciones a generar
-            include_new_music: Si True, incluye música que no está en la biblioteca (usando Last.fm)
+            include_new_music: Si True, incluye música que no está en la biblioteca (usando ListenBrainz)
             recommendation_type: 'general', 'album', 'artist', 'track'
             genre_filter: Género o estilo específico para filtrar
             custom_prompt: Descripción libre y específica del usuario sobre lo que busca
@@ -127,11 +122,11 @@ class MusicRecommendationService:
                 recommendations.extend(custom_recs)
                 print(f"✅ Encontradas {len(custom_recs)} recomendaciones personalizadas")
             
-            # Si Last.fm está habilitado y se solicita música nueva (y no hay suficientes recomendaciones), usarlo
-            if len(recommendations) < limit and include_new_music and self.lastfm and len(user_profile.top_artists) > 0:
+            # Si se solicita música nueva y no hay suficientes recomendaciones, usar ListenBrainz
+            if len(recommendations) < limit and include_new_music and len(user_profile.top_artists) > 0:
                 remaining_limit = limit - len(recommendations)
-                print(f"🌍 Buscando música nueva usando Last.fm (tipo: {recommendation_type}, género: {genre_filter})...")
-                new_music_recs = await self._generate_lastfm_recommendations(
+                print(f"🌍 Buscando música nueva usando ListenBrainz (tipo: {recommendation_type}, género: {genre_filter})...")
+                new_music_recs = await self._generate_listenbrainz_recommendations(
                     user_profile, 
                     remaining_limit, 
                     recommendation_type=recommendation_type,
@@ -167,7 +162,7 @@ class MusicRecommendationService:
             print(f"❌ Error generando recomendaciones: {e}")
             return []
     
-    async def _generate_lastfm_recommendations(
+    async def _generate_listenbrainz_recommendations(
         self, 
         user_profile: UserProfile, 
         limit: int,
@@ -175,7 +170,7 @@ class MusicRecommendationService:
         genre_filter: Optional[str] = None,
         custom_prompt: Optional[str] = None
     ) -> List[Recommendation]:
-        """Generar recomendaciones usando Last.fm (música nueva que no tienes)
+        """Generar recomendaciones usando ListenBrainz (música nueva que no tienes)
         
         Args:
             user_profile: Perfil del usuario
@@ -193,7 +188,7 @@ class MusicRecommendationService:
             num_artists_to_use = min(5, len(available_top_artists))
             selected_artists = random.sample(available_top_artists, num_artists_to_use) if len(available_top_artists) > num_artists_to_use else available_top_artists
             
-            print(f"🔍 Generando recomendaciones de Last.fm para {len(selected_artists)} artistas (seleccionados aleatoriamente)")
+            print(f"🔍 Generando recomendaciones de ListenBrainz para {len(selected_artists)} artistas (seleccionados aleatoriamente)")
             
             # Para asegurar diversidad, tomar 1 recomendación por artista
             # Obtener artistas similares basados en los artistas seleccionados
@@ -203,7 +198,7 @@ class MusicRecommendationService:
                 
                 print(f"🎤 Buscando artistas similares a: {top_artist.name}")
                 # Obtener más artistas similares y seleccionar aleatoriamente
-                similar_artists = await self.lastfm.get_similar_artists(top_artist.name, limit=10)
+                similar_artists = await self.listenbrainz.get_similar_artists_from_recording(top_artist.name, limit=10)
                 print(f"   Encontrados {len(similar_artists)} artistas similares")
                 
                 # Aleatorizar el orden de artistas similares
@@ -238,8 +233,11 @@ class MusicRecommendationService:
                 artist_url = similar_artist.url if hasattr(similar_artist, 'url') and similar_artist.url else ""
                 
                 if recommendation_type == "album":
-                    # Obtener el álbum top del artista similar
-                    top_albums = await self.lastfm.get_artist_top_albums(similar_artist.name, limit=1)
+                    # Obtener el álbum top del artista similar (usar MusicBrainz)
+                    if self.musicbrainz:
+                        top_albums = await self.musicbrainz.get_artist_top_albums_enhanced(similar_artist.name, limit=1)
+                    else:
+                        top_albums = []
                     if top_albums:
                         album_data = top_albums[0]
                         title = album_data.get("name", f"Álbum de {similar_artist.name}")
@@ -251,8 +249,11 @@ class MusicRecommendationService:
                         reason = f"📀 Similar a {top_artist.name}"
                 
                 elif recommendation_type == "track":
-                    # Obtener la canción top del artista similar
-                    top_tracks = await self.lastfm.get_artist_top_tracks(similar_artist.name, limit=1)
+                    # Obtener la canción top del artista similar (usar MusicBrainz)
+                    if self.musicbrainz:
+                        top_tracks = await self.musicbrainz.get_artist_top_tracks_enhanced(similar_artist.name, limit=1)
+                    else:
+                        top_tracks = []
                     if top_tracks:
                         track_data = top_tracks[0]
                         title = track_data.name
@@ -272,7 +273,7 @@ class MusicRecommendationService:
                 
                 # Crear el objeto Track primero
                 track = Track(
-                    id=f"lastfm_{recommendation_type}_{similar_artist.name.replace(' ', '_')}_{title.replace(' ', '_')[:30]}",
+                    id=f"listenbrainz_{recommendation_type}_{similar_artist.name.replace(' ', '_')}_{title.replace(' ', '_')[:30]}",
                     title=title,
                     artist=similar_artist.name,
                     album=album_name,
@@ -289,16 +290,16 @@ class MusicRecommendationService:
                     track=track,
                     reason=reason,
                     confidence=0.85,  # Score alto para música nueva
-                    source="Last.fm",
+                    source="ListenBrainz+MusicBrainz",
                     tags=[genre_filter] if genre_filter else []
                 )
                 recommendations.append(recommendation)
             
-            print(f"✅ Total de recomendaciones de Last.fm: {len(recommendations)}")
+            print(f"✅ Total de recomendaciones de ListenBrainz: {len(recommendations)}")
             return recommendations
             
         except Exception as e:
-            print(f"❌ Error generando recomendaciones de Last.fm: {e}")
+            print(f"❌ Error generando recomendaciones de ListenBrainz: {e}")
             import traceback
             traceback.print_exc()
             return []
@@ -436,20 +437,20 @@ Genera las {limit} recomendaciones ahora:"""
             
             print(f"🎨 Total recomendaciones personalizadas generadas: {len(recommendations)}")
             
-            # Si se generaron recomendaciones usando IA, intentar buscar en Last.fm
+            # Si se generaron recomendaciones usando IA, intentar buscar en MusicBrainz
             # para agregar URLs y más información
-            if self.lastfm and recommendations:
-                print("🔍 Enriqueciendo recomendaciones con datos de Last.fm...")
+            if self.musicbrainz and recommendations:
+                print("🔍 Enriqueciendo recomendaciones con datos de MusicBrainz...")
                 for rec in recommendations[:limit]:
                     try:
                         # Si es artista, buscar info del artista
                         if recommendation_type == "artist":
-                            similar_artists = await self.lastfm.get_similar_artists(rec.track.artist, limit=1)
-                            if similar_artists and similar_artists[0].url:
-                                rec.track.path = similar_artists[0].url
+                            artist_info = await self.musicbrainz.verify_artist_metadata(rec.track.artist)
+                            if artist_info.get("found") and artist_info.get("url"):
+                                rec.track.path = artist_info["url"]
                         # Si es álbum, buscar álbumes del artista
                         elif recommendation_type == "album":
-                            top_albums = await self.lastfm.get_artist_top_albums(rec.track.artist, limit=5)
+                            top_albums = await self.musicbrainz.get_artist_top_albums(rec.track.artist, limit=5)
                             if top_albums:
                                 # Buscar el álbum específico o usar el primero
                                 for album_data in top_albums:

@@ -37,6 +37,11 @@ class Artist(BaseModel):
     image_url: Optional[str] = None
 
 class LastFMTrack(BaseModel):
+    """Track model para datos de ListenBrainz/MusicBrainz
+    
+    Nota: El nombre se mantiene como LastFMTrack por compatibilidad,
+    pero ahora se usa con datos de ListenBrainz y MusicBrainz.
+    """
     name: str
     artist: str
     album: Optional[str] = None
@@ -46,6 +51,11 @@ class LastFMTrack(BaseModel):
     image_url: Optional[str] = None
 
 class LastFMArtist(BaseModel):
+    """Artist model para datos de ListenBrainz/MusicBrainz
+    
+    Nota: El nombre se mantiene como LastFMArtist por compatibilidad,
+    pero ahora se usa con datos de ListenBrainz y MusicBrainz.
+    """
     name: str
     playcount: Optional[int] = None
     url: Optional[str] = None
@@ -56,7 +66,7 @@ class Recommendation(BaseModel):
     track: Track
     reason: str
     confidence: float
-    source: str  # "navidrome", "lastfm", "ai"
+    source: str  # "navidrome", "listenbrainz", "musicbrainz", "ai"
     tags: List[str] = []
 
 class UserProfile(BaseModel):

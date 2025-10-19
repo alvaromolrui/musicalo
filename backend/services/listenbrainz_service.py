@@ -308,6 +308,345 @@ class ListenBrainzService:
             print(f"Error obteniendo actividad: {e}")
             return {}
     
+    async def get_recommendations(self, count: int = 50) -> List[Dict[str, Any]]:
+        """Obtener recomendaciones colaborativas personalizadas de ListenBrainz
+        
+        Usa collaborative filtering basado en usuarios similares.
+        
+        Args:
+            count: Número de recomendaciones a obtener
+        
+        Returns:
+            Lista de grabaciones recomendadas
+        """
+        try:
+            params = {"count": count}
+            data = await self._make_request(
+                f"cf/recommendation/user/{self.username}/recording",
+                params
+            )
+            
+            recommendations = []
+            recordings = data.get("payload", {}).get("mbids", [])
+            
+            for rec in recordings:
+                recommendations.append({
+                    "recording_mbid": rec.get("recording_mbid"),
+                    "score": rec.get("score", 0),
+                    # Metadata adicional si está disponible
+                    "artist_name": rec.get("artist_name"),
+                    "track_name": rec.get("track_name"),
+                    "release_name": rec.get("release_name")
+                })
+            
+            print(f"✅ Obtenidas {len(recommendations)} recomendaciones de ListenBrainz")
+            return recommendations
+            
+        except Exception as e:
+            print(f"❌ Error obteniendo recomendaciones: {e}")
+            return []
+    
+    async def get_similar_users(self, limit: int = 10) -> List[Dict[str, Any]]:
+        """Obtener usuarios con gustos musicales similares
+        
+        Args:
+            limit: Número de usuarios similares a obtener
+        
+        Returns:
+            Lista de usuarios similares
+        """
+        try:
+            data = await self._make_request(f"user/{self.username}/similar-users")
+            
+            similar_users = []
+            users = data.get("payload", [])[:limit]
+            
+            for user in users:
+                similar_users.append({
+                    "user_name": user.get("user_name"),
+                    "similarity": user.get("similarity", 0)
+                })
+            
+            return similar_users
+            
+        except Exception as e:
+            print(f"❌ Error obteniendo usuarios similares: {e}")
+            return []
+    
+    async def get_lb_radio(
+        self, 
+        mode: str = "easy", 
+        seed_artist_mbid: str = None,
+        count: int = 50
+    ) -> List[Dict[str, Any]]:
+        """Obtener radio personalizada de ListenBrainz
+        
+        Genera una secuencia de canciones basada en diferentes modos.
+        
+        Args:
+            mode: Modo de radio - "easy" (similar), "medium" (balanceado), "hard" (explorador)
+            seed_artist_mbid: MBID del artista semilla (opcional)
+            count: Número de canciones a obtener
+        
+        Returns:
+            Lista de grabaciones para la radio
+        """
+        try:
+            params = {
+                "mode": mode,
+                "count": count
+            }
+            
+            if seed_artist_mbid:
+                params["seed_artist_mbid"] = seed_artist_mbid
+            
+            data = await self._make_request(
+                f"lb-radio/user/{self.username}",
+                params
+            )
+            
+            radio_tracks = []
+            recordings = data.get("payload", {}).get("recordings", [])
+            
+            for rec in recordings:
+                radio_tracks.append({
+                    "recording_mbid": rec.get("recording_mbid"),
+                    "artist_name": rec.get("artist_name"),
+                    "track_name": rec.get("track_name"),
+                    "release_name": rec.get("release_name")
+                })
+            
+            print(f"✅ Obtenidas {len(radio_tracks)} canciones para radio (modo: {mode})")
+            return radio_tracks
+            
+        except Exception as e:
+            print(f"❌ Error obteniendo radio: {e}")
+            return []
+    
+    async def get_explore_playlists(self) -> List[Dict[str, Any]]:
+        """Obtener playlists de descubrimiento generadas automáticamente
+        
+        Returns:
+            Lista de playlists de exploración
+        """
+        try:
+            data = await self._make_request(f"user/{self.username}/playlists/createdfor")
+            
+            playlists = []
+            created_for = data.get("payload", {}).get("playlists", [])
+            
+            for playlist in created_for:
+                playlists.append({
+                    "playlist_mbid": playlist.get("playlist", {}).get("identifier"),
+                    "title": playlist.get("playlist", {}).get("title"),
+                    "description": playlist.get("playlist", {}).get("annotation"),
+                    "track_count": len(playlist.get("playlist", {}).get("track", []))
+                })
+            
+            return playlists
+            
+        except Exception as e:
+            print(f"❌ Error obteniendo playlists de exploración: {e}")
+            return []
+    
+    async def get_similar_recordings(
+        self, 
+        recording_mbid: str, 
+        count: int = 10
+    ) -> List[Dict[str, Any]]:
+        """Obtener grabaciones similares a una grabación específica
+        
+        Args:
+            recording_mbid: MBID de la grabación de referencia
+            count: Número de grabaciones similares a obtener
+        
+        Returns:
+            Lista de grabaciones similares
+        """
+        try:
+            params = {"count": count}
+            data = await self._make_request(
+                f"cf/recommendation/recording/{recording_mbid}",
+                params
+            )
+            
+            similar = []
+            recordings = data.get("payload", {}).get("mbids", [])
+            
+            for rec in recordings:
+                similar.append({
+                    "recording_mbid": rec.get("recording_mbid"),
+                    "score": rec.get("score", 0),
+                    "artist_name": rec.get("artist_name"),
+                    "track_name": rec.get("track_name")
+                })
+            
+            return similar
+            
+        except Exception as e:
+            print(f"❌ Error obteniendo grabaciones similares: {e}")
+            return []
+    
+    async def get_sitewide_stats(
+        self, 
+        stat_type: str = "artists", 
+        range_type: str = "this_week"
+    ) -> List[Dict[str, Any]]:
+        """Obtener estadísticas globales del sitio (trending/popular)
+        
+        Args:
+            stat_type: "artists", "recordings", o "releases"
+            range_type: "this_week", "this_month", "this_year", "all_time"
+        
+        Returns:
+            Lista de artistas/grabaciones/lanzamientos más populares globalmente
+        """
+        try:
+            params = {"range": range_type}
+            data = await self._make_request(f"stats/sitewide/{stat_type}", params)
+            
+            stats = []
+            items = data.get("payload", {}).get(stat_type, [])
+            
+            for item in items:
+                if stat_type == "artists":
+                    stats.append({
+                        "artist_name": item.get("artist_name"),
+                        "artist_mbid": item.get("artist_mbid"),
+                        "listen_count": item.get("listen_count", 0)
+                    })
+                elif stat_type == "recordings":
+                    stats.append({
+                        "track_name": item.get("track_name"),
+                        "artist_name": item.get("artist_name"),
+                        "recording_mbid": item.get("recording_mbid"),
+                        "listen_count": item.get("listen_count", 0)
+                    })
+                elif stat_type == "releases":
+                    stats.append({
+                        "release_name": item.get("release_name"),
+                        "artist_name": item.get("artist_name"),
+                        "release_mbid": item.get("release_mbid"),
+                        "listen_count": item.get("listen_count", 0)
+                    })
+            
+            return stats
+            
+        except Exception as e:
+            print(f"❌ Error obteniendo estadísticas globales: {e}")
+            return []
+    
+    async def get_similar_artists_from_recording(
+        self,
+        artist_name: str,
+        limit: int = 10
+    ) -> List[LastFMArtist]:
+        """Obtener artistas similares basándose en patrones de escucha del usuario
+        
+        Esta función simula get_similar_artists de Last.fm usando las estadísticas
+        de ListenBrainz y las recomendaciones del sistema.
+        
+        Args:
+            artist_name: Nombre del artista de referencia
+            limit: Número de artistas similares a obtener
+        
+        Returns:
+            Lista de artistas similares
+        """
+        try:
+            # Estrategia: Obtener recomendaciones generales y filtrar por artistas
+            # que no sean el artista de referencia
+            recommendations = await self.get_recommendations(count=100)
+            
+            # Agrupar por artista
+            artist_counts = {}
+            for rec in recommendations:
+                artist = rec.get("artist_name")
+                if artist and artist.lower() != artist_name.lower():
+                    if artist not in artist_counts:
+                        artist_counts[artist] = {
+                            "count": 0,
+                            "score": 0,
+                            "artist_name": artist
+                        }
+                    artist_counts[artist]["count"] += 1
+                    artist_counts[artist]["score"] += rec.get("score", 0)
+            
+            # Ordenar por score y tomar los top N
+            sorted_artists = sorted(
+                artist_counts.values(),
+                key=lambda x: (x["score"], x["count"]),
+                reverse=True
+            )[:limit]
+            
+            # Convertir a formato LastFMArtist para compatibilidad
+            similar_artists = []
+            for i, artist_data in enumerate(sorted_artists):
+                artist = LastFMArtist(
+                    name=artist_data["artist_name"],
+                    playcount=artist_data["count"],
+                    rank=i + 1,
+                    url=f"https://listenbrainz.org/artist/{artist_data['artist_name'].replace(' ', '+')}"
+                )
+                similar_artists.append(artist)
+            
+            print(f"✅ Encontrados {len(similar_artists)} artistas similares a '{artist_name}'")
+            return similar_artists
+            
+        except Exception as e:
+            print(f"❌ Error obteniendo artistas similares: {e}")
+            return []
+    
+    async def get_similar_tracks_from_recording(
+        self,
+        track_name: str,
+        artist_name: str,
+        limit: int = 10
+    ) -> List[LastFMTrack]:
+        """Obtener canciones similares basándose en recomendaciones de ListenBrainz
+        
+        Simula get_similar_tracks de Last.fm usando collaborative filtering.
+        
+        Args:
+            track_name: Nombre de la canción de referencia
+            artist_name: Nombre del artista
+            limit: Número de canciones similares a obtener
+        
+        Returns:
+            Lista de canciones similares
+        """
+        try:
+            # Obtener recomendaciones generales y filtrar
+            recommendations = await self.get_recommendations(count=limit * 2)
+            
+            similar_tracks = []
+            for rec in recommendations:
+                if rec.get("track_name") and rec.get("artist_name"):
+                    # Evitar la misma canción
+                    if (rec.get("track_name").lower() == track_name.lower() and
+                        rec.get("artist_name").lower() == artist_name.lower()):
+                        continue
+                    
+                    track = LastFMTrack(
+                        name=rec.get("track_name"),
+                        artist=rec.get("artist_name"),
+                        album=rec.get("release_name"),
+                        playcount=int(rec.get("score", 0) * 100),  # Convertir score a playcount simulado
+                        url=f"https://musicbrainz.org/recording/{rec.get('recording_mbid')}"
+                            if rec.get('recording_mbid') else None
+                    )
+                    similar_tracks.append(track)
+                    
+                    if len(similar_tracks) >= limit:
+                        break
+            
+            print(f"✅ Encontradas {len(similar_tracks)} canciones similares")
+            return similar_tracks
+            
+        except Exception as e:
+            print(f"❌ Error obteniendo canciones similares: {e}")
+            return []
+    
     async def close(self):
         """Cerrar conexión"""
         await self.client.aclose()

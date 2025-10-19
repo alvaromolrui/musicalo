@@ -8,7 +8,6 @@ import google.generativeai as genai
 from models.schemas import Recommendation, Track, LastFMTrack, LastFMArtist
 from services.navidrome_service import NavidromeService
 from services.listenbrainz_service import ListenBrainzService
-from services.lastfm_service import LastFMService
 from services.ai_service import MusicRecommendationService
 from services.playlist_service import PlaylistService
 from services.music_agent_service import MusicAgentService
@@ -45,26 +44,15 @@ class TelegramService:
             print("⚠️ Bot en modo público - cualquier usuario puede usarlo")
             print("💡 Para hacerlo privado, configura TELEGRAM_ALLOWED_USER_IDS en .env")
         
-        # Detectar qué servicio de scrobbling usar
-        # PRIORIDAD: ListenBrainz > Last.fm (ListenBrainz tiene mejor API y sin límites)
-        self.lastfm = None
+        # Usar ListenBrainz para datos de escucha y descubrimiento
         if os.getenv("LISTENBRAINZ_USERNAME"):
             self.music_service = self.listenbrainz
             self.music_service_name = "ListenBrainz"
-            print("✅ Usando ListenBrainz para datos de escucha")
-            # Mantener Last.fm disponible para descubrimiento si está configurado
-            if os.getenv("LASTFM_API_KEY") and os.getenv("LASTFM_USERNAME"):
-                self.lastfm = LastFMService()
-                print("✅ Last.fm también disponible para descubrimiento")
-        elif os.getenv("LASTFM_API_KEY") and os.getenv("LASTFM_USERNAME"):
-            self.lastfm = LastFMService()
-            self.music_service = self.lastfm
-            self.music_service_name = "Last.fm"
-            print("✅ Usando Last.fm para datos de escucha")
+            print("✅ Usando ListenBrainz para datos de escucha y descubrimiento")
         else:
             self.music_service = None
             self.music_service_name = None
-            print("⚠️ No hay servicio de scrobbling configurado (Last.fm o ListenBrainz)")
+            print("⚠️ No hay servicio de scrobbling configurado. Por favor configura LISTENBRAINZ_USERNAME en .env")
     
     def _is_user_allowed(self, user_id: int) -> bool:
         """Verifica si un usuario está autorizado para usar el bot"""
@@ -301,95 +289,97 @@ Sé todo lo detallado que quieras:
         try:
             recommendations = []
             
-            # Si es una búsqueda "similar a...", usar Last.fm directamente
+            # Si es una búsqueda "similar a...", usar ListenBrainz directamente
             if similar_to:
                 print(f"🎯 Usando límite: {recommendation_limit} para similares")
                 
-                if self.lastfm:
-                    print(f"🔍 Buscando similares a '{similar_to}' en Last.fm (tipo: {rec_type})...")
-                    # Buscar más artistas de los necesarios por si algunos no tienen álbumes/tracks
-                    search_limit = max(30, recommendation_limit * 5)
-                    similar_artists = await self.lastfm.get_similar_artists(similar_to, limit=search_limit)
+                print(f"🔍 Buscando similares a '{similar_to}' en ListenBrainz (tipo: {rec_type})...")
+                # Buscar más artistas de los necesarios por si algunos no tienen álbumes/tracks
+                search_limit = max(30, recommendation_limit * 5)
+                similar_artists = await self.listenbrainz.get_similar_artists_from_recording(similar_to, limit=search_limit)
+                
+                if similar_artists:
+                    # Añadir variedad: mezclar los resultados para no siempre mostrar los mismos
+                    # Mantener los top 5 pero mezclar el resto
+                    top_artists = similar_artists[:5]
+                    rest_artists = similar_artists[5:]
+                    random.shuffle(rest_artists)
+                    mixed_artists = top_artists + rest_artists
                     
-                    if similar_artists:
-                        # Añadir variedad: mezclar los resultados para no siempre mostrar los mismos
-                        # Mantener los top 5 pero mezclar el resto
-                        top_artists = similar_artists[:5]
-                        rest_artists = similar_artists[5:]
-                        random.shuffle(rest_artists)
-                        mixed_artists = top_artists + rest_artists
+                    print(f"🎲 Mezclando artistas para variedad (total: {len(mixed_artists)})")
+                    
+                    # Crear recomendaciones de los artistas similares
+                    # Continuar hasta tener suficientes recomendaciones
+                    for similar_artist in mixed_artists:
+                        if len(recommendations) >= recommendation_limit:
+                            break  # Ya tenemos suficientes recomendaciones
+                        from models.schemas import Track
                         
-                        print(f"🎲 Mezclando artistas para variedad (total: {len(mixed_artists)})")
+                        title = ""
+                        album_name = ""
+                        reason = ""
+                        artist_url = similar_artist.url if similar_artist.url else ""
                         
-                        # Crear recomendaciones de los artistas similares
-                        # Continuar hasta tener suficientes recomendaciones
-                        for similar_artist in mixed_artists:
-                            if len(recommendations) >= recommendation_limit:
-                                break  # Ya tenemos suficientes recomendaciones
-                            from models.schemas import Track
-                            
-                            title = ""
-                            album_name = ""
-                            reason = ""
-                            artist_url = similar_artist.url if similar_artist.url else ""
-                            
-                            # Obtener datos específicos según el tipo
-                            if rec_type == "album":
-                                top_albums = await self.lastfm.get_artist_top_albums(similar_artist.name, limit=1)
-                                if top_albums:
-                                    album_data = top_albums[0]
-                                    album_name = album_data.get("name", similar_artist.name)
-                                    title = f"{album_name}"  # Solo el nombre del álbum
-                                    artist_url = album_data.get("url", artist_url)
-                                    reason = f"📀 Álbum top de {similar_artist.name}, artista similar a {similar_to}"
-                                    print(f"   📀 Encontrado álbum: {album_name} de {similar_artist.name}")
-                                else:
-                                    # Si no hay álbum disponible, buscar el siguiente artista
-                                    print(f"   ⚠️ No se encontró álbum para {similar_artist.name}")
-                                    continue  # Saltar este artista y buscar el siguiente
-                            
-                            elif rec_type == "track":
-                                top_tracks = await self.lastfm.get_artist_top_tracks(similar_artist.name, limit=1)
-                                if top_tracks:
-                                    track_data = top_tracks[0]
-                                    title = track_data.name
-                                    artist_url = track_data.url if track_data.url else artist_url
-                                    reason = f"🎵 Canción top de artista similar a {similar_to}"
-                                else:
-                                    title = f"Música de {similar_artist.name}"
-                                    reason = f"🎵 Similar a {similar_to}"
-                            
+                        # Obtener datos específicos según el tipo usando MusicBrainz
+                        if rec_type == "album":
+                            if self.agent.musicbrainz:
+                                top_albums = await self.agent.musicbrainz.get_artist_top_albums(similar_artist.name, limit=1)
                             else:
-                                title = similar_artist.name
-                                reason = f"🎯 Similar a {similar_to}"
-                            
-                            track = Track(
-                                id=f"lastfm_similar_{similar_artist.name.replace(' ', '_')}",
-                                title=title,
-                                artist=similar_artist.name,
-                                album=album_name,
-                                duration=None,
-                                year=None,
-                                genre="",
-                                play_count=None,
-                                path=artist_url,
-                                cover_url=None
-                            )
-                            
-                            from models.schemas import Recommendation
-                            recommendation = Recommendation(
-                                track=track,
-                                reason=reason,
-                                confidence=0.9,
-                                source="Last.fm",
-                                tags=[]
-                            )
-                            recommendations.append(recommendation)
-                    else:
-                        await update.message.reply_text(f"😔 No encontré artistas similares a '{similar_to}'")
-                        return
+                                top_albums = []
+                            if top_albums:
+                                album_data = top_albums[0]
+                                album_name = album_data.get("name", similar_artist.name)
+                                title = f"{album_name}"  # Solo el nombre del álbum
+                                artist_url = album_data.get("url", artist_url)
+                                reason = f"📀 Álbum top de {similar_artist.name}, artista similar a {similar_to}"
+                                print(f"   📀 Encontrado álbum: {album_name} de {similar_artist.name}")
+                            else:
+                                # Si no hay álbum disponible, buscar el siguiente artista
+                                print(f"   ⚠️ No se encontró álbum para {similar_artist.name}")
+                                continue  # Saltar este artista y buscar el siguiente
+                        
+                        elif rec_type == "track":
+                            if self.agent.musicbrainz:
+                                top_tracks = await self.agent.musicbrainz.get_artist_top_tracks(similar_artist.name, limit=1)
+                            else:
+                                top_tracks = []
+                            if top_tracks:
+                                track_data = top_tracks[0]
+                                title = track_data.get("name", f"Música de {similar_artist.name}")
+                                artist_url = track_data.get("url", artist_url)
+                                reason = f"🎵 Canción top de artista similar a {similar_to}"
+                            else:
+                                title = f"Música de {similar_artist.name}"
+                                reason = f"🎵 Similar a {similar_to}"
+                        
+                        else:
+                            title = similar_artist.name
+                            reason = f"🎯 Similar a {similar_to}"
+                        
+                        track = Track(
+                            id=f"listenbrainz_similar_{similar_artist.name.replace(' ', '_')}",
+                            title=title,
+                            artist=similar_artist.name,
+                            album=album_name,
+                            duration=None,
+                            year=None,
+                            genre="",
+                            play_count=None,
+                            path=artist_url,
+                            cover_url=None
+                        )
+                        
+                        from models.schemas import Recommendation
+                        recommendation = Recommendation(
+                            track=track,
+                            reason=reason,
+                            confidence=0.9,
+                            source="ListenBrainz+MusicBrainz",
+                            tags=[]
+                        )
+                        recommendations.append(recommendation)
                 else:
-                    await update.message.reply_text("⚠️ Necesitas configurar Last.fm para buscar similares.")
+                    await update.message.reply_text(f"😔 No encontré artistas similares a '{similar_to}'")
                     return
             
             else:
@@ -398,28 +388,18 @@ Sé todo lo detallado que quieras:
                 if not self.music_service:
                     await update.message.reply_text(
                         "⚠️ No hay servicio de scrobbling configurado.\n\n"
-                        "Por favor configura Last.fm o ListenBrainz para recibir recomendaciones personalizadas."
+                        "Por favor configura ListenBrainz (LISTENBRAINZ_USERNAME en .env) para recibir recomendaciones personalizadas."
                     )
                     return
                 
-                # Obtener datos del usuario con fallback
+                # Obtener datos del usuario
                 recent_tracks = await self.music_service.get_recent_tracks(limit=20)
                 top_artists = await self.music_service.get_top_artists(limit=10)
-                
-                # FALLBACK: Si ListenBrainz falla o no devuelve datos, intentar con Last.fm
-                if not recent_tracks and self.lastfm:
-                    print(f"⚠️ {self.music_service_name} no devolvió escuchas, intentando con Last.fm...")
-                    try:
-                        recent_tracks = await self.lastfm.get_recent_tracks(limit=20)
-                        top_artists = await self.lastfm.get_top_artists(limit=10)
-                        print(f"✅ Fallback exitoso: {len(recent_tracks)} tracks de Last.fm")
-                    except Exception as e:
-                        print(f"❌ Fallback a Last.fm también falló: {e}")
                 
                 if not recent_tracks:
                     await update.message.reply_text(
                         f"⚠️ No se encontraron escuchas recientes.\n\n"
-                        "Asegúrate de tener escuchas registradas en ListenBrainz o Last.fm para recibir recomendaciones personalizadas."
+                        "Asegúrate de tener escuchas registradas en ListenBrainz para recibir recomendaciones personalizadas."
                     )
                     return
                 
