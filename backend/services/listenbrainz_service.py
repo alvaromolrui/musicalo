@@ -626,7 +626,8 @@ class ListenBrainzService:
                         print(f"✅ Encontrados {len(similar_artists)} artistas similares por tags/géneros (MusicBrainz)")
                         return similar_artists
                     else:
-                        print(f"   ⚠️ No se encontraron artistas con tags similares")
+                        print(f"   ⚠️ No se encontraron artistas con tags similares en MusicBrainz")
+                        print(f"   💡 El artista '{artist_name}' probablemente no tiene tags/géneros en MusicBrainz")
                 except Exception as e:
                     print(f"   ⚠️ Error buscando en MusicBrainz: {e}")
             elif not similar_artists and not musicbrainz_service:

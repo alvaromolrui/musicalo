@@ -114,20 +114,26 @@ class MusicRecommendationService:
             
             recommendations = []
             
-            # Si hay un custom_prompt, usar la IA para generar recomendaciones más específicas
-            if custom_prompt:
-                print(f"🎨 Usando descripción personalizada para recomendaciones...")
-                custom_recs = await self._generate_custom_prompt_recommendations(
-                    user_profile,
-                    analysis,
-                    custom_prompt,
-                    limit,
-                    recommendation_type
-                )
-                recommendations.extend(custom_recs)
-                print(f"✅ Encontradas {len(custom_recs)} recomendaciones personalizadas")
+            # PRIORIDAD 1: Siempre usar IA primero para recomendaciones de mayor calidad
+            # La IA entiende mejor el contexto y genera mejores recomendaciones
+            if not custom_prompt:
+                # Si no hay custom_prompt, crear uno basado en el perfil
+                custom_prompt = "música que me pueda gustar basándote en mi perfil musical"
+                if genre_filter:
+                    custom_prompt = f"música de género {genre_filter}"
             
-            # Si se solicita música nueva y no hay suficientes recomendaciones, usar ListenBrainz
+            print(f"🎨 Generando recomendaciones con IA (criterio: {custom_prompt[:100]}...)...")
+            custom_recs = await self._generate_custom_prompt_recommendations(
+                user_profile,
+                analysis,
+                custom_prompt,
+                limit,
+                recommendation_type
+            )
+            recommendations.extend(custom_recs)
+            print(f"✅ Encontradas {len(custom_recs)} recomendaciones de IA")
+            
+            # PRIORIDAD 2: Si la IA no generó suficientes, usar ListenBrainz como complemento
             if len(recommendations) < limit and include_new_music and len(user_profile.top_artists) > 0:
                 remaining_limit = limit - len(recommendations)
                 print(f"🌍 Buscando música nueva usando ListenBrainz (tipo: {recommendation_type}, género: {genre_filter})...")
@@ -381,12 +387,23 @@ class MusicRecommendationService:
             recent_artists = [track.artist for track in user_profile.recent_tracks[:15]]
             top_artists = [artist.name for artist in user_profile.top_artists[:10]]
             
+            # Obtener artistas de biblioteca para excluir
+            library_artists_list = []
+            try:
+                library_data = await self.navidrome.get_artists(limit=500)
+                library_artists_list = [artist.name for artist in library_data]
+            except:
+                pass
+            
             # Crear un prompt inteligente para la IA que entienda las especificaciones
-            ai_prompt = f"""Eres un experto curador musical. Genera SOLO la lista de recomendaciones, sin análisis previo.
+            ai_prompt = f"""Eres un experto curador musical. Tu ÚNICA tarea es generar una lista de recomendaciones.
 
-PERFIL DEL USUARIO (solo como referencia):
+PERFIL DEL USUARIO:
 - Top artistas: {', '.join(top_artists[:5]) if top_artists else 'Desconocidos'}
 - Artistas recientes: {', '.join(set(recent_artists[:10])) if recent_artists else 'Desconocidos'}
+
+ARTISTAS QUE YA TIENE EN BIBLIOTECA (NO recomendar):
+{', '.join(library_artists_list[:50]) if library_artists_list else 'No disponible'}
 
 PETICIÓN DEL USUARIO:
 "{custom_prompt}"
@@ -402,40 +419,34 @@ TU TAREA:
 5. Genera exactamente {limit} recomendaciones DIFERENTES que cumplan con TODOS los criterios mencionados
 
 IMPORTANTE - EVITAR ERRORES COMUNES:
+- ❌ NO recomiendes artistas que YA TIENE en biblioteca
 - ❌ NO recomiendes el perfil del usuario si pide otro género (ej: si pide electrónica, NO recomiendes hip-hop)
 - ❌ NO repitas el mismo artista/álbum múltiples veces
+- ❌ NO generes análisis del perfil ANTES de las recomendaciones
 - ✅ Sé ESPECÍFICO con nombres de artistas, álbumes y canciones reales
 - ✅ Si pide características específicas (ej: "rock progresivo de los 70s"), busca artistas que cumplan EXACTAMENTE eso
-- ✅ Si pide algo "similar a X", piensa en qué hace especial a X y busca otros con esas cualidades
 - ✅ Las recomendaciones deben ser VARIADAS entre sí pero todas cumplir los criterios
+- ✅ Genera SOLO las recomendaciones, nada más
 
-FORMATO DE RESPUESTA:
-Proporciona EXACTAMENTE {limit} recomendaciones DIFERENTES en este formato ESTRICTO:
-[ARTISTA] - [NOMBRE] | [RAZÓN COMPLETA EN UNA SOLA LÍNEA]
+FORMATO DE SALIDA:
+Genera EXACTAMENTE {limit} recomendaciones usando SOLO este formato (sin numerar):
 
-REGLAS DEL FORMATO:
-- Una recomendación por línea
-- Siempre usar el separador " | " entre nombre y razón
-- La razón debe ser UNA FRASE COMPLETA de 10-30 palabras
-- NO cortes las razones a mitad
-- NO repitas el mismo artista/álbum
+[ARTISTA] - [NOMBRE] | [RAZÓN COMPLETA]
 
-Ejemplos CORRECTOS:
+REGLAS ESTRICTAS:
+1. NO generes ningún texto antes de las recomendaciones
+2. NO analices el perfil del usuario
+3. NO agregues introducciones
+4. NO uses numeración (1., 2., etc)
+5. Empieza directamente con la primera recomendación
+6. Una recomendación por línea
+7. Razón completa de 15-40 palabras (sin cortar)
+
+EJEMPLOS (copia este formato EXACTO):
 Pink Floyd - The Dark Side of the Moon | Álbum conceptual de rock progresivo de 1973 con sintetizadores atmosféricos y producción innovadora
-Led Zeppelin - Physical Graffiti | Rock épico de los 70s con solos de guitarra legendarios de Jimmy Page y una mezcla de blues y hard rock
-Daft Punk - Discovery | Electrónica francesa con influencias funk y disco, producción impecable y melodías pegajosas
+Daft Punk - Discovery | Electrónica francesa con influencias funk y disco, producción impecable y melodías pegajosas que definen el house francés
 
-❌ NO GENERES:
-- Análisis del perfil del usuario
-- Explicaciones adicionales
-- Introducciones o conclusiones
-- Texto que no sea las recomendaciones
-
-✅ GENERA SOLO:
-- Las {limit} líneas de recomendaciones en el formato especificado
-- Nada más
-
-Recomendaciones:"""
+GENERA {limit} RECOMENDACIONES AHORA (sin texto adicional):"""
 
             # Generar con Gemini con configuración para respuestas más predecibles
             generation_config = {
@@ -457,101 +468,97 @@ Recomendaciones:"""
             recommendations = []
             seen_tracks = set()  # Para evitar duplicados
             
-            # Buscar la sección de recomendaciones si hay texto previo
-            # A veces la IA genera análisis antes de las recomendaciones
+            # Limpiar la respuesta de la IA
+            # A veces genera texto antes o marcadores de formato
             lines_raw = ai_response.split('\n')
             
-            # Encontrar donde empiezan las recomendaciones reales
-            start_index = 0
-            for i, line in enumerate(lines_raw):
-                # Las recomendaciones tienen formato: [algo] - [algo] | [razón]
-                if '|' in line and '-' in line and not line.lower().startswith(('basado', 'perfil', 'género')):
-                    start_index = i
-                    break
+            # Filtrar líneas válidas: deben tener formato [ARTISTA] - [NOMBRE] | [RAZÓN]
+            valid_lines = []
+            for line in lines_raw:
+                line = line.strip()
+                if not line:
+                    continue
+                
+                # Remover numeración si existe (1., 2., etc)
+                line_clean = re.sub(r'^\d+[\.\)]\s*', '', line)
+                
+                # Debe tener - y | para ser válida
+                if '-' in line_clean and '|' in line_clean:
+                    # Verificar que no sea una línea de análisis
+                    lower = line_clean.lower()
+                    if not any(skip in lower for skip in ['**', 'basado en', 'perfil', 'análisis', 'usuario', 'género']):
+                        valid_lines.append(line_clean)
             
-            # Procesar solo desde donde empiezan las recomendaciones
-            lines = [line.strip() for line in lines_raw[start_index:] if line.strip()]
+            print(f"📝 DEBUG - Encontradas {len(valid_lines)} líneas válidas de {len(lines_raw)} totales")
+            if len(valid_lines) > 0:
+                print(f"📝 DEBUG - Primera línea válida: {valid_lines[0][:100]}")
             
-            print(f"📝 DEBUG - Procesando {len(lines)} líneas desde índice {start_index}")
-            
-            for line in lines:
+            for line in valid_lines:
                 if len(recommendations) >= limit:
                     break
                 
-                # Ignorar líneas que claramente no son recomendaciones
-                lower_line = line.lower()
-                skip_patterns = ['**', 'perfil', 'usuario', 'análisis', 'basado en', 'género', 'diversidad', 'recomendaciones']
-                if any(pattern in lower_line for pattern in skip_patterns) and '|' not in line:
-                    continue
-                
                 # Buscar el formato: [ARTISTA] - [NOMBRE] | [RAZÓN]
-                # o formatos alternativos comunes
                 try:
-                    # Intentar parsear formato con |
-                    if '|' in line and '-' in line:
-                        parts = line.split('|', 1)
-                        artist_and_name = parts[0].strip()
-                        reason = parts[1].strip() if len(parts) > 1 else "Recomendado según tus criterios"
-                        
-                        # Si la razón es muy corta (probablemente un fragmento), skip
-                        if len(reason) < 20:
-                            print(f"   ⚠️ Razón muy corta, skipping: {reason[:50]}")
-                            continue
-                        
-                        # Remover números y puntos del inicio (ej: "1. ", "1) ")
-                        artist_and_name = re.sub(r'^\d+[\.\)]\s*', '', artist_and_name)
-                        
-                        # Dividir artista y nombre
-                        if ' - ' in artist_and_name:
-                            artist, name = artist_and_name.split(' - ', 1)
-                        elif '-' in artist_and_name:
-                            artist, name = artist_and_name.split('-', 1)
-                        else:
-                            # Si no hay separador, asumir que es el nombre del artista
-                            artist = artist_and_name
-                            name = artist_and_name
-                        
-                        artist = artist.strip()
-                        name = name.strip()
-                        
-                        # Verificar duplicados
-                        track_key = f"{artist.lower()}|{name.lower()}"
-                        if track_key in seen_tracks:
-                            print(f"   ⚠️ Duplicado detectado, skipping: {artist} - {name}")
-                            continue
-                        seen_tracks.add(track_key)
-                        
-                        # Crear objeto Track
-                        track = Track(
-                            id=f"ai_custom_{artist.replace(' ', '_')}_{name.replace(' ', '_')[:30]}",
-                            title=name,
-                            artist=artist,
-                            album=name if recommendation_type == "album" else "",
-                            duration=None,
-                            year=None,
-                            genre=genre_filter if 'genre_filter' in locals() else "",
-                            play_count=None,
-                            path="",
-                            cover_url=None
-                        )
-                        
-                        # Limpiar la razón (cortar si es muy larga y agregar ...)
-                        if len(reason) > 200:
-                            reason = reason[:197] + "..."
-                        
-                        # Crear recomendación
-                        recommendation = Recommendation(
-                            track=track,
-                            reason=reason,
-                            confidence=0.95,  # Alta confianza porque es específico
-                            source="AI (Gemini)",
-                            tags=["custom", "specific"]
-                        )
-                        recommendations.append(recommendation)
-                        print(f"   ✅ Agregada: {artist} - {name}")
-                        
+                    parts = line.split('|', 1)
+                    artist_and_name = parts[0].strip()
+                    reason = parts[1].strip() if len(parts) > 1 else "Recomendado según tus criterios"
+                    
+                    # Si la razón es muy corta (probablemente un fragmento), skip
+                    if len(reason) < 20:
+                        print(f"   ⚠️ Razón muy corta ({len(reason)} chars), skipping: {reason}")
+                        continue
+                    
+                    # Dividir artista y nombre
+                    if ' - ' in artist_and_name:
+                        artist, name = artist_and_name.split(' - ', 1)
+                    elif '-' in artist_and_name:
+                        artist, name = artist_and_name.split('-', 1)
+                    else:
+                        # Si no hay separador, asumir que es el nombre del artista
+                        artist = artist_and_name
+                        name = artist_and_name
+                    
+                    artist = artist.strip()
+                    name = name.strip()
+                    
+                    # Verificar duplicados
+                    track_key = f"{artist.lower()}|{name.lower()}"
+                    if track_key in seen_tracks:
+                        print(f"   ⚠️ Duplicado detectado, skipping: {artist} - {name}")
+                        continue
+                    seen_tracks.add(track_key)
+                    
+                    # Crear objeto Track
+                    track = Track(
+                        id=f"ai_custom_{artist.replace(' ', '_')}_{name.replace(' ', '_')[:30]}",
+                        title=name,
+                        artist=artist,
+                        album=name if recommendation_type == "album" else "",
+                        duration=None,
+                        year=None,
+                        genre=custom_prompt if custom_prompt else "",
+                        play_count=None,
+                        path="",
+                        cover_url=None
+                    )
+                    
+                    # Limpiar la razón (cortar si es muy larga y agregar ...)
+                    if len(reason) > 200:
+                        reason = reason[:197] + "..."
+                    
+                    # Crear recomendación
+                    recommendation = Recommendation(
+                        track=track,
+                        reason=reason,
+                        confidence=0.95,  # Alta confianza porque es específico
+                        source="AI (Gemini)",
+                        tags=["custom", "specific"]
+                    )
+                    recommendations.append(recommendation)
+                    print(f"   ✅ Agregada: {artist} - {name}")
+                    
                 except Exception as e:
-                    print(f"   ⚠️ Error parseando línea: {line} | {e}")
+                    print(f"   ⚠️ Error parseando línea: {line[:100]} | {e}")
                     continue
             
             print(f"🎨 Total recomendaciones personalizadas generadas: {len(recommendations)}")
