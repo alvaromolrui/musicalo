@@ -108,6 +108,7 @@ Puedes dar todos los detalles que quieras:
 <b>📝 Comandos disponibles:</b>
 /recommend - Obtener recomendaciones personalizadas
 /playlist &lt;descripción&gt; - Crear playlist M3U 🎵
+/share &lt;nombre&gt; - Compartir con enlace público + descarga 📥
 /library - Explorar tu biblioteca musical
 /stats - Ver estadísticas de escucha
 /releases [week/month/year] - Lanzamientos recientes 🆕
@@ -154,6 +155,7 @@ Sé todo lo detallado que quieras:
 • /recommend artist - Recomendar artistas
 • /recommend track - Recomendar canciones
 • /playlist &lt;descripción&gt; - Crear playlist M3U 🎵
+• /share &lt;nombre&gt; - Compartir con enlace + descarga 📥
 • /library - Ver tu biblioteca musical
 • /stats - Estadísticas de escucha
 • /releases - Lanzamientos recientes de tus artistas 🆕
@@ -184,6 +186,12 @@ Sé todo lo detallado que quieras:
 • /playlist rock de los 80s - Playlist de rock ochentero
 • /playlist jazz suave - Música jazz relajante
 • /playlist 20 canciones de Queen - Playlist con cantidad específica
+
+<b>Compartir música (🆕):</b>
+• /share The Dark Side of the Moon - Compartir álbum
+• /share Bohemian Rhapsody - Compartir canción
+• /share Queen - Compartir todas las canciones del artista
+💡 Genera un enlace público con descarga habilitada 📥
 
 <b>Lanzamientos Recientes (🆕):</b>
 • /releases - Esta semana (por defecto)
@@ -1166,6 +1174,128 @@ Sé todo lo detallado que quieras:
             import traceback
             traceback.print_exc()
             await update.message.reply_text(f"❌ Error creando playlist: {str(e)}")
+    
+    @_check_authorization
+    async def share_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Comando /share - Crear enlace compartible de música
+        
+        Uso:
+        - /share Pink Floyd - The Dark Side of the Moon
+        - /share Bohemian Rhapsody
+        - /share Queen (todas las canciones del artista)
+        """
+        if not context.args:
+            await update.message.reply_text(
+                "🔗 <b>Compartir Música</b>\n\n"
+                "<b>Uso:</b> <code>/share &lt;nombre&gt;</code>\n\n"
+                "<b>Puedes compartir:</b>\n"
+                "• Álbumes: <code>/share The Dark Side of the Moon</code>\n"
+                "• Canciones: <code>/share Bohemian Rhapsody</code>\n"
+                "• Artistas: <code>/share Queen</code> (todas sus canciones)\n\n"
+                "💡 El enlace generado es público y permite <b>descargar</b> la música 📥\n"
+                "✨ No requiere autenticación - compártelo con quien quieras",
+                parse_mode='HTML'
+            )
+            return
+        
+        search_term = " ".join(context.args)
+        await update.message.reply_text(f"🔍 Buscando '{search_term}' para compartir...")
+        
+        try:
+            # 1. Buscar en la biblioteca
+            results = await self.navidrome.search(search_term, limit=10)
+            
+            items_to_share = []
+            share_type = ""
+            found_name = ""
+            
+            # Priorizar: Álbumes > Canciones > Artistas
+            if results.get('albums'):
+                # Compartir primer álbum encontrado
+                album = results['albums'][0]
+                found_name = f"📀 {album.artist} - {album.name}"
+                share_type = "álbum"
+                
+                # Obtener IDs de todas las canciones del álbum
+                album_tracks = await self.navidrome.get_album_tracks(album.id)
+                items_to_share = [t.id for t in album_tracks]
+                
+            elif results.get('tracks'):
+                # Compartir primera canción encontrada
+                track = results['tracks'][0]
+                found_name = f"🎵 {track.artist} - {track.title}"
+                share_type = "canción"
+                items_to_share = [track.id]
+                
+            elif results.get('artists'):
+                # Compartir todas las canciones del artista
+                artist = results['artists'][0]
+                found_name = f"🎤 {artist.name}"
+                share_type = "artista"
+                
+                # Buscar todas las canciones del artista
+                artist_tracks = await self.navidrome.search(artist.name, limit=500)
+                # Filtrar solo las del artista exacto
+                items_to_share = [
+                    t.id for t in artist_tracks.get('tracks', []) 
+                    if t.artist.lower() == artist.name.lower()
+                ]
+            
+            if not items_to_share:
+                await update.message.reply_text(
+                    f"😔 No encontré '{search_term}' en tu biblioteca.\n\n"
+                    "💡 Intenta buscar primero con <code>/search {search_term}</code> "
+                    "para verificar qué hay disponible.",
+                    parse_mode='HTML'
+                )
+                return
+            
+            # 2. Crear share en Navidrome
+            description = f"Compartido desde Musicalo: {found_name}"
+            share_info = await self.navidrome.create_share(
+                items_to_share,
+                description=description
+            )
+            
+            if not share_info:
+                await update.message.reply_text(
+                    "❌ No pude crear el enlace para compartir.\n\n"
+                    "Verifica que tu instancia de Navidrome tenga habilitada "
+                    "la función de compartir (shares)."
+                )
+                return
+            
+            # 3. Formatear respuesta
+            text = f"""✅ <b>Enlace creado para compartir</b>
+
+{found_name}
+📦 <b>{len(items_to_share)}</b> {'canción' if len(items_to_share) == 1 else 'canciones'}
+
+🔗 <b>Enlace público:</b>
+<code>{share_info['url']}</code>
+
+💡 <b>Información:</b>
+• Tipo: {share_type}
+• ID del share: <code>{share_info['id']}</code>
+• Este enlace es público y no requiere autenticación
+• Permite escuchar y <b>descargar</b> la música 📥
+• Cualquiera con el enlace puede acceder"""
+
+            # Si es un enlace con muchas canciones, agregar detalles
+            if len(items_to_share) > 1:
+                text += f"\n• Compartiendo {len(items_to_share)} canciones"
+            
+            await update.message.reply_text(text, parse_mode='HTML')
+            print(f"✅ Share creado: {share_info['url']} ({len(items_to_share)} items)")
+            
+        except Exception as e:
+            print(f"❌ Error en share_command: {e}")
+            import traceback
+            traceback.print_exc()
+            await update.message.reply_text(
+                f"❌ Error creando enlace: {str(e)}\n\n"
+                "Verifica tu configuración de Navidrome."
+            )
     
     @_check_authorization
     async def _handle_conversational_query(self, update: Update, user_message: str):
