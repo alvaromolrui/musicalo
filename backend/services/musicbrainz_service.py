@@ -1195,6 +1195,92 @@ class MusicBrainzService:
             traceback.print_exc()
             return []
     
+    async def find_similar_by_tags(
+        self,
+        artist_name: str,
+        limit: int = 10
+    ) -> List[Dict[str, Any]]:
+        """Buscar artistas similares globalmente usando tags/géneros de MusicBrainz
+        
+        Busca artistas que compartan tags y géneros similares sin necesidad
+        de tener una biblioteca específica.
+        
+        Args:
+            artist_name: Artista de referencia
+            limit: Máximo de artistas similares a retornar
+        
+        Returns:
+            Lista de artistas similares
+        """
+        try:
+            import logging
+            logger = logging.getLogger(__name__)
+            
+            logger.info(f"🔍 Buscando artistas similares globalmente a '{artist_name}'...")
+            
+            # Obtener metadata del artista de referencia
+            reference = await self.verify_artist_metadata(artist_name)
+            
+            if not reference.get("found"):
+                logger.warning(f"   ⚠️ Artista de referencia no encontrado")
+                return []
+            
+            # Obtener géneros y tags principales
+            ref_genres = reference.get("genres", [])[:3]  # Top 3 géneros
+            ref_tags = reference.get("tags", [])[:5]  # Top 5 tags
+            
+            if not ref_genres and not ref_tags:
+                logger.warning(f"   ⚠️ No hay tags/géneros para '{artist_name}'")
+                return []
+            
+            # Buscar por los tags más relevantes
+            search_tags = ref_genres + ref_tags
+            similar_artists = []
+            seen_artists = set([artist_name.lower()])
+            
+            for tag in search_tags[:3]:  # Usar solo los 3 tags principales
+                if len(similar_artists) >= limit:
+                    break
+                
+                await self._rate_limit()
+                
+                # Buscar artistas con este tag
+                data = await self._make_request(
+                    "artist",
+                    {
+                        "query": f'tag:"{tag}"',
+                        "limit": 20
+                    }
+                )
+                
+                artists = data.get("artists", [])
+                
+                for artist in artists:
+                    if len(similar_artists) >= limit:
+                        break
+                    
+                    name = artist.get("name")
+                    if name and name.lower() not in seen_artists:
+                        # Evitar personas individuales, queremos bandas/proyectos
+                        if artist.get("type") not in ['Person']:
+                            similar_artists.append({
+                                "name": name,
+                                "mbid": artist.get("id"),
+                                "score": artist.get("score", 0),
+                                "shared_tag": tag,
+                                "type": artist.get("type")
+                            })
+                            seen_artists.add(name.lower())
+            
+            logger.info(f"✅ Encontrados {len(similar_artists)} artistas similares por tags")
+            return similar_artists
+            
+        except Exception as e:
+            logger.error(f"❌ Error buscando similares por tags: {e}")
+            import traceback
+            traceback.print_exc()
+            return []
+    
     async def get_artist_top_albums_enhanced(
         self,
         artist_name: str,

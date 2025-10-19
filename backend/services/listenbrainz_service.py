@@ -605,37 +605,28 @@ class ListenBrainzService:
             except Exception as e:
                 print(f"   ⚠️ ListenBrainz CF no disponible: {e}")
             
-            # ESTRATEGIA 2: Si no hay resultados y tenemos MusicBrainz, usar relaciones de artistas
+            # ESTRATEGIA 2: Si no hay resultados y tenemos MusicBrainz, buscar por tags/géneros
             if not similar_artists and musicbrainz_service:
-                print(f"   📊 Estrategia 2: Buscando relaciones de artistas en MusicBrainz...")
+                print(f"   📊 Estrategia 2: Buscando por tags/géneros similares en MusicBrainz...")
                 try:
-                    # Obtener relaciones del artista
-                    relationships = await musicbrainz_service.get_artist_relationships(artist_name)
+                    # Usar el método de búsqueda por tags
+                    tag_similar = await musicbrainz_service.find_similar_by_tags(artist_name, limit=limit)
                     
-                    # Recopilar artistas relacionados
-                    related_artists = []
-                    for rel_type, artists in relationships.items():
-                        for artist in artists[:5]:  # Máximo 5 por tipo de relación
-                            related_artists.append({
-                                "name": artist["name"],
-                                "relation": rel_type
-                            })
-                    
-                    # Convertir a LastFMArtist
-                    for i, artist_data in enumerate(related_artists[:limit]):
-                        artist = LastFMArtist(
-                            name=artist_data["name"],
-                            playcount=0,
-                            rank=i + 1,
-                            url=f"https://musicbrainz.org/artist/{artist_data['name'].replace(' ', '+')}"
-                        )
-                        similar_artists.append(artist)
-                    
-                    if similar_artists:
-                        print(f"✅ Encontrados {len(similar_artists)} artistas relacionados a '{artist_name}' (MusicBrainz)")
+                    if tag_similar:
+                        # Convertir a LastFMArtist
+                        for i, artist_data in enumerate(tag_similar):
+                            artist = LastFMArtist(
+                                name=artist_data["name"],
+                                playcount=0,
+                                rank=i + 1,
+                                url=f"https://musicbrainz.org/artist/{artist_data['mbid']}" if artist_data.get('mbid') else ""
+                            )
+                            similar_artists.append(artist)
+                        
+                        print(f"✅ Encontrados {len(similar_artists)} artistas similares por tags/géneros (MusicBrainz)")
                         return similar_artists
                     else:
-                        print(f"   ⚠️ No se encontraron relaciones en MusicBrainz para '{artist_name}'")
+                        print(f"   ⚠️ No se encontraron artistas con tags similares")
                 except Exception as e:
                     print(f"   ⚠️ Error buscando en MusicBrainz: {e}")
             elif not similar_artists and not musicbrainz_service:
