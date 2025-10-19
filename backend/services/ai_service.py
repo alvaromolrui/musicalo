@@ -563,24 +563,49 @@ NO generes análisis. EMPIEZA DIRECTAMENTE:
                     # Los fragmentos tienen patrones específicos:
                     is_invalid = False
                     
-                    # Patrones de fragmento
-                    if any(pattern in reason for pattern in ['):**', '**', 'céntrico', 'fi:', 'hop:', 'rock:', 'punk:']):
+                    # Patrones de fragmento con markdown o análisis
+                    if any(pattern in reason for pattern in ['):**', '**', ':**', '*:', 'céntrico', 'fi:', 'hop:', 'rock:', 'punk:', 'jazz:', 'pop:', 'metal:']):
+                        print(f"   ⚠️ Razón con patrón markdown/análisis, skipping: {reason[:60]}")
                         is_invalid = True
                     
                     # Empieza con minúscula (fragmento de oración)
                     if reason and reason[0].islower():
+                        print(f"   ⚠️ Razón empieza con minúscula (fragmento), skipping: {reason[:60]}")
                         is_invalid = True
                     
-                    # Frases de análisis
-                    if any(phrase in reason for phrase in ['La lista de', 'El usuario', 'Artistas recientes', 'demuestran', 'sugiere']):
+                    # Frases de análisis (más exhaustivo)
+                    analysis_phrases = [
+                        'la lista de', 'el usuario', 'artistas recientes', 'demuestran', 'sugiere',
+                        'tu sección', 'tu perfil', 'tus gustos', 'monopolizada por', 'indica una',
+                        'la presencia de', 'apuntan a', 'predilección por', 'esto sugiere',
+                        'basado en', 'el análisis'
+                    ]
+                    if any(phrase in reason.lower() for phrase in analysis_phrases):
+                        print(f"   ⚠️ Razón con frase de análisis, skipping: {reason[:60]}")
                         is_invalid = True
                     
                     # Razón muy corta (menos de 8 palabras)
                     if len(reason.split()) < 8:
+                        print(f"   ⚠️ Razón muy corta ({len(reason.split())} palabras), skipping: {reason}")
                         is_invalid = True
                     
+                    # Detectar si la razón parece ser un fragmento de título de sección
+                    # Ej: "Hip Hop Español Clásico y Colaborativo:**"
+                    if reason.endswith(':**') or reason.endswith('**'):
+                        print(f"   ⚠️ Razón parece título de sección, skipping: {reason[:60]}")
+                        is_invalid = True
+                    
+                    # Detectar palabras truncadas al inicio (señal de fragmento)
+                    # Ej: "hop Español" (debería ser "Hip hop Español")
+                    first_word = reason.split()[0] if reason.split() else ""
+                    if first_word and len(first_word) <= 3 and first_word[0].isupper():
+                        # Verificar si parece un fragmento de palabra
+                        common_fragments = ['hop', 'fi', 'pop', 'rap', 'dub', 'ska']
+                        if first_word.lower() in common_fragments:
+                            print(f"   ⚠️ Razón empieza con fragmento de palabra ({first_word}), skipping: {reason[:60]}")
+                            is_invalid = True
+                    
                     if is_invalid:
-                        print(f"   ⚠️ Razón inválida (fragmento/análisis), skipping: {reason[:60]}")
                         continue
                     
                     # VALIDACIÓN: Verificar que el artista NO esté en biblioteca
@@ -670,68 +695,159 @@ NO generes análisis. EMPIEZA DIRECTAMENTE:
         candidate_tracks: List[Track], 
         limit: int
     ) -> List[Recommendation]:
-        """Generar recomendaciones usando OpenAI"""
+        """Generar recomendaciones usando IA desde la biblioteca del usuario"""
         try:
             # Preparar contexto para la IA
             recent_artists = [track.artist for track in user_profile.recent_tracks[:10]]
             top_artists = [artist.name for artist in user_profile.top_artists[:5]]
             
-            # Crear prompt para la IA
-            prompt = f"""
-            Eres un experto en música que analiza los gustos de los usuarios y hace recomendaciones.
+            # Crear lista de canciones disponibles en la biblioteca
+            available_tracks = [f"{t.artist} - {t.title}" for t in candidate_tracks[:50]]
             
-            Perfil del usuario:
-            - Artistas recientes: {', '.join(recent_artists)}
-            - Top artistas: {', '.join(top_artists)}
-            - Géneros favoritos: {list(analysis.genre_distribution.keys())}
-            - Diversidad de artistas: {analysis.artist_diversity:.2f}
+            # Crear prompt MUY ESTRICTO para evitar análisis previo
+            prompt = f"""TAREA: Recomienda {limit} canciones de la biblioteca del usuario.
+
+PERFIL:
+- Top artistas: {', '.join(top_artists[:5])}
+- Escucha recientemente: {', '.join(recent_artists[:5])}
+
+CANCIONES DISPONIBLES:
+{chr(10).join(available_tracks[:30])}
+
+INSTRUCCIONES:
+1. Recomienda {limit} canciones DIFERENTES de la lista
+2. NO generes análisis ni explicaciones previas
+3. EMPIEZA DIRECTAMENTE con las recomendaciones
+4. Basadas en similitud con sus gustos
+
+FORMATO OBLIGATORIO (cada línea):
+[Artista] - [Canción] | [Razón de 10-30 palabras con mayúscula inicial y punto final.]
+
+EJEMPLO:
+The Beatles - Hey Jude | Clásico del rock con melodías memorables y letras emotivas perfectas para tu gusto por música atemporal.
+
+❌ NO HAGAS:
+- Análisis del perfil
+- Explicaciones previas
+- Introducciones
+- Numeración
+
+✅ EMPIEZA DIRECTAMENTE CON LA PRIMERA RECOMENDACIÓN:
+"""
             
-            Tareas:
-            1. Analiza los patrones musicales del usuario
-            2. Identifica qué tipos de música podría disfrutar
-            3. Sugiere artistas/canciones similares pero que expandan sus horizontes
+            # Generar con Gemini con configuración para respuestas predecibles
+            generation_config = {
+                'temperature': 0.7,
+                'top_p': 0.9,
+                'top_k': 40,
+                'max_output_tokens': 600,
+            }
             
-            Proporciona recomendaciones que sean:
-            - Musicalmente coherentes con sus gustos
-            - Ligeramente exploratorias para descubrir nueva música
-            - Basadas en similitudes de género, estilo o época
+            response = self.model.generate_content(prompt, generation_config=generation_config)
+            ai_suggestions = response.text.strip()
             
-            Formato de respuesta: Artista - Canción (razón de recomendación)
-            """
+            print(f"📝 Respuesta de IA para biblioteca (longitud: {len(ai_suggestions)})")
             
-            # Generar con Gemini
-            response = self.model.generate_content(prompt)
-            ai_suggestions = response.text
-            
-            # Procesar sugerencias de IA y buscar en la biblioteca
+            # Procesar sugerencias de IA con parseo ROBUSTO
             recommendations = []
-            for line in ai_suggestions.split('\n'):
-                if '-' in line and len(recommendations) < limit:
-                    try:
-                        parts = line.split('-', 1)
-                        if len(parts) == 2:
-                            artist_song = parts[0].strip()
-                            reason = parts[1].strip()
-                            
-                            # Buscar en la biblioteca
-                            matches = await self._find_track_matches(artist_song, candidate_tracks)
-                            
-                            for track in matches[:1]:  # Tomar solo la primera coincidencia
-                                recommendation = Recommendation(
-                                    track=track,
-                                    reason=reason,
-                                    confidence=0.8,
-                                    source="ai",
-                                    tags=["ai-recommendation"]
-                                )
-                                recommendations.append(recommendation)
-                    except:
-                        continue
+            seen_tracks = set()
             
+            lines_raw = ai_suggestions.split('\n')
+            
+            # Filtrar líneas válidas: deben tener formato [ARTISTA] - [CANCIÓN] | [RAZÓN]
+            for line in lines_raw:
+                if len(recommendations) >= limit:
+                    break
+                    
+                line = line.strip()
+                if not line:
+                    continue
+                
+                # Remover numeración si existe (1., 2., etc)
+                line_clean = re.sub(r'^\d+[\.\)]\s*', '', line)
+                
+                # DEBE tener - y | para ser válida
+                if '-' not in line_clean or '|' not in line_clean:
+                    continue
+                
+                try:
+                    # Parsear: [ARTISTA] - [CANCIÓN] | [RAZÓN]
+                    parts = line_clean.split('|', 1)
+                    if len(parts) != 2:
+                        continue
+                    
+                    artist_and_song = parts[0].strip()
+                    reason = parts[1].strip()
+                    
+                    # VALIDACIONES DE RAZÓN
+                    # 1. No debe contener patrones de markdown o análisis
+                    if any(pattern in reason for pattern in ['**', '):**', 'céntrico', 'fi:', 'hop:', 'rock:', 'punk:']):
+                        print(f"   ⚠️ Razón con patrón inválido, skipping: {reason[:60]}")
+                        continue
+                    
+                    # 2. Debe empezar con mayúscula (no es fragmento de oración)
+                    if reason and reason[0].islower():
+                        print(f"   ⚠️ Razón empieza con minúscula, skipping: {reason[:60]}")
+                        continue
+                    
+                    # 3. No debe contener frases de análisis
+                    if any(phrase in reason.lower() for phrase in ['la lista de', 'el usuario', 'artistas recientes', 'demuestran', 'sugiere', 'análisis', 'perfil']):
+                        print(f"   ⚠️ Razón con frase de análisis, skipping: {reason[:60]}")
+                        continue
+                    
+                    # 4. Debe tener longitud razonable
+                    if len(reason) < 20 or len(reason.split()) < 8:
+                        print(f"   ⚠️ Razón muy corta, skipping: {reason}")
+                        continue
+                    
+                    # 5. Dividir artista y canción
+                    if ' - ' not in artist_and_song:
+                        continue
+                    
+                    artist, song = artist_and_song.split(' - ', 1)
+                    artist = artist.strip()
+                    song = song.strip()
+                    
+                    if not artist or not song:
+                        continue
+                    
+                    # Verificar duplicados
+                    track_key = f"{artist.lower()}|{song.lower()}"
+                    if track_key in seen_tracks:
+                        continue
+                    seen_tracks.add(track_key)
+                    
+                    # Buscar en la biblioteca
+                    matches = await self._find_track_matches(f"{artist} {song}", candidate_tracks)
+                    
+                    if matches:
+                        track = matches[0]
+                        
+                        # Limpiar la razón (cortar si es muy larga)
+                        if len(reason) > 200:
+                            reason = reason[:197] + "..."
+                        
+                        recommendation = Recommendation(
+                            track=track,
+                            reason=reason,
+                            confidence=0.8,
+                            source="ai",
+                            tags=["ai-recommendation"]
+                        )
+                        recommendations.append(recommendation)
+                        print(f"   ✅ Agregada: {artist} - {song}")
+                        
+                except Exception as e:
+                    print(f"   ⚠️ Error parseando línea: {line_clean[:100]} | {e}")
+                    continue
+            
+            print(f"🎨 Total recomendaciones de biblioteca con IA: {len(recommendations)}")
             return recommendations
             
         except Exception as e:
-            print(f"Error generando recomendaciones con IA: {e}")
+            print(f"❌ Error generando recomendaciones con IA: {e}")
+            import traceback
+            traceback.print_exc()
             return []
     
     async def _generate_similarity_recommendations(
