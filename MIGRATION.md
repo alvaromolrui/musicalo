@@ -57,10 +57,12 @@ Esta rama (`remove-lastfm-use-listenbrainz`) migra completamente el proyecto de 
   - Eliminados todos los fallbacks a Last.fm
   - Actualizado para usar solo ListenBrainz
   - Actualizado `_get_artist_info` para usar MusicBrainz
+  - ✅ Renombrado key `lastfm_artist_info` → `musicbrainz_artist_info`
 
 - **models/schemas.py**:
-  - Mantenidos `LastFMTrack` y `LastFMArtist` por compatibilidad
-  - Agregada documentación explicando que ahora se usan con ListenBrainz/MusicBrainz
+  - ✅ Renombrados `LastFMTrack` → `ScrobbleTrack` y `LastFMArtist` → `ScrobbleArtist`
+  - Documentación actualizada para reflejar origen en servicios de scrobbling (ListenBrainz)
+  - Eliminadas todas las referencias a Last.fm en nombres de clases
 
 - **system_prompts.py**:
   - Todas las capacidades actualizadas a ListenBrainz+MusicBrainz
@@ -77,9 +79,10 @@ Esta rama (`remove-lastfm-use-listenbrainz`) migra completamente el proyecto de 
   - Destacado stack 100% open-source
   - Actualizada descripción de servicios
 
-- **docker-compose.yml**:
+- **docker-compose.yml** y **docker-entrypoint.sh**:
   - Cambiado a build local (para desarrollo)
   - Eliminadas variables de entorno de Last.fm
+  - ✅ Eliminado logging de LASTFM_USERNAME en docker-entrypoint.sh
 
 ## 🎨 Mejoras Adicionales
 
@@ -333,8 +336,9 @@ Prueba estos casos después de desplegar:
 
 ## 📝 Notas de Compatibilidad
 
-- **`LastFMTrack` y `LastFMArtist`**: Mantenidos por compatibilidad, pero ahora se usan con datos de ListenBrainz/MusicBrainz
+- **`ScrobbleTrack` y `ScrobbleArtist`**: Anteriormente `LastFMTrack` y `LastFMArtist`, ahora renombrados para reflejar su uso con servicios de scrobbling open-source (ListenBrainz)
 - **Campo `source`**: Ahora puede ser "ListenBrainz", "MusicBrainz", "ListenBrainz+MusicBrainz", "AI (Gemini)", "Navidrome"
+- **Keys en respuestas**: `musicbrainz_artist_info` (anteriormente `lastfm_artist_info`)
 
 ## 🔗 Referencias
 
@@ -347,4 +351,15 @@ Prueba estos casos después de desplegar:
 **Fecha de migración**: 19 de Octubre, 2025  
 **Versión**: 3.1.0 (post-migración)  
 **Status**: ✅ Completa y funcional
+
+### Limpieza Final - 19 de Octubre, 2025
+
+✅ **Eliminadas todas las referencias a Last.fm del código:**
+- Renombrados modelos `LastFMTrack` → `ScrobbleTrack` y `LastFMArtist` → `ScrobbleArtist`
+- Renombrado key `lastfm_artist_info` → `musicbrainz_artist_info`
+- Eliminado logging de `LASTFM_USERNAME` en docker-entrypoint.sh
+- Actualizados todos los imports y referencias en los servicios
+- **Stack 100% open-source**: ListenBrainz + MusicBrainz + Navidrome
+
+El repositorio ya no contiene ninguna referencia a Last.fm en el código funcional (solo en documentación histórica como CHANGELOG.md y MIGRATION.md).
 

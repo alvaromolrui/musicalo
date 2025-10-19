@@ -717,7 +717,7 @@ Responde ahora de forma natural y conversacional:"""
                 # Obtener top álbumes del artista desde MusicBrainz
                 top_albums = await self.musicbrainz.get_artist_top_albums(search_term, limit=10)
                 if top_albums:
-                    data["lastfm_artist_info"] = {  # Mantener key para compatibilidad
+                    data["musicbrainz_artist_info"] = {
                         "artist": search_term,
                         "top_albums": top_albums
                     }
@@ -936,8 +936,8 @@ Responde ahora de forma natural y conversacional:"""
                 formatted += "\n"
         
         # Información de MusicBrainz sobre artista específico
-        if data.get("lastfm_artist_info"):  # Mantener key para compatibilidad
-            info = data["lastfm_artist_info"]
+        if data.get("musicbrainz_artist_info"):
+            info = data["musicbrainz_artist_info"]
             formatted += f"\n🌍 === INFORMACIÓN DE MUSICBRAINZ: {info['artist'].upper()} ===\n"
             formatted += f"📊 TOP ÁLBUMES MÁS POPULARES (según MusicBrainz):\n\n"
             for i, album in enumerate(info["top_albums"][:10], 1):

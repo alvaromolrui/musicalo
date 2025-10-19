@@ -3,7 +3,7 @@ import os
 import re
 from typing import List, Optional, Dict, Any
 from datetime import datetime
-from models.schemas import LastFMTrack, LastFMArtist
+from models.schemas import ScrobbleTrack, ScrobbleArtist
 
 class ListenBrainzService:
     def __init__(self):
@@ -51,7 +51,7 @@ class ListenBrainzService:
             print(f"Error en petición ListenBrainz: {e}")
             raise
     
-    async def get_recent_tracks(self, limit: int = 50) -> List[LastFMTrack]:
+    async def get_recent_tracks(self, limit: int = 50) -> List[ScrobbleTrack]:
         """Obtener escuchas recientes del usuario"""
         try:
             params = {"count": limit}
@@ -74,7 +74,7 @@ class ListenBrainzService:
                     except:
                         pass
                 
-                track = LastFMTrack(
+                track = ScrobbleTrack(
                     name=track_metadata.get("track_name", ""),
                     artist=track_metadata.get("artist_name", ""),
                     album=track_metadata.get("release_name"),
@@ -91,7 +91,7 @@ class ListenBrainzService:
             print(f"Error obteniendo tracks recientes: {e}")
             return []
     
-    async def get_top_artists(self, period: str = "this_month", limit: int = 50) -> List[LastFMArtist]:
+    async def get_top_artists(self, period: str = "this_month", limit: int = 50) -> List[ScrobbleArtist]:
         """Obtener artistas más escuchados usando la API de estadísticas de ListenBrainz
         
         Args:
@@ -116,7 +116,7 @@ class ListenBrainzService:
             artist_stats = data.get("payload", {}).get("artists", [])
             
             for i, artist_data in enumerate(artist_stats):
-                artist = LastFMArtist(
+                artist = ScrobbleArtist(
                     name=artist_data.get("artist_name", ""),
                     playcount=artist_data.get("listen_count", 0),
                     url=artist_data.get("artist_mbid") and f"https://musicbrainz.org/artist/{artist_data['artist_mbid']}" or "",
@@ -130,7 +130,7 @@ class ListenBrainzService:
             print(f"Error obteniendo top artistas: {e}")
             return []
     
-    async def get_top_tracks(self, period: str = "this_month", limit: int = 50) -> List[LastFMTrack]:
+    async def get_top_tracks(self, period: str = "this_month", limit: int = 50) -> List[ScrobbleTrack]:
         """Obtener canciones más escuchadas usando la API de estadísticas de ListenBrainz
         
         Args:
@@ -155,7 +155,7 @@ class ListenBrainzService:
             track_stats = data.get("payload", {}).get("recordings", [])
             
             for track_data in track_stats:
-                track = LastFMTrack(
+                track = ScrobbleTrack(
                     name=track_data.get("track_name", ""),
                     artist=track_data.get("artist_name", ""),
                     album=track_data.get("release_name"),
@@ -562,7 +562,7 @@ class ListenBrainzService:
         artist_name: str,
         limit: int = 10,
         musicbrainz_service = None
-    ) -> List[LastFMArtist]:
+    ) -> List[ScrobbleArtist]:
         """Obtener artistas similares usando ListenBrainz CF o MusicBrainz como fallback
         
         Estrategia:
@@ -609,9 +609,9 @@ class ListenBrainzService:
                         reverse=True
                     )[:limit]
                     
-                    # Convertir a formato LastFMArtist
+                    # Convertir a formato ScrobbleArtist
                     for i, artist_data in enumerate(sorted_artists):
-                        artist = LastFMArtist(
+                        artist = ScrobbleArtist(
                             name=artist_data["artist_name"],
                             playcount=artist_data["count"],
                             rank=i + 1,
@@ -635,9 +635,9 @@ class ListenBrainzService:
                     tag_similar = await musicbrainz_service.find_similar_by_tags(artist_name, limit=limit)
                     
                     if tag_similar:
-                        # Convertir a LastFMArtist
+                        # Convertir a ScrobbleArtist
                         for i, artist_data in enumerate(tag_similar):
-                            artist = LastFMArtist(
+                            artist = ScrobbleArtist(
                                 name=artist_data["name"],
                                 playcount=0,
                                 rank=i + 1,
@@ -707,7 +707,7 @@ Genera {limit} artistas similares a {artist_name}:"""
                         line = re.sub(r'^[-*]\s*', '', line)
                         
                         if line and len(line) > 2:
-                            artist = LastFMArtist(
+                            artist = ScrobbleArtist(
                                 name=line,
                                 playcount=0,
                                 rank=len(similar_artists) + 1,
@@ -743,10 +743,10 @@ Genera {limit} artistas similares a {artist_name}:"""
         track_name: str,
         artist_name: str,
         limit: int = 10
-    ) -> List[LastFMTrack]:
+    ) -> List[ScrobbleTrack]:
         """Obtener canciones similares basándose en recomendaciones de ListenBrainz
         
-        Simula get_similar_tracks de Last.fm usando collaborative filtering.
+        Usa collaborative filtering y datos de usuarios similares.
         
         Args:
             track_name: Nombre de la canción de referencia
@@ -769,7 +769,7 @@ Genera {limit} artistas similares a {artist_name}:"""
                         rec.get("artist_name").lower() == artist_name.lower()):
                         continue
                     
-                    track = LastFMTrack(
+                    track = ScrobbleTrack(
                         name=rec.get("track_name"),
                         artist=rec.get("artist_name"),
                         album=rec.get("release_name"),

@@ -5,7 +5,7 @@ import numpy as np
 from collections import Counter
 import re
 import random
-from models.schemas import UserProfile, Recommendation, Track, LastFMTrack, LastFMArtist, MusicAnalysis
+from models.schemas import UserProfile, Recommendation, Track, ScrobbleTrack, ScrobbleArtist, MusicAnalysis
 from services.navidrome_service import NavidromeService
 from services.listenbrainz_service import ListenBrainzService
 from services.musicbrainz_service import MusicBrainzService
@@ -805,7 +805,7 @@ NO generes análisis. EMPIEZA DIRECTAMENTE:
         
         return "unknown"
     
-    def _analyze_time_patterns(self, tracks: List[LastFMTrack]) -> Dict[str, int]:
+    def _analyze_time_patterns(self, tracks: List[ScrobbleTrack]) -> Dict[str, int]:
         """Analizar patrones temporales de escucha"""
         time_patterns = {"morning": 0, "afternoon": 0, "evening": 0, "night": 0}
         
@@ -823,7 +823,7 @@ NO generes análisis. EMPIEZA DIRECTAMENTE:
         
         return time_patterns
     
-    async def _analyze_mood_patterns(self, tracks: List[LastFMTrack]) -> Dict[str, float]:
+    async def _analyze_mood_patterns(self, tracks: List[ScrobbleTrack]) -> Dict[str, float]:
         """Analizar patrones de humor musical"""
         # Simulación de análisis de humor
         return {

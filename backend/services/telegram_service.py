@@ -5,7 +5,7 @@ import os
 import json
 import random
 import google.generativeai as genai
-from models.schemas import Recommendation, Track, LastFMTrack, LastFMArtist
+from models.schemas import Recommendation, Track, ScrobbleTrack, ScrobbleArtist
 from services.navidrome_service import NavidromeService
 from services.listenbrainz_service import ListenBrainzService
 from services.ai_service import MusicRecommendationService
