@@ -377,14 +377,17 @@ class NavidromeService:
             if expires:
                 params["expires"] = str(expires)
             
-            # Habilitar descarga en el share (parámetro de Navidrome)
-            params["downloadable"] = "true" if downloadable else "false"
-            
             # La API requiere múltiples parámetros 'id' para cada item
             url = f"{self.base_url}/rest/createShare.view"
             url_params = "&".join([f"{k}={v}" for k, v in params.items()])
             id_params = "&".join([f"id={item_id}" for item_id in item_ids])
-            full_url = f"{url}?{url_params}&{id_params}"
+            
+            # Agregar parámetro downloadable al final (debe ir después de los IDs)
+            downloadable_param = "downloadable=true" if downloadable else "downloadable=false"
+            full_url = f"{url}?{url_params}&{id_params}&{downloadable_param}"
+            
+            print(f"📝 DEBUG - URL completa: {full_url[:100]}... (truncada)")
+            print(f"📝 DEBUG - Parámetro downloadable: {downloadable_param}")
             
             response = await self.client.get(full_url)
             
