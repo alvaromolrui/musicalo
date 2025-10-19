@@ -110,12 +110,52 @@ Esta rama (`remove-lastfm-use-listenbrainz`) migra completamente el proyecto de 
 ## 📊 Estadísticas
 
 ```
-9 commits totales
-8 archivos modificados
-1 archivo eliminado
-~1100 líneas agregadas
-~800 líneas eliminadas
+12 commits totales
+13 archivos modificados
+1 archivo eliminado (lastfm_service.py)
++1,547 líneas agregadas
+-902 líneas eliminadas
 ```
+
+## 🎯 Cambios Críticos del Sistema de Recomendaciones
+
+### Orden de Prioridad Actualizado
+
+**ANTES (malo)**:
+1. Custom prompts (solo si el usuario especifica)
+2. ListenBrainz CF (genérico, daba Metallica, The Temptations)
+3. Biblioteca local
+
+**AHORA (mejor)**:
+1. **IA primero SIEMPRE** (entiende contexto, excluye biblioteca)
+2. ListenBrainz CF como complemento (solo si IA no generó suficientes)
+3. Biblioteca local como último recurso
+
+### Mejoras en Parseo de IA
+
+- ✅ Pre-filtrado de líneas válidas antes de procesar
+- ✅ Eliminación de numeración automática
+- ✅ Validación estricta de formato ([ARTISTA] - [NOMBRE] | [RAZÓN])
+- ✅ Skip de líneas de análisis/perfil
+- ✅ Validación de longitud mínima de razones (20 chars)
+- ✅ Logging detallado de líneas rechazadas
+
+### Mejoras en Búsqueda de Similares
+
+**Sistema de 3 estrategias**:
+
+1. **ListenBrainz CF** (collaborative filtering)
+   - Usa recomendaciones personalizadas
+   - Agrupa por artista
+   
+2. **MusicBrainz Tags** (`find_similar_by_tags`)
+   - Busca artistas con géneros/tags similares
+   - Excluye personas individuales (solo bandas/proyectos)
+   - Logging detallado de tags encontrados
+   
+3. **Fallback informativo**
+   - Mensajes claros explicando por qué falló
+   - Tips para el usuario
 
 ## 🚀 Instrucciones de Despliegue
 
