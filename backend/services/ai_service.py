@@ -198,7 +198,11 @@ class MusicRecommendationService:
                 
                 print(f"🎤 Buscando artistas similares a: {top_artist.name}")
                 # Obtener más artistas similares y seleccionar aleatoriamente
-                similar_artists = await self.listenbrainz.get_similar_artists_from_recording(top_artist.name, limit=10)
+                similar_artists = await self.listenbrainz.get_similar_artists_from_recording(
+                    top_artist.name, 
+                    limit=10,
+                    musicbrainz_service=self.musicbrainz
+                )
                 print(f"   Encontrados {len(similar_artists)} artistas similares")
                 
                 # Aleatorizar el orden de artistas similares

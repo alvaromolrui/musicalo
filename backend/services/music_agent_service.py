@@ -699,7 +699,11 @@ Responde ahora de forma natural y conversacional:"""
                 for i, word in enumerate(words):
                     if word.lower() in ["similar", "parecido", "como"] and i + 1 < len(words):
                         potential_artist = " ".join(words[i+1:])
-                        similar_artists = await self.discovery_service.get_similar_artists_from_recording(potential_artist, limit=5)
+                        similar_artists = await self.discovery_service.get_similar_artists_from_recording(
+                            potential_artist, 
+                            limit=5,
+                            musicbrainz_service=self.musicbrainz
+                        )
                         if similar_artists:
                             data["similar_content"] = similar_artists
                         break
@@ -737,7 +741,11 @@ Responde ahora de forma natural y conversacional:"""
                     similar_tasks = []
                     for top_artist in top_artists[:3]:  # Solo los top 3
                         similar_tasks.append(
-                            self.discovery_service.get_similar_artists_from_recording(top_artist.name, limit=3)
+                            self.discovery_service.get_similar_artists_from_recording(
+                                top_artist.name, 
+                                limit=3,
+                                musicbrainz_service=self.musicbrainz
+                            )
                         )
                     
                     # Ejecutar búsquedas en paralelo

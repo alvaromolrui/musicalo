@@ -293,10 +293,15 @@ Sé todo lo detallado que quieras:
             if similar_to:
                 print(f"🎯 Usando límite: {recommendation_limit} para similares")
                 
-                print(f"🔍 Buscando similares a '{similar_to}' en ListenBrainz (tipo: {rec_type})...")
+                print(f"🔍 Buscando similares a '{similar_to}' en ListenBrainz+MusicBrainz (tipo: {rec_type})...")
                 # Buscar más artistas de los necesarios por si algunos no tienen álbumes/tracks
                 search_limit = max(30, recommendation_limit * 5)
-                similar_artists = await self.listenbrainz.get_similar_artists_from_recording(similar_to, limit=search_limit)
+                # Pasar MusicBrainz como fallback para buscar relaciones de artistas
+                similar_artists = await self.listenbrainz.get_similar_artists_from_recording(
+                    similar_to, 
+                    limit=search_limit,
+                    musicbrainz_service=self.agent.musicbrainz
+                )
                 
                 if similar_artists:
                     # Añadir variedad: mezclar los resultados para no siempre mostrar los mismos

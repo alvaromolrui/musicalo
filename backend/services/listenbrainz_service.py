@@ -539,62 +539,110 @@ class ListenBrainzService:
     async def get_similar_artists_from_recording(
         self,
         artist_name: str,
-        limit: int = 10
+        limit: int = 10,
+        musicbrainz_service = None
     ) -> List[LastFMArtist]:
-        """Obtener artistas similares basándose en patrones de escucha del usuario
+        """Obtener artistas similares usando ListenBrainz CF o MusicBrainz como fallback
         
-        Esta función simula get_similar_artists de Last.fm usando las estadísticas
-        de ListenBrainz y las recomendaciones del sistema.
+        Estrategia:
+        1. Intentar con recomendaciones de ListenBrainz (collaborative filtering)
+        2. Si no hay resultados, usar MusicBrainz para buscar por metadatos
         
         Args:
             artist_name: Nombre del artista de referencia
             limit: Número de artistas similares a obtener
+            musicbrainz_service: Instancia de MusicBrainzService (opcional, para fallback)
         
         Returns:
             Lista de artistas similares
         """
         try:
-            # Estrategia: Obtener recomendaciones generales y filtrar por artistas
-            # que no sean el artista de referencia
-            recommendations = await self.get_recommendations(count=100)
-            
-            # Agrupar por artista
-            artist_counts = {}
-            for rec in recommendations:
-                artist = rec.get("artist_name")
-                if artist and artist.lower() != artist_name.lower():
-                    if artist not in artist_counts:
-                        artist_counts[artist] = {
-                            "count": 0,
-                            "score": 0,
-                            "artist_name": artist
-                        }
-                    artist_counts[artist]["count"] += 1
-                    artist_counts[artist]["score"] += rec.get("score", 0)
-            
-            # Ordenar por score y tomar los top N
-            sorted_artists = sorted(
-                artist_counts.values(),
-                key=lambda x: (x["score"], x["count"]),
-                reverse=True
-            )[:limit]
-            
-            # Convertir a formato LastFMArtist para compatibilidad
             similar_artists = []
-            for i, artist_data in enumerate(sorted_artists):
-                artist = LastFMArtist(
-                    name=artist_data["artist_name"],
-                    playcount=artist_data["count"],
-                    rank=i + 1,
-                    url=f"https://listenbrainz.org/artist/{artist_data['artist_name'].replace(' ', '+')}"
-                )
-                similar_artists.append(artist)
             
-            print(f"✅ Encontrados {len(similar_artists)} artistas similares a '{artist_name}'")
+            # ESTRATEGIA 1: Usar recomendaciones de ListenBrainz
+            try:
+                recommendations = await self.get_recommendations(count=100)
+                
+                if recommendations:
+                    # Agrupar por artista
+                    artist_counts = {}
+                    for rec in recommendations:
+                        artist = rec.get("artist_name")
+                        if artist and artist.lower() != artist_name.lower():
+                            if artist not in artist_counts:
+                                artist_counts[artist] = {
+                                    "count": 0,
+                                    "score": 0,
+                                    "artist_name": artist
+                                }
+                            artist_counts[artist]["count"] += 1
+                            artist_counts[artist]["score"] += rec.get("score", 0)
+                    
+                    # Ordenar por score y tomar los top N
+                    sorted_artists = sorted(
+                        artist_counts.values(),
+                        key=lambda x: (x["score"], x["count"]),
+                        reverse=True
+                    )[:limit]
+                    
+                    # Convertir a formato LastFMArtist
+                    for i, artist_data in enumerate(sorted_artists):
+                        artist = LastFMArtist(
+                            name=artist_data["artist_name"],
+                            playcount=artist_data["count"],
+                            rank=i + 1,
+                            url=f"https://listenbrainz.org/artist/{artist_data['artist_name'].replace(' ', '+')}"
+                        )
+                        similar_artists.append(artist)
+                    
+                    if similar_artists:
+                        print(f"✅ Encontrados {len(similar_artists)} artistas similares a '{artist_name}' (ListenBrainz CF)")
+                        return similar_artists
+            except Exception as e:
+                print(f"⚠️ ListenBrainz CF no disponible: {e}")
+            
+            # ESTRATEGIA 2: Si no hay resultados y tenemos MusicBrainz, usar relaciones de artistas
+            if not similar_artists and musicbrainz_service:
+                print(f"🔍 Buscando artistas similares en MusicBrainz...")
+                try:
+                    # Obtener relaciones del artista
+                    relationships = await musicbrainz_service.get_artist_relationships(artist_name)
+                    
+                    # Recopilar artistas relacionados
+                    related_artists = []
+                    for rel_type, artists in relationships.items():
+                        for artist in artists[:5]:  # Máximo 5 por tipo de relación
+                            related_artists.append({
+                                "name": artist["name"],
+                                "relation": rel_type
+                            })
+                    
+                    # Convertir a LastFMArtist
+                    for i, artist_data in enumerate(related_artists[:limit]):
+                        artist = LastFMArtist(
+                            name=artist_data["name"],
+                            playcount=0,
+                            rank=i + 1,
+                            url=f"https://musicbrainz.org/artist/{artist_data['name'].replace(' ', '+')}"
+                        )
+                        similar_artists.append(artist)
+                    
+                    if similar_artists:
+                        print(f"✅ Encontrados {len(similar_artists)} artistas relacionados a '{artist_name}' (MusicBrainz)")
+                        return similar_artists
+                except Exception as e:
+                    print(f"⚠️ Error buscando en MusicBrainz: {e}")
+            
+            # Si no hay resultados, devolver lista vacía
+            if not similar_artists:
+                print(f"⚠️ No se encontraron artistas similares a '{artist_name}'")
+            
             return similar_artists
             
         except Exception as e:
             print(f"❌ Error obteniendo artistas similares: {e}")
+            import traceback
+            traceback.print_exc()
             return []
     
     async def get_similar_tracks_from_recording(
