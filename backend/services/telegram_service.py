@@ -1192,10 +1192,12 @@ Sé todo lo detallado que quieras:
                 "• Álbumes: <code>/share The Dark Side of the Moon</code>\n"
                 "• Canciones: <code>/share Bohemian Rhapsody</code>\n"
                 "• Artistas: <code>/share Queen</code> (todas sus canciones)\n\n"
-                "💡 Genera 2 enlaces:\n"
-                "  🎧 Reproducir online (interfaz web)\n"
-                "  📥 Descargar directamente (archivo)\n"
-                "✨ Ambos enlaces son públicos - no requieren autenticación",
+                "💡 <b>Qué obtienes:</b>\n"
+                "  🔗 Enlace al share con interfaz web\n"
+                "  🎧 En el share: botón para reproducir\n"
+                "  📥 En el share: botón para descargar\n"
+                "  ⚡ Enlace de descarga directa\n\n"
+                "✨ Enlaces públicos - no requieren autenticación",
                 parse_mode='HTML'
             )
             return
@@ -1273,17 +1275,21 @@ Sé todo lo detallado que quieras:
 {found_name}
 📦 <b>{len(items_to_share)}</b> {'canción' if len(items_to_share) == 1 else 'canciones'}
 
-🎧 <b>Reproducir online:</b>
+🔗 <b>Enlace principal del share:</b>
 <code>{share_info['url']}</code>
 
-📥 <b>Descargar directamente:</b>
+💡 <b>Al abrir este enlace verás:</b>
+• 🎧 Botón para reproducir en streaming
+• 📥 Botón para descargar los archivos
+• 📋 Lista de todas las canciones
+
+⚡ <b>Descarga directa (sin abrir interfaz):</b>
 <code>{share_info['download_url']}</code>
 
-💡 <b>Información:</b>
+📋 <b>Información:</b>
 • Tipo: {share_type}
-• ID del share: <code>{share_info['id']}</code>
-• Los enlaces son públicos y no requieren autenticación
-• El enlace de descarga descarga automáticamente los archivos"""
+• ID: <code>{share_info['id']}</code>
+• Enlaces públicos sin autenticación"""
 
             # Si es un enlace con muchas canciones, agregar detalles
             if len(items_to_share) > 1:

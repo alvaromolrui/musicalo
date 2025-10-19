@@ -353,7 +353,8 @@ class NavidromeService:
         self, 
         item_ids: List[str], 
         description: Optional[str] = None,
-        expires: Optional[int] = None
+        expires: Optional[int] = None,
+        downloadable: bool = True
     ) -> Optional[Dict[str, str]]:
         """Crear enlace compartible para canciones o álbumes
         
@@ -361,12 +362,13 @@ class NavidromeService:
             item_ids: Lista de IDs de canciones o álbumes a compartir
             description: Descripción opcional del share
             expires: Tiempo de expiración en milisegundos desde epoch (opcional)
+            downloadable: Si True, permite descargar la música desde el share (default: True)
             
         Returns:
             Dict con 'id', 'url', 'download_url' y 'description' del share, o None si falla
         """
         try:
-            print(f"🔗 Creando share para {len(item_ids)} items...")
+            print(f"🔗 Creando share para {len(item_ids)} items (downloadable: {downloadable})...")
             
             # Construir parámetros
             params = self._get_auth_params()
@@ -374,6 +376,9 @@ class NavidromeService:
                 params["description"] = description
             if expires:
                 params["expires"] = str(expires)
+            
+            # Habilitar descarga en el share (parámetro de Navidrome)
+            params["downloadable"] = "true" if downloadable else "false"
             
             # La API requiere múltiples parámetros 'id' para cada item
             url = f"{self.base_url}/rest/createShare.view"
