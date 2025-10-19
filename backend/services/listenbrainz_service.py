@@ -1,5 +1,6 @@
 import httpx
 import os
+import re
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 from models.schemas import LastFMTrack, LastFMArtist
@@ -633,13 +634,72 @@ class ListenBrainzService:
             elif not similar_artists and not musicbrainz_service:
                 print(f"   💡 Tip: Habilita MusicBrainz para buscar artistas por relaciones/colaboraciones")
             
+            # ESTRATEGIA 3: Si todo falla, usar IA para generar recomendaciones basadas en conocimiento general
+            # Esto es especialmente útil para artistas sin metadata en MusicBrainz
+            if not similar_artists:
+                print(f"   📊 Estrategia 3: Usando IA para generar similares basándose en conocimiento musical general...")
+                try:
+                    # Importar aquí para evitar dependencias circulares
+                    import google.generativeai as genai
+                    
+                    # Usar IA para generar artistas similares
+                    model = genai.GenerativeModel('gemini-2.0-flash-exp')
+                    
+                    prompt = f"""Eres un experto en música. Genera una lista de {limit} artistas similares a "{artist_name}".
+
+IMPORTANTE:
+- Genera SOLO nombres de artistas/bandas, uno por línea
+- NO agregues numeración, guiones, ni explicaciones
+- Solo artistas reales y verificables
+- Artistas que sean musicalmente similares en estilo, género o época
+
+Formato:
+[NOMBRE DEL ARTISTA]
+
+Ejemplo:
+The Velvet Underground
+Sonic Youth
+Yo La Tengo
+
+Genera {limit} artistas similares a {artist_name}:"""
+                    
+                    response = model.generate_content(prompt)
+                    ai_response = response.text.strip()
+                    
+                    # Parsear respuesta
+                    for line in ai_response.split('\n'):
+                        if len(similar_artists) >= limit:
+                            break
+                        
+                        line = line.strip()
+                        # Remover numeración si existe
+                        line = re.sub(r'^\d+[\.\)]\s*', '', line)
+                        # Remover guiones al inicio
+                        line = re.sub(r'^[-*]\s*', '', line)
+                        
+                        if line and len(line) > 2:
+                            artist = LastFMArtist(
+                                name=line,
+                                playcount=0,
+                                rank=len(similar_artists) + 1,
+                                url=""
+                            )
+                            similar_artists.append(artist)
+                    
+                    if similar_artists:
+                        print(f"✅ Encontrados {len(similar_artists)} artistas similares usando IA (conocimiento general)")
+                        return similar_artists
+                except Exception as e:
+                    print(f"   ⚠️ Error usando IA para similares: {e}")
+            
             # Si no hay resultados, devolver lista vacía
             if not similar_artists:
                 print(f"⚠️ No se encontraron artistas similares a '{artist_name}'")
                 print(f"   💡 Esto puede pasar si:")
                 print(f"      - ListenBrainz no tiene suficientes datos de ese artista")
-                print(f"      - MusicBrainz no tiene relaciones registradas")
+                print(f"      - MusicBrainz no tiene relaciones/tags registradas")
                 print(f"      - El artista es muy nuevo o poco conocido")
+                print(f"      - La IA no pudo generar recomendaciones fiables")
             
             return similar_artists
             
