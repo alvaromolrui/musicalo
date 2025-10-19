@@ -216,6 +216,15 @@ class MusicRecommendationService:
             recommendations = []
             processed_artists = set()
             
+            # Obtener lista de artistas de la biblioteca para excluirlos
+            library_artists = set()
+            try:
+                library_data = await self.navidrome.get_artists(limit=500)
+                library_artists = {artist.name.lower() for artist in library_data}
+                print(f"📚 Biblioteca: {len(library_artists)} artistas para excluir de recomendaciones")
+            except Exception as e:
+                print(f"⚠️ No se pudo obtener lista de biblioteca: {e}")
+            
             # Seleccionar aleatoriamente algunos top artistas para variar las recomendaciones
             available_top_artists = user_profile.top_artists[:10]  # Considerar top 10
             num_artists_to_use = min(5, len(available_top_artists))
@@ -243,13 +252,20 @@ class MusicRecommendationService:
                     random.shuffle(similar_artists)
                 
                 # IMPORTANTE: Solo tomar 1 artista similar por cada top_artist para diversidad
+                # Y EXCLUIR artistas que ya están en la biblioteca
                 similar_artist = None
                 for candidate in similar_artists:
-                    if candidate.name not in processed_artists:
+                    candidate_lower = candidate.name.lower()
+                    if (candidate.name not in processed_artists and 
+                        candidate_lower not in library_artists):
                         similar_artist = candidate
+                        print(f"   ✅ Seleccionado: {candidate.name} (NO está en biblioteca)")
                         break
+                    elif candidate_lower in library_artists:
+                        print(f"   ⏭️ Skipping {candidate.name}: ya está en biblioteca")
                 
                 if not similar_artist:
+                    print(f"   ⚠️ No hay artistas similares nuevos para {top_artist.name}")
                     continue
                     
                 processed_artists.add(similar_artist.name)
@@ -421,27 +437,51 @@ Daft Punk - Discovery | Electrónica francesa con influencias funk y disco, prod
 
 Recomendaciones:"""
 
-            # Generar con Gemini
-            response = self.model.generate_content(ai_prompt)
+            # Generar con Gemini con configuración para respuestas más predecibles
+            generation_config = {
+                'temperature': 0.7,
+                'top_p': 0.9,
+                'top_k': 40,
+                'max_output_tokens': 2048,
+            }
+            
+            response = self.model.generate_content(
+                ai_prompt,
+                generation_config=generation_config
+            )
             ai_response = response.text.strip()
             
             print(f"📝 Respuesta de IA recibida (longitud: {len(ai_response)})")
-            print(f"📝 DEBUG - Primeras 500 chars: {ai_response[:500]}")
             
             # Procesar las recomendaciones de la IA
             recommendations = []
             seen_tracks = set()  # Para evitar duplicados
-            lines = [line.strip() for line in ai_response.split('\n') if line.strip()]
+            
+            # Buscar la sección de recomendaciones si hay texto previo
+            # A veces la IA genera análisis antes de las recomendaciones
+            lines_raw = ai_response.split('\n')
+            
+            # Encontrar donde empiezan las recomendaciones reales
+            start_index = 0
+            for i, line in enumerate(lines_raw):
+                # Las recomendaciones tienen formato: [algo] - [algo] | [razón]
+                if '|' in line and '-' in line and not line.lower().startswith(('basado', 'perfil', 'género')):
+                    start_index = i
+                    break
+            
+            # Procesar solo desde donde empiezan las recomendaciones
+            lines = [line.strip() for line in lines_raw[start_index:] if line.strip()]
+            
+            print(f"📝 DEBUG - Procesando {len(lines)} líneas desde índice {start_index}")
             
             for line in lines:
                 if len(recommendations) >= limit:
                     break
                 
                 # Ignorar líneas que claramente no son recomendaciones
-                # (análisis, headers, etc.)
                 lower_line = line.lower()
-                skip_words = ['perfil', 'usuario', 'análisis', 'recomendación', 'basado', 'género', 'diversidad']
-                if any(word in lower_line for word in skip_words) and '|' not in line:
+                skip_patterns = ['**', 'perfil', 'usuario', 'análisis', 'basado en', 'género', 'diversidad', 'recomendaciones']
+                if any(pattern in lower_line for pattern in skip_patterns) and '|' not in line:
                     continue
                 
                 # Buscar el formato: [ARTISTA] - [NOMBRE] | [RAZÓN]

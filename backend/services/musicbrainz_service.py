@@ -1222,15 +1222,22 @@ class MusicBrainzService:
             reference = await self.verify_artist_metadata(artist_name)
             
             if not reference.get("found"):
-                logger.warning(f"   ⚠️ Artista de referencia no encontrado")
+                logger.warning(f"   ⚠️ Artista de referencia no encontrado en MusicBrainz")
+                logger.info(f"   💡 Intenta verificar el nombre exacto del artista")
                 return []
+            
+            logger.info(f"   ✅ Artista encontrado: {reference.get('name')} (MBID: {reference.get('id')})")
             
             # Obtener géneros y tags principales
             ref_genres = reference.get("genres", [])[:3]  # Top 3 géneros
             ref_tags = reference.get("tags", [])[:5]  # Top 5 tags
             
+            logger.info(f"   📊 Géneros: {ref_genres}")
+            logger.info(f"   🏷️ Tags: {ref_tags}")
+            
             if not ref_genres and not ref_tags:
                 logger.warning(f"   ⚠️ No hay tags/géneros para '{artist_name}'")
+                logger.info(f"   💡 Este artista no tiene metadata suficiente en MusicBrainz")
                 return []
             
             # Buscar por los tags más relevantes
@@ -1242,6 +1249,7 @@ class MusicBrainzService:
                 if len(similar_artists) >= limit:
                     break
                 
+                logger.info(f"   🔍 Buscando artistas con tag '{tag}'...")
                 await self._rate_limit()
                 
                 # Buscar artistas con este tag
@@ -1254,6 +1262,7 @@ class MusicBrainzService:
                 )
                 
                 artists = data.get("artists", [])
+                logger.info(f"   📊 Encontrados {len(artists)} artistas con tag '{tag}'")
                 
                 for artist in artists:
                     if len(similar_artists) >= limit:
