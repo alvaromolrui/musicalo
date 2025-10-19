@@ -385,7 +385,16 @@ Sé todo lo detallado que quieras:
                         )
                         recommendations.append(recommendation)
                 else:
-                    await update.message.reply_text(f"😔 No encontré artistas similares a '{similar_to}'")
+                    await update.message.reply_text(
+                        f"😔 No encontré artistas similares a '{similar_to}'\n\n"
+                        f"💡 Esto puede pasar si:\n"
+                        f"• El artista es muy nuevo o poco conocido\n"
+                        f"• ListenBrainz no tiene suficientes datos\n"
+                        f"• No hay relaciones registradas en MusicBrainz\n\n"
+                        f"Puedes intentar:\n"
+                        f"• Buscar el artista en tu biblioteca: /search {similar_to}\n"
+                        f"• Pedir recomendaciones generales: /recommend"
+                    )
                     return
             
             else:

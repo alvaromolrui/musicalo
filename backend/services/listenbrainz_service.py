@@ -560,10 +560,12 @@ class ListenBrainzService:
             similar_artists = []
             
             # ESTRATEGIA 1: Usar recomendaciones de ListenBrainz
+            print(f"   📊 Estrategia 1: Intentando con recomendaciones de ListenBrainz CF...")
             try:
                 recommendations = await self.get_recommendations(count=100)
                 
                 if recommendations:
+                    print(f"   📊 Obtenidas {len(recommendations)} recomendaciones de ListenBrainz")
                     # Agrupar por artista
                     artist_counts = {}
                     for rec in recommendations:
@@ -598,12 +600,14 @@ class ListenBrainzService:
                     if similar_artists:
                         print(f"✅ Encontrados {len(similar_artists)} artistas similares a '{artist_name}' (ListenBrainz CF)")
                         return similar_artists
+                else:
+                    print(f"   ⚠️ No hay recomendaciones disponibles en ListenBrainz")
             except Exception as e:
-                print(f"⚠️ ListenBrainz CF no disponible: {e}")
+                print(f"   ⚠️ ListenBrainz CF no disponible: {e}")
             
             # ESTRATEGIA 2: Si no hay resultados y tenemos MusicBrainz, usar relaciones de artistas
             if not similar_artists and musicbrainz_service:
-                print(f"🔍 Buscando artistas similares en MusicBrainz...")
+                print(f"   📊 Estrategia 2: Buscando relaciones de artistas en MusicBrainz...")
                 try:
                     # Obtener relaciones del artista
                     relationships = await musicbrainz_service.get_artist_relationships(artist_name)
@@ -630,12 +634,20 @@ class ListenBrainzService:
                     if similar_artists:
                         print(f"✅ Encontrados {len(similar_artists)} artistas relacionados a '{artist_name}' (MusicBrainz)")
                         return similar_artists
+                    else:
+                        print(f"   ⚠️ No se encontraron relaciones en MusicBrainz para '{artist_name}'")
                 except Exception as e:
-                    print(f"⚠️ Error buscando en MusicBrainz: {e}")
+                    print(f"   ⚠️ Error buscando en MusicBrainz: {e}")
+            elif not similar_artists and not musicbrainz_service:
+                print(f"   💡 Tip: Habilita MusicBrainz para buscar artistas por relaciones/colaboraciones")
             
             # Si no hay resultados, devolver lista vacía
             if not similar_artists:
                 print(f"⚠️ No se encontraron artistas similares a '{artist_name}'")
+                print(f"   💡 Esto puede pasar si:")
+                print(f"      - ListenBrainz no tiene suficientes datos de ese artista")
+                print(f"      - MusicBrainz no tiene relaciones registradas")
+                print(f"      - El artista es muy nuevo o poco conocido")
             
             return similar_artists
             
