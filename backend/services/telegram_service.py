@@ -170,6 +170,12 @@ Sé todo lo detallado que quieras:
 • /recommend like extremoduro - Música parecida
 • /recommend como marea - Alternativa en español
 
+<b>Redescubrir tu biblioteca (🆕):</b>
+• /recommend biblioteca - Redescubrir música olvidada
+• /recommend biblioteca rock - Rock de tu biblioteca
+• /recommend biblioteca album - Álbumes olvidados
+💡 Te recomiendo música que YA tienes pero no escuchas
+
 <b>Búsqueda:</b>
 • /search queen - Buscar Queen
 • /search bohemian rhapsody - Buscar canción
@@ -216,6 +222,8 @@ Sé todo lo detallado que quieras:
         - /recommend track → Solo canciones
         - /recommend rock → Recomendaciones de rock
         - /recommend album metal → Álbumes de metal
+        - /recommend biblioteca → Recomendaciones solo de tu biblioteca (redescubrimiento)
+        - /recommend biblioteca rock → Recomendaciones de rock de tu biblioteca
         """
         # Parsear argumentos
         rec_type = "general"  # general, album, artist, track
@@ -223,6 +231,7 @@ Sé todo lo detallado que quieras:
         similar_to = None  # Para búsquedas "similar a..."
         recommendation_limit = 5  # Por defecto
         custom_prompt = None  # Para descripciones específicas
+        from_library_only = False  # NUEVO: solo de biblioteca
         
         # Extraer argumentos especiales (vienen de handle_message)
         if context.args:
@@ -243,6 +252,13 @@ Sé todo lo detallado que quieras:
         
         if context.args:
             args = [arg.lower() for arg in context.args]
+            
+            # NUEVO: Detectar flag de "biblioteca"/"library"
+            if any(word in args for word in ["biblioteca", "library", "lib", "mi", "redescubrir", "redescubrimiento"]):
+                from_library_only = True
+                # Remover esas palabras de args
+                args = [a for a in args if a not in ["biblioteca", "library", "lib", "mi", "redescubrir", "redescubrimiento"]]
+                print(f"📚 Modo biblioteca detectado: from_library_only=True")
             
             # Primero detectar tipo de recomendación (puede estar en cualquier posición)
             if any(word in args for word in ["album", "disco", "cd", "álbum"]):
@@ -274,18 +290,26 @@ Sé todo lo detallado que quieras:
                     genre_filter = " ".join(args)
         
         # Mensaje personalizado según el tipo
+        library_prefix = "📚 de tu biblioteca" if from_library_only else ""
+        
         if custom_prompt:
-            await update.message.reply_text(f"🎨 Analizando tu petición: '{custom_prompt}'...")
+            msg = f"🎨 Analizando tu petición: '{custom_prompt}'"
+            if from_library_only:
+                msg += " (solo de tu biblioteca)"
+            await update.message.reply_text(msg + "...")
         elif similar_to:
             await update.message.reply_text(f"🔍 Buscando música similar a '{similar_to}'...")
         elif rec_type == "album":
-            await update.message.reply_text(f"📀 Analizando álbumes{f' de {genre_filter}' if genre_filter else ''}...")
+            await update.message.reply_text(f"📀 Analizando álbumes{library_prefix}{f' de {genre_filter}' if genre_filter else ''}...")
         elif rec_type == "artist":
-            await update.message.reply_text(f"🎤 Buscando artistas{f' de {genre_filter}' if genre_filter else ''}...")
+            await update.message.reply_text(f"🎤 Buscando artistas{library_prefix}{f' de {genre_filter}' if genre_filter else ''}...")
         elif rec_type == "track":
-            await update.message.reply_text(f"🎵 Buscando canciones{f' de {genre_filter}' if genre_filter else ''}...")
+            await update.message.reply_text(f"🎵 Buscando canciones{library_prefix}{f' de {genre_filter}' if genre_filter else ''}...")
         else:
-            await update.message.reply_text("🎵 Analizando tus gustos musicales...")
+            if from_library_only:
+                await update.message.reply_text("📚 Analizando tu biblioteca para redescubrir música...")
+            else:
+                await update.message.reply_text("🎵 Analizando tus gustos musicales...")
         
         try:
             recommendations = []
@@ -429,7 +453,9 @@ Sé todo lo detallado que quieras:
                 )
                 
                 # Generar recomendaciones (recommendation_limit ya está definido arriba)
-                if custom_prompt:
+                if from_library_only:
+                    print(f"📚 Generando recomendaciones SOLO de biblioteca (tipo: {rec_type}, género: {genre_filter})")
+                elif custom_prompt:
                     print(f"🎯 Generando recomendaciones con prompt personalizado: {custom_prompt}")
                 else:
                     print(f"🎯 Generando recomendaciones (tipo: {rec_type}, género: {genre_filter}) para {len(recent_tracks)} tracks y {len(top_artists)} artistas...")
@@ -439,7 +465,8 @@ Sé todo lo detallado que quieras:
                     limit=recommendation_limit,
                     recommendation_type=rec_type,
                     genre_filter=genre_filter,
-                    custom_prompt=custom_prompt
+                    custom_prompt=custom_prompt,
+                    from_library_only=from_library_only
                 )
                 print(f"✅ Recomendaciones generadas: {len(recommendations)}")
             
