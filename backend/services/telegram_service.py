@@ -1655,6 +1655,29 @@ Sé todo lo detallado que quieras:
                     # Fallback a conversación si no hay artista específico
                     await self._handle_conversational_query(update, user_message)
             
+            elif intent == "recomendar_biblioteca":
+                # Recomendaciones DE la biblioteca (redescubrimiento)
+                print(f"📚 Intent: recomendar_biblioteca detectado")
+                
+                # Extraer parámetros
+                genre = params.get("genre", params.get("genres", [""])[0] if "genres" in params else "")
+                rec_type = params.get("type", "general")
+                
+                # Construir args para el comando
+                args = ["biblioteca"]
+                
+                if rec_type and rec_type in ["album", "artist", "track"]:
+                    args.append(rec_type)
+                
+                if genre:
+                    args.append(genre)
+                
+                args.append("__limit=5")
+                
+                context.args = args
+                print(f"   Llamando /recommend con args: {args}")
+                await self.recommend_command(update, context)
+            
             elif intent == "referencia":
                 # Usuario hace referencia a algo anterior ("más de eso", "otro así")
                 if session.last_recommendations:
