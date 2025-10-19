@@ -5,10 +5,9 @@ import numpy as np
 from collections import Counter
 import re
 import random
-from models.schemas import UserProfile, Recommendation, Track, LastFMTrack, LastFMArtist, MusicAnalysis
+from models.schemas import UserProfile, Recommendation, Track, ScrobbleTrack, ScrobbleArtist, MusicAnalysis
 from services.navidrome_service import NavidromeService
 from services.listenbrainz_service import ListenBrainzService
-from services.lastfm_service import LastFMService
 from services.musicbrainz_service import MusicBrainzService
 
 class MusicRecommendationService:
@@ -19,20 +18,47 @@ class MusicRecommendationService:
         self.navidrome = NavidromeService()
         self.listenbrainz = ListenBrainzService()
         
-        # Inicializar Last.fm si está configurado
-        self.lastfm = None
-        if os.getenv("LASTFM_API_KEY") and os.getenv("LASTFM_USERNAME"):
-            self.lastfm = LastFMService()
-            print("✅ Servicio de recomendaciones con Last.fm habilitado")
-        
-        # Inicializar MusicBrainz para verificación de metadatos
+        # Inicializar MusicBrainz para metadatos y descubrimiento
         self.musicbrainz = None
         if os.getenv("ENABLE_MUSICBRAINZ", "true").lower() == "true":
             try:
                 self.musicbrainz = MusicBrainzService()
-                print("✅ MusicBrainz habilitado para verificación de metadatos")
+                print("✅ MusicBrainz habilitado para metadatos y descubrimiento")
             except Exception as e:
                 print(f"⚠️ Error inicializando MusicBrainz: {e}")
+        
+        # Cache simple para optimizar rendimiento
+        self._library_artists_cache = None
+        self._library_artists_cache_time = 0
+        self._cache_ttl = 300  # 5 minutos
+        
+        print("✅ Servicio de recomendaciones usando ListenBrainz + MusicBrainz")
+    
+    async def _get_library_artists_cached(self) -> set:
+        """Obtener lista de artistas de biblioteca con caché de 5 minutos
+        
+        Returns:
+            Set de nombres de artistas en minúsculas
+        """
+        import time
+        current_time = time.time()
+        
+        # Si el cache es válido, usarlo
+        if (self._library_artists_cache is not None and 
+            current_time - self._library_artists_cache_time < self._cache_ttl):
+            print(f"💾 Usando cache de artistas de biblioteca ({len(self._library_artists_cache)} artistas)")
+            return self._library_artists_cache
+        
+        # Cache expirado o no existe, obtener de nuevo
+        try:
+            library_data = await self.navidrome.get_artists(limit=500)
+            self._library_artists_cache = {artist.name.lower() for artist in library_data}
+            self._library_artists_cache_time = current_time
+            print(f"📚 Biblioteca cargada: {len(self._library_artists_cache)} artistas (cache por {self._cache_ttl}s)")
+            return self._library_artists_cache
+        except Exception as e:
+            print(f"⚠️ Error obteniendo artistas de biblioteca: {e}")
+            return set()
     
     async def analyze_user_profile(self, user_profile: UserProfile) -> MusicAnalysis:
         """Analizar el perfil musical del usuario"""
@@ -90,21 +116,30 @@ class MusicRecommendationService:
         include_new_music: bool = True,
         recommendation_type: str = "general",
         genre_filter: Optional[str] = None,
-        custom_prompt: Optional[str] = None
+        custom_prompt: Optional[str] = None,
+        from_library_only: bool = False
     ) -> List[Recommendation]:
         """Generar recomendaciones basadas en el perfil del usuario
         
         Args:
             user_profile: Perfil del usuario con sus gustos
             limit: Número de recomendaciones a generar
-            include_new_music: Si True, incluye música que no está en la biblioteca (usando Last.fm)
+            include_new_music: Si True, incluye música que no está en la biblioteca (usando ListenBrainz)
             recommendation_type: 'general', 'album', 'artist', 'track'
             genre_filter: Género o estilo específico para filtrar
             custom_prompt: Descripción libre y específica del usuario sobre lo que busca
+            from_library_only: Si True, SOLO recomienda música de la biblioteca del usuario (no descubrimiento)
         """
         try:
+            # Si hay genre_filter pero no custom_prompt, convertir el genre_filter en custom_prompt
+            if genre_filter and not custom_prompt:
+                custom_prompt = f"música de género {genre_filter}"
+                print(f"🎯 Convirtiendo filtro de género '{genre_filter}' en prompt personalizado")
+            
             # Mensaje de log con información del prompt personalizado
-            if custom_prompt:
+            if from_library_only:
+                print(f"📚 Generando {limit} recomendaciones SOLO de tu biblioteca...")
+            elif custom_prompt:
                 print(f"🎯 Generando {limit} recomendaciones con criterios específicos: {custom_prompt[:100]}...")
             else:
                 print(f"🎯 Generando {limit} recomendaciones...")
@@ -114,9 +149,30 @@ class MusicRecommendationService:
             
             recommendations = []
             
-            # Si hay un custom_prompt, usar la IA para generar recomendaciones más específicas
-            if custom_prompt:
-                print(f"🎨 Usando descripción personalizada para recomendaciones...")
+            # Si solo quiere recomendaciones de biblioteca, ir directo a eso
+            if from_library_only:
+                print("📚 Modo: Solo recomendaciones de tu biblioteca (sin descubrimiento)")
+                library_recs = await self._generate_library_only_recommendations(
+                    user_profile,
+                    analysis,
+                    limit,
+                    recommendation_type=recommendation_type,
+                    genre_filter=genre_filter,
+                    custom_prompt=custom_prompt
+                )
+                return library_recs
+            
+            # DECISIÓN: ¿Usar IA o solo ListenBrainz+MusicBrainz?
+            # IA solo para peticiones específicas (con género o custom_prompt)
+            # ListenBrainz+MusicBrainz para recomendaciones generales basadas en historial
+            use_ai = bool(genre_filter or custom_prompt)
+            
+            if use_ai:
+                # Usuario pidió algo específico - usar IA
+                if not custom_prompt and genre_filter:
+                    custom_prompt = f"música de género {genre_filter}"
+                
+                print(f"🎨 Generando recomendaciones con IA (criterio específico: {custom_prompt[:100]}...)...")
                 custom_recs = await self._generate_custom_prompt_recommendations(
                     user_profile,
                     analysis,
@@ -125,21 +181,34 @@ class MusicRecommendationService:
                     recommendation_type
                 )
                 recommendations.extend(custom_recs)
-                print(f"✅ Encontradas {len(custom_recs)} recomendaciones personalizadas")
+                print(f"✅ Encontradas {len(custom_recs)} recomendaciones de IA")
             
-            # Si Last.fm está habilitado y se solicita música nueva (y no hay suficientes recomendaciones), usarlo
-            if len(recommendations) < limit and include_new_music and self.lastfm and len(user_profile.top_artists) > 0:
+            # Usar ListenBrainz+MusicBrainz para descubrimiento basado en historial
+            if len(recommendations) < limit and include_new_music and len(user_profile.top_artists) > 0:
                 remaining_limit = limit - len(recommendations)
-                print(f"🌍 Buscando música nueva usando Last.fm (tipo: {recommendation_type}, género: {genre_filter})...")
-                new_music_recs = await self._generate_lastfm_recommendations(
+                
+                if use_ai:
+                    print(f"🌍 Complementando con ListenBrainz+MusicBrainz...")
+                else:
+                    print(f"🌍 Generando recomendaciones desde ListenBrainz+MusicBrainz basadas en tu historial...")
+                
+                new_music_recs = await self._generate_listenbrainz_recommendations(
                     user_profile, 
                     remaining_limit, 
                     recommendation_type=recommendation_type,
                     genre_filter=genre_filter,
                     custom_prompt=custom_prompt
                 )
-                recommendations.extend(new_music_recs)
-                print(f"✅ Encontradas {len(new_music_recs)} recomendaciones de música nueva")
+                
+                # Filtrar duplicados con recomendaciones existentes
+                existing_keys = {f"{r.track.artist.lower()}|{r.track.title.lower()}" for r in recommendations}
+                filtered_recs = [r for r in new_music_recs 
+                                if f"{r.track.artist.lower()}|{r.track.title.lower()}" not in existing_keys]
+                
+                recommendations.extend(filtered_recs)
+                if len(filtered_recs) < len(new_music_recs):
+                    print(f"⚠️ Filtrados {len(new_music_recs) - len(filtered_recs)} duplicados")
+                print(f"✅ Encontradas {len(filtered_recs)} recomendaciones de música nueva")
             
             # Si no hay suficientes, buscar en la biblioteca
             if len(recommendations) < limit:
@@ -157,17 +226,37 @@ class MusicRecommendationService:
                 library_recs = await self._generate_ai_recommendations(
                     user_profile, analysis, unknown_tracks, limit - len(recommendations)
                 )
-                recommendations.extend(library_recs)
-                print(f"✅ Encontradas {len(library_recs)} recomendaciones de tu biblioteca")
+                
+                # Filtrar duplicados con recomendaciones existentes
+                existing_keys = {f"{r.track.artist.lower()}|{r.track.title.lower()}" for r in recommendations}
+                filtered_lib_recs = [r for r in library_recs 
+                                    if f"{r.track.artist.lower()}|{r.track.title.lower()}" not in existing_keys]
+                
+                recommendations.extend(filtered_lib_recs)
+                if len(filtered_lib_recs) < len(library_recs):
+                    print(f"⚠️ Filtrados {len(library_recs) - len(filtered_lib_recs)} duplicados de biblioteca")
+                print(f"✅ Encontradas {len(filtered_lib_recs)} recomendaciones de tu biblioteca")
             
-            print(f"🎵 Total de recomendaciones: {len(recommendations)}")
-            return recommendations[:limit]
+            # Eliminar duplicados finales (por si acaso)
+            unique_recommendations = []
+            seen_final = set()
+            for rec in recommendations:
+                key = f"{rec.track.artist.lower()}|{rec.track.title.lower()}"
+                if key not in seen_final:
+                    unique_recommendations.append(rec)
+                    seen_final.add(key)
+            
+            if len(unique_recommendations) < len(recommendations):
+                print(f"⚠️ Eliminados {len(recommendations) - len(unique_recommendations)} duplicados finales")
+            
+            print(f"🎵 Total de recomendaciones únicas: {len(unique_recommendations)}")
+            return unique_recommendations[:limit]
             
         except Exception as e:
             print(f"❌ Error generando recomendaciones: {e}")
             return []
     
-    async def _generate_lastfm_recommendations(
+    async def _generate_listenbrainz_recommendations(
         self, 
         user_profile: UserProfile, 
         limit: int,
@@ -175,7 +264,7 @@ class MusicRecommendationService:
         genre_filter: Optional[str] = None,
         custom_prompt: Optional[str] = None
     ) -> List[Recommendation]:
-        """Generar recomendaciones usando Last.fm (música nueva que no tienes)
+        """Generar recomendaciones usando ListenBrainz (música nueva que no tienes)
         
         Args:
             user_profile: Perfil del usuario
@@ -188,12 +277,16 @@ class MusicRecommendationService:
             recommendations = []
             processed_artists = set()
             
+            # Obtener lista de artistas de la biblioteca para excluirlos (con cache)
+            library_artists = await self._get_library_artists_cached()
+            
             # Seleccionar aleatoriamente algunos top artistas para variar las recomendaciones
-            available_top_artists = user_profile.top_artists[:10]  # Considerar top 10
-            num_artists_to_use = min(5, len(available_top_artists))
+            # OPTIMIZACIÓN: Reducido de 5 a 3 artistas para ser más rápido
+            available_top_artists = user_profile.top_artists[:8]  # Considerar top 8
+            num_artists_to_use = min(3, len(available_top_artists))  # Máximo 3 artistas
             selected_artists = random.sample(available_top_artists, num_artists_to_use) if len(available_top_artists) > num_artists_to_use else available_top_artists
             
-            print(f"🔍 Generando recomendaciones de Last.fm para {len(selected_artists)} artistas (seleccionados aleatoriamente)")
+            print(f"🔍 Generando recomendaciones de ListenBrainz para {len(selected_artists)} artistas (optimizado para velocidad)")
             
             # Para asegurar diversidad, tomar 1 recomendación por artista
             # Obtener artistas similares basados en los artistas seleccionados
@@ -203,7 +296,12 @@ class MusicRecommendationService:
                 
                 print(f"🎤 Buscando artistas similares a: {top_artist.name}")
                 # Obtener más artistas similares y seleccionar aleatoriamente
-                similar_artists = await self.lastfm.get_similar_artists(top_artist.name, limit=10)
+                # OPTIMIZACIÓN: Reducido de 10 a 7 para ser más rápido
+                similar_artists = await self.listenbrainz.get_similar_artists_from_recording(
+                    top_artist.name, 
+                    limit=7,
+                    musicbrainz_service=self.musicbrainz
+                )
                 print(f"   Encontrados {len(similar_artists)} artistas similares")
                 
                 # Aleatorizar el orden de artistas similares
@@ -211,13 +309,20 @@ class MusicRecommendationService:
                     random.shuffle(similar_artists)
                 
                 # IMPORTANTE: Solo tomar 1 artista similar por cada top_artist para diversidad
+                # Y EXCLUIR artistas que ya están en la biblioteca
                 similar_artist = None
                 for candidate in similar_artists:
-                    if candidate.name not in processed_artists:
+                    candidate_lower = candidate.name.lower()
+                    if (candidate.name not in processed_artists and 
+                        candidate_lower not in library_artists):
                         similar_artist = candidate
+                        print(f"   ✅ Seleccionado: {candidate.name} (NO está en biblioteca)")
                         break
+                    elif candidate_lower in library_artists:
+                        print(f"   ⏭️ Skipping {candidate.name}: ya está en biblioteca")
                 
                 if not similar_artist:
+                    print(f"   ⚠️ No hay artistas similares nuevos para {top_artist.name}")
                     continue
                     
                 processed_artists.add(similar_artist.name)
@@ -238,8 +343,11 @@ class MusicRecommendationService:
                 artist_url = similar_artist.url if hasattr(similar_artist, 'url') and similar_artist.url else ""
                 
                 if recommendation_type == "album":
-                    # Obtener el álbum top del artista similar
-                    top_albums = await self.lastfm.get_artist_top_albums(similar_artist.name, limit=1)
+                    # Obtener el álbum top del artista similar (usar MusicBrainz)
+                    if self.musicbrainz:
+                        top_albums = await self.musicbrainz.get_artist_top_albums_enhanced(similar_artist.name, limit=1)
+                    else:
+                        top_albums = []
                     if top_albums:
                         album_data = top_albums[0]
                         title = album_data.get("name", f"Álbum de {similar_artist.name}")
@@ -251,8 +359,11 @@ class MusicRecommendationService:
                         reason = f"📀 Similar a {top_artist.name}"
                 
                 elif recommendation_type == "track":
-                    # Obtener la canción top del artista similar
-                    top_tracks = await self.lastfm.get_artist_top_tracks(similar_artist.name, limit=1)
+                    # Obtener la canción top del artista similar (usar MusicBrainz)
+                    if self.musicbrainz:
+                        top_tracks = await self.musicbrainz.get_artist_top_tracks_enhanced(similar_artist.name, limit=1)
+                    else:
+                        top_tracks = []
                     if top_tracks:
                         track_data = top_tracks[0]
                         title = track_data.name
@@ -272,7 +383,7 @@ class MusicRecommendationService:
                 
                 # Crear el objeto Track primero
                 track = Track(
-                    id=f"lastfm_{recommendation_type}_{similar_artist.name.replace(' ', '_')}_{title.replace(' ', '_')[:30]}",
+                    id=f"listenbrainz_{recommendation_type}_{similar_artist.name.replace(' ', '_')}_{title.replace(' ', '_')[:30]}",
                     title=title,
                     artist=similar_artist.name,
                     album=album_name,
@@ -289,16 +400,16 @@ class MusicRecommendationService:
                     track=track,
                     reason=reason,
                     confidence=0.85,  # Score alto para música nueva
-                    source="Last.fm",
+                    source="ListenBrainz+MusicBrainz",
                     tags=[genre_filter] if genre_filter else []
                 )
                 recommendations.append(recommendation)
             
-            print(f"✅ Total de recomendaciones de Last.fm: {len(recommendations)}")
+            print(f"✅ Total de recomendaciones de ListenBrainz: {len(recommendations)}")
             return recommendations
             
         except Exception as e:
-            print(f"❌ Error generando recomendaciones de Last.fm: {e}")
+            print(f"❌ Error generando recomendaciones de ListenBrainz: {e}")
             import traceback
             traceback.print_exc()
             return []
@@ -327,129 +438,255 @@ class MusicRecommendationService:
             recent_artists = [track.artist for track in user_profile.recent_tracks[:15]]
             top_artists = [artist.name for artist in user_profile.top_artists[:10]]
             
-            # Crear un prompt inteligente para la IA que entienda las especificaciones
-            ai_prompt = f"""Eres un experto curador musical con conocimiento profundo de música de todos los géneros, épocas y estilos.
+            # Obtener artistas de biblioteca para excluir (con cache)
+            library_artists_set = await self._get_library_artists_cached()
+            library_artists_list = list(library_artists_set)
+            
+            # Crear un prompt MUY estricto para evitar análisis
+            ai_prompt = f"""TAREA: Genera {limit} recomendaciones musicales.
 
 PERFIL DEL USUARIO:
-- Top artistas favoritos: {', '.join(top_artists[:5]) if top_artists else 'Desconocidos'}
-- Artistas que escucha recientemente: {', '.join(set(recent_artists[:10])) if recent_artists else 'Desconocidos'}
-- Géneros que le gustan: {', '.join(list(analysis.genre_distribution.keys())[:5]) if analysis.genre_distribution else 'Variados'}
-- Diversidad musical: {analysis.artist_diversity:.2f} (0 = muy específico, 1 = muy diverso)
+Top artistas: {', '.join(top_artists[:5]) if top_artists else 'Desconocidos'}
 
-PETICIÓN DEL USUARIO:
-"{custom_prompt}"
+EXCLUIR (ya los tiene): {', '.join(library_artists_list[:20]) if library_artists_list else 'Ninguno'}
 
-TIPO DE RECOMENDACIÓN:
-{recommendation_type} (album = álbumes, artist = artistas, track = canciones, general = cualquiera)
+CRITERIO: {custom_prompt}
 
-TU TAREA:
-1. Analiza cuidadosamente la petición del usuario y todos sus detalles específicos
-2. Ten en cuenta sus gustos actuales pero prioriza lo que está pidiendo específicamente
-3. Si menciona características específicas (época, estilo, instrumentos, mood, energía, etc.), enfócate en eso
-4. Si menciona un artista/banda como referencia, busca similitudes pero también piensa en otros que cumplan los criterios
-5. Genera exactamente {limit} recomendaciones que cumplan con TODOS los criterios mencionados
+INSTRUCCIONES:
+1. Recomienda {limit} artistas/álbumes DIFERENTES
+2. NO recomiendes artistas que ya tiene
+3. Si pide un género, IGNORA su perfil y recomienda SOLO ese género
+4. Genera SOLO la lista, SIN análisis previo
 
-IMPORTANTE:
-- Sé ESPECÍFICO con nombres de artistas, álbumes y canciones reales
-- Si pide características específicas (ej: "rock progresivo de los 70s"), busca artistas que cumplan exactamente eso
-- Si pide algo "similar a X", piensa en qué hace especial a X y busca otros con esas cualidades
-- Si menciona múltiples criterios (ej: "rock energético con buenos solos de guitarra"), TODOS deben cumplirse
-- Las recomendaciones deben ser variadas entre sí pero todas cumplir los criterios
+FORMATO OBLIGATORIO (cada línea):
+[Artista] - [Álbum/Nombre] | [Razón de 15-40 palabras con mayúscula inicial y punto final.]
 
-FORMATO DE RESPUESTA:
-Proporciona EXACTAMENTE {limit} recomendaciones en este formato:
-[ARTISTA] - [NOMBRE] | [RAZÓN DETALLADA]
+EJEMPLOS VÁLIDOS:
+Radiohead - OK Computer | Rock alternativo innovador de 1997 con experimentación electrónica y letras introspectivas que definen una generación.
+Aphex Twin - Selected Ambient Works | Electrónica ambient pionera con texturas sonoras profundas y atmósferas envolventes perfectas para inmersión.
 
-Ejemplo:
-Pink Floyd - The Dark Side of the Moon | Álbum conceptual de rock progresivo de 1973 con sintetizadores atmosféricos
-Led Zeppelin - Physical Graffiti | Rock épico de los 70s con solos de guitarra legendarios de Jimmy Page
+❌ NO HAGAS:
+- Análisis del perfil
+- Explicaciones
+- Introducciones
+- Numeración
 
-Genera las {limit} recomendaciones ahora:"""
+✅ EMPIEZA DIRECTAMENTE:
+"""
 
-            # Generar con Gemini
-            response = self.model.generate_content(ai_prompt)
-            ai_response = response.text.strip()
+            # Generar con Gemini con configuración para respuestas más predecibles y rápidas
+            # OPTIMIZACIÓN: Reducido max_output_tokens para respuestas más rápidas
+            generation_config = {
+                'temperature': 0.7,
+                'top_p': 0.9,
+                'top_k': 40,
+                'max_output_tokens': 800,  # Suficiente para 5-10 recomendaciones
+            }
+            
+            response = self.model.generate_content(
+                ai_prompt,
+                generation_config=generation_config
+            )
+            
+            # Manejar errores de seguridad de Gemini
+            try:
+                ai_response = response.text.strip()
+            except ValueError as e:
+                # Si la respuesta fue bloqueada por seguridad, intentar sin lista de biblioteca
+                print(f"⚠️ Respuesta bloqueada por filtros de seguridad de Gemini")
+                print(f"   Reintentando sin lista detallada de biblioteca...")
+                
+                # Prompt simplificado sin artistas específicos
+                ai_prompt_simple = f"""TAREA: Genera {limit} recomendaciones musicales.
+
+PERFIL: Escucha {', '.join(top_artists[:3]) if top_artists else 'música variada'}
+
+CRITERIO: {custom_prompt}
+
+FORMATO (cada línea):
+[Artista] - [Álbum] | [Razón de 15-40 palabras con mayúscula y punto.]
+
+NO generes análisis. EMPIEZA DIRECTAMENTE:
+"""
+                
+                response = self.model.generate_content(ai_prompt_simple, generation_config=generation_config)
+                try:
+                    ai_response = response.text.strip()
+                except ValueError:
+                    print(f"❌ IA bloqueada por seguridad incluso con prompt simple")
+                    return []
             
             print(f"📝 Respuesta de IA recibida (longitud: {len(ai_response)})")
+            print(f"📝 DEBUG - Respuesta completa:\n{ai_response}\n---END---")
             
             # Procesar las recomendaciones de la IA
             recommendations = []
-            lines = [line.strip() for line in ai_response.split('\n') if line.strip()]
+            seen_tracks = set()  # Para evitar duplicados
             
-            for line in lines:
+            # Limpiar la respuesta de la IA
+            # A veces genera texto antes o marcadores de formato
+            lines_raw = ai_response.split('\n')
+            
+            # Filtrar líneas válidas: deben tener formato [ARTISTA] - [NOMBRE] | [RAZÓN]
+            valid_lines = []
+            for line in lines_raw:
+                line = line.strip()
+                if not line:
+                    continue
+                
+                # Remover numeración si existe (1., 2., etc)
+                line_clean = re.sub(r'^\d+[\.\)]\s*', '', line)
+                
+                # Debe tener - y | para ser válida
+                if '-' in line_clean and '|' in line_clean:
+                    # Verificar que no sea una línea de análisis
+                    lower = line_clean.lower()
+                    if not any(skip in lower for skip in ['**', 'basado en', 'perfil', 'análisis', 'usuario', 'género']):
+                        valid_lines.append(line_clean)
+            
+            print(f"📝 DEBUG - Encontradas {len(valid_lines)} líneas válidas de {len(lines_raw)} totales")
+            if len(valid_lines) > 0:
+                print(f"📝 DEBUG - Primera línea válida: {valid_lines[0][:100]}")
+            
+            for line in valid_lines:
                 if len(recommendations) >= limit:
                     break
                 
                 # Buscar el formato: [ARTISTA] - [NOMBRE] | [RAZÓN]
-                # o formatos alternativos comunes
                 try:
-                    # Intentar parsear formato con |
-                    if '|' in line and '-' in line:
-                        parts = line.split('|', 1)
-                        artist_and_name = parts[0].strip()
-                        reason = parts[1].strip() if len(parts) > 1 else "Recomendado según tus criterios"
-                        
-                        # Remover números y puntos del inicio (ej: "1. ", "1) ")
-                        artist_and_name = re.sub(r'^\d+[\.\)]\s*', '', artist_and_name)
-                        
-                        # Dividir artista y nombre
-                        if ' - ' in artist_and_name:
-                            artist, name = artist_and_name.split(' - ', 1)
-                        elif '-' in artist_and_name:
-                            artist, name = artist_and_name.split('-', 1)
-                        else:
-                            # Si no hay separador, asumir que es el nombre del artista
-                            artist = artist_and_name
-                            name = artist_and_name
-                        
-                        artist = artist.strip()
-                        name = name.strip()
-                        
-                        # Crear objeto Track
-                        track = Track(
-                            id=f"ai_custom_{artist.replace(' ', '_')}_{name.replace(' ', '_')[:30]}",
-                            title=name,
-                            artist=artist,
-                            album=name if recommendation_type == "album" else "",
-                            duration=None,
-                            year=None,
-                            genre=genre_filter if 'genre_filter' in locals() else "",
-                            play_count=None,
-                            path="",
-                            cover_url=None
-                        )
-                        
-                        # Crear recomendación con contexto del prompt
-                        recommendation = Recommendation(
-                            track=track,
-                            reason=f"{reason} (según: {custom_prompt[:50]}...)",
-                            confidence=0.95,  # Alta confianza porque es específico
-                            source="AI (Gemini)",
-                            tags=["custom", "specific"]
-                        )
-                        recommendations.append(recommendation)
-                        print(f"   ✅ Agregada: {artist} - {name}")
-                        
+                    parts = line.split('|', 1)
+                    artist_and_name = parts[0].strip()
+                    reason = parts[1].strip() if len(parts) > 1 else "Recomendado según tus criterios"
+                    
+                    # Si la razón es muy corta (probablemente un fragmento), skip
+                    if len(reason) < 20:
+                        print(f"   ⚠️ Razón muy corta ({len(reason)} chars), skipping: {reason}")
+                        continue
+                    
+                    # Dividir artista y nombre
+                    if ' - ' in artist_and_name:
+                        artist, name = artist_and_name.split(' - ', 1)
+                    elif '-' in artist_and_name:
+                        artist, name = artist_and_name.split('-', 1)
+                    else:
+                        # Si no hay separador, asumir que es el nombre del artista
+                        artist = artist_and_name
+                        name = artist_and_name
+                    
+                    artist = artist.strip()
+                    name = name.strip()
+                    
+                    # VALIDACIÓN POST-PARSEO: Verificar que la razón NO sea un fragmento de análisis
+                    # Los fragmentos tienen patrones específicos:
+                    is_invalid = False
+                    
+                    # Patrones de fragmento con markdown o análisis
+                    if any(pattern in reason for pattern in ['):**', '**', ':**', '*:', 'céntrico', 'fi:', 'hop:', 'rock:', 'punk:', 'jazz:', 'pop:', 'metal:']):
+                        print(f"   ⚠️ Razón con patrón markdown/análisis, skipping: {reason[:60]}")
+                        is_invalid = True
+                    
+                    # Empieza con minúscula (fragmento de oración)
+                    if reason and reason[0].islower():
+                        print(f"   ⚠️ Razón empieza con minúscula (fragmento), skipping: {reason[:60]}")
+                        is_invalid = True
+                    
+                    # Frases de análisis (más exhaustivo)
+                    analysis_phrases = [
+                        'la lista de', 'el usuario', 'artistas recientes', 'demuestran', 'sugiere',
+                        'tu sección', 'tu perfil', 'tus gustos', 'monopolizada por', 'indica una',
+                        'la presencia de', 'apuntan a', 'predilección por', 'esto sugiere',
+                        'basado en', 'el análisis'
+                    ]
+                    if any(phrase in reason.lower() for phrase in analysis_phrases):
+                        print(f"   ⚠️ Razón con frase de análisis, skipping: {reason[:60]}")
+                        is_invalid = True
+                    
+                    # Razón muy corta (menos de 8 palabras)
+                    if len(reason.split()) < 8:
+                        print(f"   ⚠️ Razón muy corta ({len(reason.split())} palabras), skipping: {reason}")
+                        is_invalid = True
+                    
+                    # Detectar si la razón parece ser un fragmento de título de sección
+                    # Ej: "Hip Hop Español Clásico y Colaborativo:**"
+                    if reason.endswith(':**') or reason.endswith('**'):
+                        print(f"   ⚠️ Razón parece título de sección, skipping: {reason[:60]}")
+                        is_invalid = True
+                    
+                    # Detectar palabras truncadas al inicio (señal de fragmento)
+                    # Ej: "hop Español" (debería ser "Hip hop Español")
+                    first_word = reason.split()[0] if reason.split() else ""
+                    if first_word and len(first_word) <= 3 and first_word[0].isupper():
+                        # Verificar si parece un fragmento de palabra
+                        common_fragments = ['hop', 'fi', 'pop', 'rap', 'dub', 'ska']
+                        if first_word.lower() in common_fragments:
+                            print(f"   ⚠️ Razón empieza con fragmento de palabra ({first_word}), skipping: {reason[:60]}")
+                            is_invalid = True
+                    
+                    if is_invalid:
+                        continue
+                    
+                    # VALIDACIÓN: Verificar que el artista NO esté en biblioteca
+                    if artist.lower() in library_artists_set:
+                        print(f"   ⏭️ Skipping {artist}: ya está en biblioteca")
+                        continue
+                    
+                    # Verificar duplicados
+                    track_key = f"{artist.lower()}|{name.lower()}"
+                    if track_key in seen_tracks:
+                        print(f"   ⚠️ Duplicado detectado, skipping: {artist} - {name}")
+                        continue
+                    seen_tracks.add(track_key)
+                    
+                    # Crear objeto Track
+                    track = Track(
+                        id=f"ai_custom_{artist.replace(' ', '_')}_{name.replace(' ', '_')[:30]}",
+                        title=name,
+                        artist=artist,
+                        album=name if recommendation_type == "album" else "",
+                        duration=None,
+                        year=None,
+                        genre=custom_prompt if custom_prompt else "",
+                        play_count=None,
+                        path="",
+                        cover_url=None
+                    )
+                    
+                    # Limpiar la razón (cortar si es muy larga y agregar ...)
+                    if len(reason) > 200:
+                        reason = reason[:197] + "..."
+                    
+                    # Crear recomendación
+                    recommendation = Recommendation(
+                        track=track,
+                        reason=reason,
+                        confidence=0.95,  # Alta confianza porque es específico
+                        source="AI (Gemini)",
+                        tags=["custom", "specific"]
+                    )
+                    recommendations.append(recommendation)
+                    print(f"   ✅ Agregada: {artist} - {name}")
+                    print(f"      Razón: {reason[:80]}...")
+                    
                 except Exception as e:
-                    print(f"   ⚠️ Error parseando línea: {line} | {e}")
+                    print(f"   ⚠️ Error parseando línea: {line[:100]} | {e}")
                     continue
             
             print(f"🎨 Total recomendaciones personalizadas generadas: {len(recommendations)}")
             
-            # Si se generaron recomendaciones usando IA, intentar buscar en Last.fm
+            # Si se generaron recomendaciones usando IA, intentar buscar en MusicBrainz
             # para agregar URLs y más información
-            if self.lastfm and recommendations:
-                print("🔍 Enriqueciendo recomendaciones con datos de Last.fm...")
+            if self.musicbrainz and recommendations:
+                print("🔍 Enriqueciendo recomendaciones con datos de MusicBrainz...")
                 for rec in recommendations[:limit]:
                     try:
                         # Si es artista, buscar info del artista
                         if recommendation_type == "artist":
-                            similar_artists = await self.lastfm.get_similar_artists(rec.track.artist, limit=1)
-                            if similar_artists and similar_artists[0].url:
-                                rec.track.path = similar_artists[0].url
+                            artist_info = await self.musicbrainz.verify_artist_metadata(rec.track.artist)
+                            if artist_info.get("found") and artist_info.get("url"):
+                                rec.track.path = artist_info["url"]
                         # Si es álbum, buscar álbumes del artista
                         elif recommendation_type == "album":
-                            top_albums = await self.lastfm.get_artist_top_albums(rec.track.artist, limit=5)
+                            top_albums = await self.musicbrainz.get_artist_top_albums(rec.track.artist, limit=5)
                             if top_albums:
                                 # Buscar el álbum específico o usar el primero
                                 for album_data in top_albums:
@@ -475,69 +712,581 @@ Genera las {limit} recomendaciones ahora:"""
         candidate_tracks: List[Track], 
         limit: int
     ) -> List[Recommendation]:
-        """Generar recomendaciones usando OpenAI"""
+        """Generar recomendaciones usando IA desde la biblioteca del usuario"""
         try:
             # Preparar contexto para la IA
             recent_artists = [track.artist for track in user_profile.recent_tracks[:10]]
             top_artists = [artist.name for artist in user_profile.top_artists[:5]]
             
-            # Crear prompt para la IA
-            prompt = f"""
-            Eres un experto en música que analiza los gustos de los usuarios y hace recomendaciones.
+            # Crear lista de canciones disponibles en la biblioteca
+            available_tracks = [f"{t.artist} - {t.title}" for t in candidate_tracks[:50]]
             
-            Perfil del usuario:
-            - Artistas recientes: {', '.join(recent_artists)}
-            - Top artistas: {', '.join(top_artists)}
-            - Géneros favoritos: {list(analysis.genre_distribution.keys())}
-            - Diversidad de artistas: {analysis.artist_diversity:.2f}
+            # Crear prompt MUY ESTRICTO para evitar análisis previo
+            prompt = f"""TAREA: Recomienda {limit} canciones de la biblioteca del usuario.
+
+PERFIL:
+- Top artistas: {', '.join(top_artists[:5])}
+- Escucha recientemente: {', '.join(recent_artists[:5])}
+
+CANCIONES DISPONIBLES:
+{chr(10).join(available_tracks[:30])}
+
+INSTRUCCIONES:
+1. Recomienda {limit} canciones DIFERENTES de la lista
+2. NO generes análisis ni explicaciones previas
+3. EMPIEZA DIRECTAMENTE con las recomendaciones
+4. Basadas en similitud con sus gustos
+
+FORMATO OBLIGATORIO (cada línea):
+[Artista] - [Canción] | [Razón de 10-30 palabras con mayúscula inicial y punto final.]
+
+EJEMPLO:
+The Beatles - Hey Jude | Clásico del rock con melodías memorables y letras emotivas perfectas para tu gusto por música atemporal.
+
+❌ NO HAGAS:
+- Análisis del perfil
+- Explicaciones previas
+- Introducciones
+- Numeración
+
+✅ EMPIEZA DIRECTAMENTE CON LA PRIMERA RECOMENDACIÓN:
+"""
             
-            Tareas:
-            1. Analiza los patrones musicales del usuario
-            2. Identifica qué tipos de música podría disfrutar
-            3. Sugiere artistas/canciones similares pero que expandan sus horizontes
+            # Generar con Gemini con configuración para respuestas predecibles
+            generation_config = {
+                'temperature': 0.7,
+                'top_p': 0.9,
+                'top_k': 40,
+                'max_output_tokens': 600,
+            }
             
-            Proporciona recomendaciones que sean:
-            - Musicalmente coherentes con sus gustos
-            - Ligeramente exploratorias para descubrir nueva música
-            - Basadas en similitudes de género, estilo o época
+            response = self.model.generate_content(prompt, generation_config=generation_config)
+            ai_suggestions = response.text.strip()
             
-            Formato de respuesta: Artista - Canción (razón de recomendación)
-            """
+            print(f"📝 Respuesta de IA para biblioteca (longitud: {len(ai_suggestions)})")
             
-            # Generar con Gemini
-            response = self.model.generate_content(prompt)
-            ai_suggestions = response.text
-            
-            # Procesar sugerencias de IA y buscar en la biblioteca
+            # Procesar sugerencias de IA con parseo ROBUSTO
             recommendations = []
-            for line in ai_suggestions.split('\n'):
-                if '-' in line and len(recommendations) < limit:
-                    try:
-                        parts = line.split('-', 1)
-                        if len(parts) == 2:
-                            artist_song = parts[0].strip()
-                            reason = parts[1].strip()
-                            
-                            # Buscar en la biblioteca
-                            matches = await self._find_track_matches(artist_song, candidate_tracks)
-                            
-                            for track in matches[:1]:  # Tomar solo la primera coincidencia
-                                recommendation = Recommendation(
-                                    track=track,
-                                    reason=reason,
-                                    confidence=0.8,
-                                    source="ai",
-                                    tags=["ai-recommendation"]
-                                )
-                                recommendations.append(recommendation)
-                    except:
-                        continue
+            seen_tracks = set()
             
+            lines_raw = ai_suggestions.split('\n')
+            
+            # Filtrar líneas válidas: deben tener formato [ARTISTA] - [CANCIÓN] | [RAZÓN]
+            for line in lines_raw:
+                if len(recommendations) >= limit:
+                    break
+                    
+                line = line.strip()
+                if not line:
+                    continue
+                
+                # Remover numeración si existe (1., 2., etc)
+                line_clean = re.sub(r'^\d+[\.\)]\s*', '', line)
+                
+                # DEBE tener - y | para ser válida
+                if '-' not in line_clean or '|' not in line_clean:
+                    continue
+                
+                try:
+                    # Parsear: [ARTISTA] - [CANCIÓN] | [RAZÓN]
+                    parts = line_clean.split('|', 1)
+                    if len(parts) != 2:
+                        continue
+                    
+                    artist_and_song = parts[0].strip()
+                    reason = parts[1].strip()
+                    
+                    # VALIDACIONES DE RAZÓN
+                    # 1. No debe contener patrones de markdown o análisis
+                    if any(pattern in reason for pattern in ['**', '):**', 'céntrico', 'fi:', 'hop:', 'rock:', 'punk:']):
+                        print(f"   ⚠️ Razón con patrón inválido, skipping: {reason[:60]}")
+                        continue
+                    
+                    # 2. Debe empezar con mayúscula (no es fragmento de oración)
+                    if reason and reason[0].islower():
+                        print(f"   ⚠️ Razón empieza con minúscula, skipping: {reason[:60]}")
+                        continue
+                    
+                    # 3. No debe contener frases de análisis
+                    if any(phrase in reason.lower() for phrase in ['la lista de', 'el usuario', 'artistas recientes', 'demuestran', 'sugiere', 'análisis', 'perfil']):
+                        print(f"   ⚠️ Razón con frase de análisis, skipping: {reason[:60]}")
+                        continue
+                    
+                    # 4. Debe tener longitud razonable
+                    if len(reason) < 20 or len(reason.split()) < 8:
+                        print(f"   ⚠️ Razón muy corta, skipping: {reason}")
+                        continue
+                    
+                    # 5. Dividir artista y canción
+                    if ' - ' not in artist_and_song:
+                        continue
+                    
+                    artist, song = artist_and_song.split(' - ', 1)
+                    artist = artist.strip()
+                    song = song.strip()
+                    
+                    if not artist or not song:
+                        continue
+                    
+                    # Verificar duplicados
+                    track_key = f"{artist.lower()}|{song.lower()}"
+                    if track_key in seen_tracks:
+                        continue
+                    seen_tracks.add(track_key)
+                    
+                    # Buscar en la biblioteca
+                    matches = await self._find_track_matches(f"{artist} {song}", candidate_tracks)
+                    
+                    if matches:
+                        track = matches[0]
+                        
+                        # Limpiar la razón (cortar si es muy larga)
+                        if len(reason) > 200:
+                            reason = reason[:197] + "..."
+                        
+                        recommendation = Recommendation(
+                            track=track,
+                            reason=reason,
+                            confidence=0.8,
+                            source="ai",
+                            tags=["ai-recommendation"]
+                        )
+                        recommendations.append(recommendation)
+                        print(f"   ✅ Agregada: {artist} - {song}")
+                        
+                except Exception as e:
+                    print(f"   ⚠️ Error parseando línea: {line_clean[:100]} | {e}")
+                    continue
+            
+            print(f"🎨 Total recomendaciones de biblioteca con IA: {len(recommendations)}")
             return recommendations
             
         except Exception as e:
-            print(f"Error generando recomendaciones con IA: {e}")
+            print(f"❌ Error generando recomendaciones con IA: {e}")
+            import traceback
+            traceback.print_exc()
             return []
+    
+    async def _generate_library_only_recommendations(
+        self,
+        user_profile: UserProfile,
+        analysis: MusicAnalysis,
+        limit: int,
+        recommendation_type: str = "general",
+        genre_filter: Optional[str] = None,
+        custom_prompt: Optional[str] = None
+    ) -> List[Recommendation]:
+        """Generar recomendaciones SOLO de la biblioteca del usuario
+        
+        Útil para redescubrir música que ya tiene pero no ha escuchado recientemente.
+        
+        Args:
+            user_profile: Perfil del usuario
+            analysis: Análisis musical del usuario
+            limit: Número de recomendaciones
+            recommendation_type: 'general', 'album', 'artist', 'track'
+            genre_filter: Filtro de género si se especifica
+            custom_prompt: Criterio específico del usuario
+        """
+        try:
+            print(f"📚 Buscando recomendaciones en tu biblioteca de Navidrome...")
+            
+            # Preparar contexto del usuario
+            recent_artists = [track.artist for track in user_profile.recent_tracks[:15]]
+            top_artists = [artist.name for artist in user_profile.top_artists[:10]]
+            
+            # Obtener música de la biblioteca según el tipo
+            if recommendation_type == "album":
+                # Obtener álbumes
+                library_items = await self.navidrome.get_albums(limit=500)
+                item_type = "álbumes"
+            elif recommendation_type == "artist":
+                # Obtener artistas
+                library_items = await self.navidrome.get_artists(limit=500)
+                item_type = "artistas"
+            else:
+                # Obtener tracks por defecto
+                library_items = await self.navidrome.get_tracks(limit=500)
+                item_type = "canciones"
+            
+            # Filtrar por género si se especifica
+            if genre_filter:
+                print(f"   Filtrando por género: {genre_filter}")
+                filtered_items = []
+                for item in library_items:
+                    # Buscar en el género del item
+                    item_genre = getattr(item, 'genre', '').lower() if hasattr(item, 'genre') else ''
+                    if genre_filter.lower() in item_genre:
+                        filtered_items.append(item)
+                
+                if filtered_items:
+                    library_items = filtered_items
+                    print(f"   Encontrados {len(filtered_items)} {item_type} de género '{genre_filter}'")
+                else:
+                    print(f"   ⚠️ No se encontraron {item_type} del género '{genre_filter}', usando toda la biblioteca")
+            
+            # Filtrar música que NO ha escuchado recientemente (para redescubrir)
+            recent_track_names = {track.name.lower() for track in user_profile.recent_tracks[:50]}
+            recent_artist_names = {track.artist.lower() for track in user_profile.recent_tracks[:50]}
+            
+            rediscovery_items = []
+            for item in library_items:
+                # Para tracks: excluir si ya lo escuchó recientemente
+                if recommendation_type == "track" or recommendation_type == "general":
+                    item_name = getattr(item, 'title', getattr(item, 'name', '')).lower()
+                    if item_name not in recent_track_names:
+                        rediscovery_items.append(item)
+                # Para álbumes/artistas: excluir si escuchó mucho de ese artista recientemente
+                elif recommendation_type == "album":
+                    item_artist = getattr(item, 'artist', '').lower()
+                    # Permitir si no ha escuchado mucho de ese artista (max 3 veces en recientes)
+                    recent_count = sum(1 for t in user_profile.recent_tracks[:50] if t.artist.lower() == item_artist)
+                    if recent_count < 3:
+                        rediscovery_items.append(item)
+                elif recommendation_type == "artist":
+                    item_artist = getattr(item, 'name', '').lower()
+                    recent_count = sum(1 for t in user_profile.recent_tracks[:50] if t.artist.lower() == item_artist)
+                    if recent_count < 3:
+                        rediscovery_items.append(item)
+            
+            print(f"   📊 Total en biblioteca: {len(library_items)} {item_type}")
+            print(f"   🔍 Para redescubrir (no escuchados recientemente): {len(rediscovery_items)} {item_type}")
+            
+            # Si no hay suficientes items para redescubrir, usar toda la biblioteca
+            if len(rediscovery_items) < limit:
+                print(f"   ⚠️ Pocos items para redescubrir, usando toda la biblioteca")
+                candidate_items = library_items
+            else:
+                candidate_items = rediscovery_items
+            
+            # Crear lista formateada de items disponibles
+            # OPTIMIZACIÓN: Reducir a 30 items para evitar bloqueos de seguridad de Gemini
+            available_items_list = []
+            for item in candidate_items[:30]:  # Limitar a 30 para evitar bloqueos
+                if recommendation_type == "album":
+                    available_items_list.append(f"{item.artist} - {item.name}")
+                elif recommendation_type == "artist":
+                    available_items_list.append(f"{item.name}")
+                else:  # track
+                    artist = getattr(item, 'artist', 'Unknown')
+                    title = getattr(item, 'title', 'Unknown')
+                    available_items_list.append(f"{artist} - {title}")
+            
+            # Construir prompt para IA
+            criteria = custom_prompt if custom_prompt else f"música que disfrutes basada en tus gustos"
+            if genre_filter:
+                criteria = f"música de género {genre_filter}"
+            
+            prompt = f"""TAREA: Recomienda {limit} {item_type} de la biblioteca del usuario.
+
+PERFIL DEL USUARIO:
+- Top artistas: {', '.join(top_artists[:5])}
+- Escucha recientemente: {', '.join(recent_artists[:5])}
+
+CRITERIO: {criteria}
+
+{item_type.upper()} DISPONIBLES EN BIBLIOTECA:
+{chr(10).join(available_items_list[:30])}
+
+INSTRUCCIONES:
+1. Recomienda {limit} {item_type} DIFERENTES de la lista
+2. Prioriza música que coincida con el criterio y el perfil del usuario
+3. NO generes análisis ni explicaciones previas
+4. EMPIEZA DIRECTAMENTE con las recomendaciones
+
+FORMATO OBLIGATORIO (cada línea):
+"""
+            
+            if recommendation_type == "artist":
+                prompt += "[Artista] | [Razón de 10-30 palabras con mayúscula inicial y punto final.]"
+            else:
+                prompt += "[Artista] - [Nombre] | [Razón de 10-30 palabras con mayúscula inicial y punto final.]"
+            
+            prompt += """
+
+EJEMPLO:
+Pink Floyd - Wish You Were Here | Rock progresivo atmosférico con guitarras emotivas y letras introspectivas perfectas para momentos reflexivos.
+
+❌ NO HAGAS:
+- Análisis del perfil
+- Explicaciones previas
+- Introducciones
+- Numeración
+
+✅ EMPIEZA DIRECTAMENTE:
+"""
+            
+            # Generar con Gemini
+            generation_config = {
+                'temperature': 0.8,
+                'top_p': 0.9,
+                'top_k': 40,
+                'max_output_tokens': 800,
+            }
+            
+            # Intentar generar respuesta con manejo de bloqueo de seguridad
+            try:
+                response = self.model.generate_content(prompt, generation_config=generation_config)
+                ai_response = response.text.strip()
+                print(f"📝 Respuesta de IA recibida (longitud: {len(ai_response)})")
+            except ValueError as e:
+                # Si fue bloqueado por seguridad, intentar con prompt más simple
+                if "finish_reason" in str(e) or "response.text" in str(e):
+                    print(f"⚠️ Respuesta bloqueada por filtros de seguridad de Gemini")
+                    print(f"   Reintentando con prompt simplificado...")
+                    
+                    # Prompt mucho más simple sin listas largas
+                    simple_prompt = f"""Recomienda {limit} {item_type} de música para redescubrir.
+
+PERFIL: Escucha {', '.join(top_artists[:3])}
+CRITERIO: {criteria}
+TIPO: {item_type}
+
+FORMATO (cada línea):"""
+                    
+                    if recommendation_type == "artist":
+                        simple_prompt += "\n[Artista] | [Razón corta]"
+                    else:
+                        simple_prompt += "\n[Artista] - [Nombre] | [Razón corta]"
+                    
+                    simple_prompt += "\n\nEMPIEZA DIRECTAMENTE:"
+                    
+                    try:
+                        response = self.model.generate_content(simple_prompt, generation_config=generation_config)
+                        ai_response = response.text.strip()
+                        print(f"📝 Respuesta de IA recibida con prompt simple (longitud: {len(ai_response)})")
+                    except:
+                        print(f"❌ Fallo también con prompt simple, usando fallback básico")
+                        # Fallback: recomendar aleatoriamente de los candidatos
+                        return await self._generate_random_library_recommendations(
+                            candidate_items, limit, recommendation_type
+                        )
+                else:
+                    raise
+            
+            # Parsear recomendaciones
+            recommendations = []
+            seen_items = set()
+            
+            lines_raw = ai_response.split('\n')
+            
+            for line in lines_raw:
+                if len(recommendations) >= limit:
+                    break
+                    
+                line = line.strip()
+                if not line:
+                    continue
+                
+                # Remover numeración
+                line_clean = re.sub(r'^\d+[\.\)]\s*', '', line)
+                
+                # Para artistas, el formato es diferente
+                if recommendation_type == "artist":
+                    # Formato: [Artista] | [Razón]
+                    if '|' not in line_clean:
+                        continue
+                else:
+                    # Formato: [Artista] - [Nombre] | [Razón]
+                    if '-' not in line_clean or '|' not in line_clean:
+                        continue
+                
+                try:
+                    parts = line_clean.split('|', 1)
+                    if len(parts) != 2:
+                        continue
+                    
+                    item_info = parts[0].strip()
+                    reason = parts[1].strip()
+                    
+                    # Validaciones de razón (igual que antes)
+                    if any(pattern in reason for pattern in ['**', '):**', ':**', '*:', 'céntrico', 'fi:', 'hop:', 'rock:', 'punk:', 'jazz:', 'pop:', 'metal:']):
+                        continue
+                    if reason and reason[0].islower():
+                        continue
+                    if len(reason) < 20 or len(reason.split()) < 8:
+                        continue
+                    
+                    # Parsear según tipo
+                    if recommendation_type == "artist":
+                        artist_name = item_info
+                        item_key = artist_name.lower()
+                        
+                        # Buscar artista en la biblioteca
+                        matching_item = None
+                        for item in candidate_items:
+                            if item.name.lower() == artist_name.lower():
+                                matching_item = item
+                                break
+                        
+                        if matching_item and item_key not in seen_items:
+                            seen_items.add(item_key)
+                            # Convertir a Track para el formato de Recommendation
+                            track = Track(
+                                id=matching_item.id,
+                                title=f"Descubre {matching_item.name}",
+                                artist=matching_item.name,
+                                album="",
+                                duration=None,
+                                year=None,
+                                genre=getattr(matching_item, 'genre', ''),
+                                play_count=getattr(matching_item, 'play_count', None),
+                                path=getattr(matching_item, 'path', ''),
+                                cover_url=getattr(matching_item, 'cover_url', None)
+                            )
+                            recommendations.append(Recommendation(
+                                track=track,
+                                reason=reason,
+                                confidence=0.85,
+                                source="biblioteca",
+                                tags=["library-recommendation", "rediscovery"]
+                            ))
+                    
+                    else:
+                        # Para álbumes y tracks
+                        if ' - ' not in item_info:
+                            continue
+                        
+                        artist, name = item_info.split(' - ', 1)
+                        artist = artist.strip()
+                        name = name.strip()
+                        
+                        item_key = f"{artist.lower()}|{name.lower()}"
+                        
+                        if item_key in seen_items:
+                            continue
+                        seen_items.add(item_key)
+                        
+                        # Buscar en biblioteca
+                        matching_item = None
+                        for item in candidate_items:
+                            item_artist = getattr(item, 'artist', '')
+                            item_name = getattr(item, 'name', getattr(item, 'title', ''))
+                            
+                            if (item_artist.lower() == artist.lower() and 
+                                item_name.lower() == name.lower()):
+                                matching_item = item
+                                break
+                        
+                        if matching_item:
+                            # Convertir a Track
+                            if recommendation_type == "album":
+                                track = Track(
+                                    id=matching_item.id,
+                                    title=matching_item.name,
+                                    artist=matching_item.artist,
+                                    album=matching_item.name,
+                                    duration=None,
+                                    year=getattr(matching_item, 'year', None),
+                                    genre=getattr(matching_item, 'genre', ''),
+                                    play_count=getattr(matching_item, 'play_count', None),
+                                    path=getattr(matching_item, 'path', ''),
+                                    cover_url=getattr(matching_item, 'cover_url', None),
+                                    track_count=getattr(matching_item, 'track_count', None)
+                                )
+                            else:  # track
+                                track = matching_item
+                            
+                            if len(reason) > 200:
+                                reason = reason[:197] + "..."
+                            
+                            recommendations.append(Recommendation(
+                                track=track,
+                                reason=reason,
+                                confidence=0.85,
+                                source="biblioteca",
+                                tags=["library-recommendation", "rediscovery"]
+                            ))
+                            print(f"   ✅ Agregada: {artist} - {name}")
+                
+                except Exception as e:
+                    print(f"   ⚠️ Error parseando línea: {line_clean[:100]} | {e}")
+                    continue
+            
+            print(f"📚 Total recomendaciones de biblioteca: {len(recommendations)}")
+            return recommendations
+            
+        except Exception as e:
+            print(f"❌ Error generando recomendaciones de biblioteca: {e}")
+            import traceback
+            traceback.print_exc()
+            return []
+    
+    async def _generate_random_library_recommendations(
+        self,
+        candidate_items: List,
+        limit: int,
+        recommendation_type: str
+    ) -> List[Recommendation]:
+        """Generar recomendaciones aleatorias de biblioteca como fallback
+        
+        Usado cuando la IA falla o es bloqueada por filtros de seguridad.
+        
+        Args:
+            candidate_items: Lista de items disponibles en biblioteca
+            limit: Número de recomendaciones
+            recommendation_type: Tipo de recomendación
+            
+        Returns:
+            Lista de recomendaciones aleatorias
+        """
+        print(f"🎲 Generando {limit} recomendaciones aleatorias de biblioteca (fallback)")
+        
+        recommendations = []
+        
+        # Seleccionar items aleatorios
+        import random
+        selected_items = random.sample(candidate_items, min(limit, len(candidate_items)))
+        
+        for item in selected_items:
+            try:
+                # Convertir a Track según el tipo
+                if recommendation_type == "artist":
+                    track = Track(
+                        id=item.id,
+                        title=f"Descubre {item.name}",
+                        artist=item.name,
+                        album="",
+                        duration=None,
+                        year=None,
+                        genre=getattr(item, 'genre', ''),
+                        play_count=getattr(item, 'play_count', None),
+                        path=getattr(item, 'path', ''),
+                        cover_url=getattr(item, 'cover_url', None)
+                    )
+                    reason = f"Artista de tu biblioteca que no has escuchado recientemente."
+                elif recommendation_type == "album":
+                    track = Track(
+                        id=item.id,
+                        title=item.name,
+                        artist=item.artist,
+                        album=item.name,
+                        duration=None,
+                        year=getattr(item, 'year', None),
+                        genre=getattr(item, 'genre', ''),
+                        play_count=getattr(item, 'play_count', None),
+                        path=getattr(item, 'path', ''),
+                        cover_url=getattr(item, 'cover_url', None),
+                        track_count=getattr(item, 'track_count', None)
+                    )
+                    reason = f"Álbum de {item.artist} que no has escuchado recientemente."
+                else:  # track
+                    track = item
+                    reason = f"Canción de {item.artist} que no has escuchado recientemente."
+                
+                recommendations.append(Recommendation(
+                    track=track,
+                    reason=reason,
+                    confidence=0.7,
+                    source="biblioteca",
+                    tags=["library-recommendation", "random"]
+                ))
+            except Exception as e:
+                print(f"   ⚠️ Error creando recomendación aleatoria: {e}")
+                continue
+        
+        print(f"🎲 Generadas {len(recommendations)} recomendaciones aleatorias")
+        return recommendations
     
     async def _generate_similarity_recommendations(
         self, 
@@ -610,7 +1359,7 @@ Genera las {limit} recomendaciones ahora:"""
         
         return "unknown"
     
-    def _analyze_time_patterns(self, tracks: List[LastFMTrack]) -> Dict[str, int]:
+    def _analyze_time_patterns(self, tracks: List[ScrobbleTrack]) -> Dict[str, int]:
         """Analizar patrones temporales de escucha"""
         time_patterns = {"morning": 0, "afternoon": 0, "evening": 0, "night": 0}
         
@@ -628,7 +1377,7 @@ Genera las {limit} recomendaciones ahora:"""
         
         return time_patterns
     
-    async def _analyze_mood_patterns(self, tracks: List[LastFMTrack]) -> Dict[str, float]:
+    async def _analyze_mood_patterns(self, tracks: List[ScrobbleTrack]) -> Dict[str, float]:
         """Analizar patrones de humor musical"""
         # Simulación de análisis de humor
         return {

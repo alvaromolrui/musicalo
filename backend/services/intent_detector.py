@@ -129,7 +129,7 @@ class IntentDetector:
             "Tu trabajo es detectar SOLO las intenciones MUY OBVIAS que requieren acciones específicas.",
             "Cuando tengas duda, usa 'conversacion' y deja que el agente lo maneje.",
             "",
-            "INTENCIONES DISPONIBLES (solo 5):",
+            "INTENCIONES DISPONIBLES (solo 6):",
             "",
             "1. 'playlist' - SOLO cuando pide EXPLÍCITAMENTE crear una playlist M3U",
             "   Palabras clave: 'haz playlist', 'crea playlist', 'genera playlist'",
@@ -145,11 +145,16 @@ class IntentDetector:
             "   Ejemplo: 'similar a Pink Floyd'",
             "   NOTA: 'recomiéndame rock' → usa 'conversacion', NO 'recomendar'",
             "",
-            "4. 'referencia' - SOLO cuando dice 'más de eso', 'otro así' SIN mencionar artista",
+            "4. 'recomendar_biblioteca' - SOLO cuando pide recomendaciones DE SU BIBLIOTECA",
+            "   Palabras clave: 'de mi biblioteca', 'de la biblioteca', 'que tengo', 'redescubrir'",
+            "   Ejemplo: 'recomiéndame algo de mi biblioteca'",
+            "   NOTA: Puede incluir género: 'rock de mi biblioteca'",
+            "",
+            "5. 'referencia' - SOLO cuando dice 'más de eso', 'otro así' SIN mencionar artista",
             "   Palabras clave: 'más de eso', 'otro así', 'ponme otro'",
             "   Ejemplo: 'ponme más de eso'",
             "",
-            "5. 'conversacion' - TODO LO DEMÁS (usar por defecto, 95% de los casos)",
+            "6. 'conversacion' - TODO LO DEMÁS (usar por defecto, 90% de los casos)",
             "   Incluye:",
             "   - Preguntas: 'mis stats', 'últimos artistas', 'qué escuché', 'qué tengo de X'",
             "   - Solicitudes: 'recomiéndame rock', 'ponme un disco', 'música tranquila'",
@@ -176,6 +181,15 @@ class IntentDetector:
             "",
             "Usuario: 'ponme más de eso'",
             '{"intent": "referencia", "params": {"reference_to_previous": true}, "confidence": 0.85}',
+            "",
+            "Usuario: 'recomiéndame algo de mi biblioteca'",
+            '{"intent": "recomendar_biblioteca", "params": {}, "confidence": 0.95}',
+            "",
+            "Usuario: 'rock de mi biblioteca'",
+            '{"intent": "recomendar_biblioteca", "params": {"genre": "rock"}, "confidence": 0.9}',
+            "",
+            "Usuario: 'qué álbumes tengo que no escucho'",
+            '{"intent": "recomendar_biblioteca", "params": {"type": "album"}, "confidence": 0.85}',
             "",
             "--- TODO LO DEMÁS ES CONVERSACION ---",
             "",
@@ -229,9 +243,9 @@ class IntentDetector:
         params = intent_data.get("params", {})
         confidence = float(intent_data.get("confidence", 0.5))
         
-        # Normalizar intención - SOLO 5 intenciones válidas
+        # Normalizar intención - SOLO 6 intenciones válidas
         valid_intents = [
-            "playlist", "buscar", "recomendar", "referencia", "conversacion"
+            "playlist", "buscar", "recomendar", "recomendar_biblioteca", "referencia", "conversacion"
         ]
         
         if intent not in valid_intents:
@@ -319,6 +333,7 @@ class IntentDetector:
             "playlist": "Crear playlist M3U",
             "buscar": "Buscar en biblioteca",
             "recomendar": "Música similar a artista",
+            "recomendar_biblioteca": "Recomendaciones de biblioteca (redescubrimiento)",
             "referencia": "Referencia a algo anterior",
             "conversacion": "Conversación general (maneja TODO lo demás)"
         }

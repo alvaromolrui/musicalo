@@ -1,6 +1,7 @@
 services:
   musicalo:
-    image: alvaromolrui/musicalo:latest
+    build: .
+    # image: alvaromolrui/musicalo:latest  # Comentado para usar build local
     container_name: musicalo
     restart: unless-stopped
     environment:
@@ -13,16 +14,13 @@ services:
       - LISTENBRAINZ_USERNAME=${LISTENBRAINZ_USERNAME}
       - LISTENBRAINZ_TOKEN=${LISTENBRAINZ_TOKEN}
       
-      # Last.fm Configuration
-      - LASTFM_API_KEY=${LASTFM_API_KEY}
-      - LASTFM_USERNAME=${LASTFM_USERNAME}
-      
-      # MusicBrainz Configuration (Optional)
+      # MusicBrainz Configuration
       - ENABLE_MUSICBRAINZ=${ENABLE_MUSICBRAINZ}
       - APP_NAME=${APP_NAME}
       - CONTACT_EMAIL=${CONTACT_EMAIL}
       - MUSICBRAINZ_BATCH_SIZE=${MUSICBRAINZ_BATCH_SIZE}
       - MUSICBRAINZ_MAX_TOTAL=${MUSICBRAINZ_MAX_TOTAL}
+      - MUSICBRAINZ_MAX_RELEASES=${MUSICBRAINZ_MAX_RELEASES}
       
       # Gemini Configuration
       - GEMINI_API_KEY=${GEMINI_API_KEY}

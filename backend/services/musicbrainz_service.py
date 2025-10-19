@@ -988,6 +988,377 @@ class MusicBrainzService:
         
         return matching_releases
     
+    async def get_artist_relationships(
+        self,
+        artist_name: str,
+        relation_types: Optional[List[str]] = None
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        """Obtener relaciones de un artista (colaboraciones, miembros, etc.)
+        
+        Args:
+            artist_name: Nombre del artista
+            relation_types: Tipos de relaciones a buscar. Si None, obtiene todas.
+                Ejemplos: "member of band", "collaboration", "supporting musician"
+        
+        Returns:
+            Diccionario agrupado por tipo de relación con artistas relacionados
+        """
+        try:
+            print(f"🔍 Buscando relaciones de '{artist_name}'...")
+            
+            # Buscar el artista primero
+            await self._rate_limit()
+            artist_data = await self._search_and_get_artist(artist_name)
+            
+            if not artist_data.get("found"):
+                print(f"   ⚠️ Artista '{artist_name}' no encontrado")
+                return {}
+            
+            artist_id = artist_data.get("id")
+            
+            # Obtener detalles con relaciones
+            await self._rate_limit()
+            details = await self._make_request(
+                f"artist/{artist_id}",
+                {"inc": "artist-rels"}
+            )
+            
+            if not details:
+                return {}
+            
+            # Parsear relaciones
+            relations = details.get("relations", [])
+            grouped_relations = {}
+            
+            for relation in relations:
+                rel_type = relation.get("type")
+                
+                # Filtrar por tipos si se especificaron
+                if relation_types and rel_type not in relation_types:
+                    continue
+                
+                # Solo procesar relaciones con artistas
+                if "artist" not in relation:
+                    continue
+                
+                related_artist = relation.get("artist", {})
+                
+                if rel_type not in grouped_relations:
+                    grouped_relations[rel_type] = []
+                
+                grouped_relations[rel_type].append({
+                    "name": related_artist.get("name"),
+                    "mbid": related_artist.get("id"),
+                    "type": related_artist.get("type"),
+                    "direction": relation.get("direction", "forward"),
+                    "url": f"https://musicbrainz.org/artist/{related_artist.get('id')}"
+                })
+            
+            print(f"✅ Encontradas {sum(len(v) for v in grouped_relations.values())} relaciones")
+            return grouped_relations
+            
+        except Exception as e:
+            print(f"❌ Error obteniendo relaciones: {e}")
+            import traceback
+            traceback.print_exc()
+            return {}
+    
+    async def discover_similar_artists(
+        self,
+        artist_name: str,
+        library_artists: List[str],
+        limit: int = 10
+    ) -> List[Dict[str, Any]]:
+        """Descubrir artistas similares de tu biblioteca basándose en metadatos
+        
+        Busca artistas en tu biblioteca que compartan:
+        - Géneros/tags similares
+        - Mismo país/área
+        - Misma época
+        - Relaciones directas (colaboraciones, miembros)
+        
+        Args:
+            artist_name: Artista de referencia
+            library_artists: Lista de artistas en tu biblioteca
+            limit: Máximo de artistas similares a retornar
+        
+        Returns:
+            Lista de artistas similares ordenados por relevancia
+        """
+        try:
+            import logging
+            logger = logging.getLogger(__name__)
+            
+            logger.info(f"🔍 Buscando artistas similares a '{artist_name}' en biblioteca...")
+            
+            # Obtener metadata del artista de referencia
+            reference = await self.verify_artist_metadata(artist_name)
+            
+            if not reference.get("found"):
+                logger.warning(f"   ⚠️ Artista de referencia no encontrado")
+                return []
+            
+            # Obtener relaciones directas (si existen)
+            relationships = await self.get_artist_relationships(artist_name)
+            related_names = set()
+            for rel_type, artists in relationships.items():
+                for artist in artists:
+                    related_names.add(artist["name"].lower())
+            
+            # Calcular similitud con cada artista de la biblioteca
+            similarities = []
+            
+            for lib_artist in library_artists[:100]:  # Limitar para no exceder rate limit
+                # Verificar metadata
+                lib_metadata = await self.verify_artist_metadata(lib_artist)
+                
+                if not lib_metadata.get("found"):
+                    continue
+                
+                # Calcular score de similitud
+                score = 0
+                reasons = []
+                
+                # 1. Relación directa (muy fuerte)
+                if lib_artist.lower() in related_names:
+                    score += 50
+                    reasons.append("colaboración/relación directa")
+                
+                # 2. Géneros compartidos
+                ref_genres = set(g.lower() for g in reference.get("genres", []))
+                lib_genres = set(g.lower() for g in lib_metadata.get("genres", []))
+                genre_overlap = len(ref_genres & lib_genres)
+                if genre_overlap > 0:
+                    score += genre_overlap * 10
+                    reasons.append(f"{genre_overlap} género(s) en común")
+                
+                # 3. Tags compartidos
+                ref_tags = set(t.lower() for t in reference.get("tags", [])[:10])
+                lib_tags = set(t.lower() for t in lib_metadata.get("tags", [])[:10])
+                tag_overlap = len(ref_tags & lib_tags)
+                if tag_overlap > 0:
+                    score += tag_overlap * 5
+                    reasons.append(f"{tag_overlap} tag(s) en común")
+                
+                # 4. Mismo país
+                if reference.get("country") and reference.get("country") == lib_metadata.get("country"):
+                    score += 15
+                    reasons.append(f"mismo país ({reference.get('country')})")
+                
+                # 5. Misma área (más flexible que país)
+                if reference.get("area") and reference.get("area") == lib_metadata.get("area"):
+                    score += 10
+                    reasons.append(f"misma área ({reference.get('area')})")
+                
+                # 6. Época similar (±5 años)
+                ref_year = reference.get("life_span", {}).get("begin")
+                lib_year = lib_metadata.get("life_span", {}).get("begin")
+                
+                if ref_year and lib_year:
+                    try:
+                        ref_y = int(ref_year.split("-")[0]) if isinstance(ref_year, str) else ref_year
+                        lib_y = int(lib_year.split("-")[0]) if isinstance(lib_year, str) else lib_year
+                        
+                        year_diff = abs(ref_y - lib_y)
+                        if year_diff <= 5:
+                            score += 10
+                            reasons.append(f"época similar ({lib_y})")
+                        elif year_diff <= 10:
+                            score += 5
+                    except:
+                        pass
+                
+                if score > 0:
+                    similarities.append({
+                        "name": lib_artist,
+                        "score": score,
+                        "reasons": reasons,
+                        "metadata": {
+                            "genres": lib_metadata.get("genres", [])[:3],
+                            "country": lib_metadata.get("country"),
+                            "tags": lib_metadata.get("tags", [])[:3]
+                        }
+                    })
+                    logger.info(f"   ✓ {lib_artist}: score={score} ({', '.join(reasons)})")
+            
+            # Ordenar por score
+            similarities.sort(key=lambda x: x["score"], reverse=True)
+            
+            result = similarities[:limit]
+            logger.info(f"✅ Encontrados {len(result)} artistas similares")
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"❌ Error descubriendo artistas similares: {e}")
+            import traceback
+            traceback.print_exc()
+            return []
+    
+    async def find_similar_by_tags(
+        self,
+        artist_name: str,
+        limit: int = 10
+    ) -> List[Dict[str, Any]]:
+        """Buscar artistas similares globalmente usando tags/géneros de MusicBrainz
+        
+        Busca artistas que compartan tags y géneros similares sin necesidad
+        de tener una biblioteca específica.
+        
+        Args:
+            artist_name: Artista de referencia
+            limit: Máximo de artistas similares a retornar
+        
+        Returns:
+            Lista de artistas similares
+        """
+        try:
+            import logging
+            logger = logging.getLogger(__name__)
+            
+            logger.info(f"🔍 Buscando artistas similares globalmente a '{artist_name}'...")
+            
+            # Obtener metadata del artista de referencia
+            reference = await self.verify_artist_metadata(artist_name)
+            
+            if not reference.get("found"):
+                logger.warning(f"   ⚠️ Artista de referencia no encontrado en MusicBrainz")
+                logger.info(f"   💡 Intenta verificar el nombre exacto del artista")
+                return []
+            
+            logger.info(f"   ✅ Artista encontrado: {reference.get('name')} (MBID: {reference.get('id')})")
+            
+            # Obtener géneros y tags principales
+            ref_genres = reference.get("genres", [])[:3]  # Top 3 géneros
+            ref_tags = reference.get("tags", [])[:5]  # Top 5 tags
+            
+            logger.info(f"   📊 Géneros: {ref_genres}")
+            logger.info(f"   🏷️ Tags: {ref_tags}")
+            
+            if not ref_genres and not ref_tags:
+                logger.warning(f"   ⚠️ No hay tags/géneros para '{artist_name}'")
+                logger.info(f"   💡 Este artista no tiene metadata suficiente en MusicBrainz")
+                return []
+            
+            # Buscar por los tags más relevantes
+            search_tags = ref_genres + ref_tags
+            similar_artists = []
+            seen_artists = set([artist_name.lower()])
+            
+            # OPTIMIZACIÓN: Reducido de 3 a 2 tags para ser más rápido (cada búsqueda tarda ~1 seg)
+            for tag in search_tags[:2]:  # Usar solo los 2 tags principales
+                if len(similar_artists) >= limit:
+                    break
+                
+                logger.info(f"   🔍 Buscando artistas con tag '{tag}'...")
+                await self._rate_limit()
+                
+                # Buscar artistas con este tag
+                # OPTIMIZACIÓN: Reducido de 20 a 15 para ser más rápido
+                data = await self._make_request(
+                    "artist",
+                    {
+                        "query": f'tag:"{tag}"',
+                        "limit": 15
+                    }
+                )
+                
+                artists = data.get("artists", [])
+                logger.info(f"   📊 Encontrados {len(artists)} artistas con tag '{tag}'")
+                
+                for artist in artists:
+                    if len(similar_artists) >= limit:
+                        break
+                    
+                    name = artist.get("name")
+                    if name and name.lower() not in seen_artists:
+                        # Evitar personas individuales, queremos bandas/proyectos
+                        if artist.get("type") not in ['Person']:
+                            similar_artists.append({
+                                "name": name,
+                                "mbid": artist.get("id"),
+                                "score": artist.get("score", 0),
+                                "shared_tag": tag,
+                                "type": artist.get("type")
+                            })
+                            seen_artists.add(name.lower())
+            
+            logger.info(f"✅ Encontrados {len(similar_artists)} artistas similares por tags")
+            return similar_artists
+            
+        except Exception as e:
+            logger.error(f"❌ Error buscando similares por tags: {e}")
+            import traceback
+            traceback.print_exc()
+            return []
+    
+    async def get_artist_top_albums_enhanced(
+        self,
+        artist_name: str,
+        limit: int = 5
+    ) -> List[Dict[str, Any]]:
+        """Obtener álbumes top de un artista con más detalles
+        
+        Similar a get_artist_top_albums pero con información adicional
+        para recomendaciones.
+        
+        Args:
+            artist_name: Nombre del artista
+            limit: Número de álbumes a obtener
+        
+        Returns:
+            Lista de álbumes con metadata completa
+        """
+        try:
+            # Reutilizar el método existente pero agregar más información
+            albums = await self.get_artist_top_albums(artist_name, limit)
+            
+            # Agregar información adicional si está disponible
+            enhanced_albums = []
+            for album in albums:
+                enhanced = {
+                    **album,
+                    "recommendation_score": album.get("playcount", 0) / 1000,  # Normalizar
+                    "source": "musicbrainz"
+                }
+                enhanced_albums.append(enhanced)
+            
+            return enhanced_albums
+            
+        except Exception as e:
+            print(f"❌ Error obteniendo álbumes: {e}")
+            return []
+    
+    async def get_artist_top_tracks_enhanced(
+        self,
+        artist_name: str,
+        limit: int = 5
+    ) -> List[Dict[str, Any]]:
+        """Obtener canciones top de un artista con más detalles
+        
+        Similar a get_artist_top_tracks pero preparado para recomendaciones.
+        """
+        try:
+            tracks = await self.get_artist_top_tracks(artist_name, limit)
+            
+            enhanced_tracks = []
+            for track in tracks:
+                enhanced = {
+                    "name": track.name,
+                    "artist": track.artist,
+                    "playcount": track.playcount or 0,
+                    "url": track.url,
+                    "image_url": track.image_url,
+                    "source": "musicbrainz"
+                }
+                enhanced_tracks.append(enhanced)
+            
+            return enhanced_tracks
+            
+        except Exception as e:
+            print(f"❌ Error obteniendo tracks: {e}")
+            return []
+    
     async def close(self):
         """Cerrar conexión y guardar cache"""
         await self.client.aclose()

@@ -1,13 +1,13 @@
 # Musicalo 🎵🤖
 
-[![Version](https://img.shields.io/badge/Version-3.0.0--alpha-orange.svg)](VERSION)
+[![Version](https://img.shields.io/badge/Version-4.0.0--alpha-orange.svg)](VERSION)
 [![Docker Hub](https://img.shields.io/badge/Docker%20Hub-alvaromolrui%2Fmusicalo-blue?logo=docker)](https://hub.docker.com/r/alvaromolrui/musicalo)
 [![GitHub](https://img.shields.io/badge/GitHub-alvaromolrui%2Fmusicalo-black?logo=github)](https://github.com/alvaromolrui/musicalo)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.11-blue?logo=python)](https://python.org)
 [![Telegram](https://img.shields.io/badge/Telegram-Bot-blue?logo=telegram)](https://telegram.org)
 
-Un bot de Telegram inteligente que utiliza IA para generar recomendaciones musicales personalizadas basadas en tu biblioteca de Navidrome y tus scrobbles de ListenBrainz o Last.fm.
+Un bot de Telegram inteligente que utiliza IA para generar recomendaciones musicales personalizadas basadas en tu biblioteca de Navidrome y tus scrobbles de ListenBrainz.
 
 ## ✨ Características
 
@@ -15,7 +15,8 @@ Un bot de Telegram inteligente que utiliza IA para generar recomendaciones music
 - **🎨 Peticiones Específicas**: Describe exactamente lo que buscas con todos los detalles
 - **🎯 IA Contextual**: Gemini AI entiende intenciones y responde con tus datos reales
 - **🎵 Integración con Navidrome**: Acceso completo a tu biblioteca musical autoalojada
-- **📊 Scrobbles de Last.fm/ListenBrainz**: Análisis de tus hábitos de escucha y patrones
+- **📊 Scrobbles de ListenBrainz**: Análisis de tus hábitos de escucha y patrones (open-source, sin límites)
+- **🎶 MusicBrainz**: Metadatos detallados y descubrimiento basado en relaciones entre artistas
 - **🧠 Recomendaciones Inteligentes**: Sistema usando Google Gemini que aprende de tus gustos
 - **🔄 Variedad**: Diferentes recomendaciones cada vez
 - **📱 Acceso móvil**: Optimizado para usar desde tu smartphone
@@ -49,30 +50,24 @@ La IA entiende múltiples criterios y genera recomendaciones precisas que cumple
 ### Backend (Python + Telegram Bot API)
 - **Servicios integrados**: 
   - `NavidromeService`: Conexión con tu servidor Navidrome
-  - `ListenBrainzService`: Integración con la API de ListenBrainz (open source, sin límites)
-  - `LastFMService`: Integración con Last.fm para descubrimiento y artistas similares
-  - `MusicBrainzService`: Enriquecimiento de metadatos y búsqueda inversa por género/país/época
+  - `ListenBrainzService`: Datos de escucha y recomendaciones colaborativas (open source, sin límites)
+  - `MusicBrainzService`: Metadatos detallados, relaciones entre artistas y búsqueda inversa por género/país/época
   - `MusicRecommendationService`: IA con Google Gemini para recomendaciones personalizadas
   - `TelegramService`: Manejo de interacciones del bot en modo polling
 
-**Nota sobre servicios de scrobbling:**
-- Puedes usar **solo ListenBrainz**, **solo Last.fm**, o **ambos simultáneamente**
-- Si configuras ambos, ListenBrainz se usa para datos de escucha y Last.fm complementa con descubrimiento de artistas similares
-- ListenBrainz es recomendado por ser open source y no tener límites de API
-
-**Nota sobre MusicBrainz:**
-- **MusicBrainz es opcional** pero **altamente recomendado** para búsquedas específicas
-- Permite búsquedas avanzadas como "indie español de los 2000" o "rock progresivo de los 70s"
-- Verifica metadatos precisos de artistas (género, país, época) contra tu biblioteca local
-- Usa cache persistente para minimizar llamadas a la API
-- Sistema de búsqueda incremental con "busca más" para explorar toda tu biblioteca
+**Stack completamente open-source:**
+- ✅ **ListenBrainz** para datos de escucha y recomendaciones basadas en usuarios similares
+- ✅ **MusicBrainz** para metadatos precisos, descubrimiento por relaciones entre artistas y búsquedas avanzadas
+- ✅ Ambos servicios son gratuitos, open-source y sin límites estrictos de API
+- ✅ Cache persistente para minimizar llamadas a las APIs
+- ✅ Sistema de búsqueda incremental con "busca más" para explorar toda tu biblioteca
 
 ## 🚀 Instalación
 
 ### Prerrequisitos
 - **Docker y Docker Compose** (recomendado) o Python 3.11+
 - Servidor **Navidrome** funcionando
-- Cuenta de **ListenBrainz** o **Last.fm**
+- Cuenta de **ListenBrainz** (open-source, gratuita)
 - **API key de Google Gemini** (gratuita)
 - **Token de bot de Telegram**
 
@@ -133,13 +128,13 @@ El archivo `.env` está completamente documentado con comentarios explicativos p
 **Variables principales:**
 - `NAVIDROME_URL`: URL de tu servidor Navidrome
 - `NAVIDROME_USERNAME` y `NAVIDROME_PASSWORD`: Credenciales de Navidrome
-- `LISTENBRAINZ_USERNAME` y `LISTENBRAINZ_TOKEN`: Para ListenBrainz (recomendado)
-- `LASTFM_API_KEY` y `LASTFM_USERNAME`: Para Last.fm (opcional, complementa a ListenBrainz)
+- `LISTENBRAINZ_USERNAME` y `LISTENBRAINZ_TOKEN`: Para datos de escucha (REQUERIDO)
+- `ENABLE_MUSICBRAINZ`: Habilitar metadatos y descubrimiento avanzado (RECOMENDADO)
 - `GEMINI_API_KEY`: API key de Google Gemini (REQUERIDO)
 - `TELEGRAM_BOT_TOKEN`: Token de tu bot de Telegram (REQUERIDO)
 - `TELEGRAM_ALLOWED_USER_IDS`: IDs permitidos para bot privado (RECOMENDADO)
 
-**Nota:** Necesitas al menos uno de los servicios de scrobbling (ListenBrainz o Last.fm) para obtener recomendaciones personalizadas.
+**Stack completamente open-source:** ListenBrainz + MusicBrainz + Navidrome = Sin dependencias de servicios comerciales.
 
 ### Obtener Credenciales
 
@@ -157,22 +152,18 @@ El archivo `.env` está completamente documentado con comentarios explicativos p
 
 #### ListenBrainz
 1. Ve a [ListenBrainz](https://listenbrainz.org/)
-2. Regístrate con tu cuenta de MusicBrainz
-3. Opcional: Obtén un token de API para límites más altos
+2. Regístrate con tu cuenta de MusicBrainz (o crea una nueva)
+3. Opcional: Obtén un token de API en Settings → User Token
+4. Conecta tu scrobbler favorito (Maloja, Navidrome, Plex, etc.)
 
-#### Last.fm
-1. Crea una cuenta en [Last.fm](https://www.last.fm/join)
-2. Ve a [Last.fm API Account](https://www.last.fm/api/account/create)
-3. Rellena el formulario:
-   - **Application name**: `Musicalo Bot` (o el nombre que prefieras)
-   - **Application description**: `Bot personal de Telegram para recomendaciones musicales`
-   - **Application homepage**: Puedes dejar tu perfil de Last.fm o GitHub
-   - **Callback URL**: Déjalo en blanco (no se necesita)
-4. Haz clic en "Submit"
-5. Guarda tu **API Key** (la necesitarás para el archivo `.env`)
-6. El **API Secret** no es necesario para este bot
+**¿Por qué usar ListenBrainz?**
+- ✅ Totalmente open-source y gratuito
+- ✅ Sin límites de API
+- ✅ Recomendaciones colaborativas basadas en usuarios similares
+- ✅ Compatible con múltiples plataformas de scrobbling
+- ✅ Privacidad y control total de tus datos
 
-#### MusicBrainz (Opcional, pero recomendado)
+#### MusicBrainz (Recomendado)
 MusicBrainz es completamente **gratuito y open source**. No requiere API key, solo información de contacto:
 
 1. **No necesitas registrarte** para usar MusicBrainz
@@ -266,7 +257,7 @@ del bot y proporciona tu ID de usuario.
 "¿qué es el jazz?" (preguntas generales sobre música)
 ```
 
-La IA entiende tu intención y responde usando tus datos reales de Last.fm/ListenBrainz.
+La IA entiende tu intención y responde usando tus datos reales de ListenBrainz y MusicBrainz.
 
 ### 🎯 Comandos Tradicionales (también funcionan)
 
@@ -276,6 +267,7 @@ La IA entiende tu intención y responde usando tus datos reales de Last.fm/Liste
 - **`/stats`** - Estadísticas en Listenbrainz • Ej: /stats week
 - **`/search`** - Buscar música en la biblioteca • Ej: /search queen
 - **`/releases`** - Consultar nuevos lanzamientos de artistas de la biblioteca • Ej: /releases week
+- **`/share`** - Crear enlace para compartir música • Ej: /share The dark side of the moon
 - **`/start`** - Iniciar el bot
 - **`/help`** - Mostrar ayuda completa
 

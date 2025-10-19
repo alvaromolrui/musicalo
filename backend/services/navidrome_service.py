@@ -349,6 +349,124 @@ class NavidromeService:
             print(f"❌ Error en búsqueda: {e}")
             return {"tracks": [], "albums": [], "artists": []}
     
+    async def create_share(
+        self, 
+        item_ids: List[str], 
+        description: Optional[str] = None,
+        expires: Optional[int] = None
+    ) -> Optional[Dict[str, str]]:
+        """Crear enlace compartible para canciones o álbumes
+        
+        Args:
+            item_ids: Lista de IDs de canciones o álbumes a compartir
+            description: Descripción opcional del share
+            expires: Tiempo de expiración en milisegundos desde epoch (opcional)
+            
+        Returns:
+            Dict con 'id', 'url' y 'description' del share, o None si falla
+            
+        Nota:
+            Para que los shares sean downloadable, asegúrate de tener
+            ND_DEFAULTDOWNLOADABLESHARE=true en la configuración de Navidrome
+        """
+        try:
+            print(f"🔗 Creando share para {len(item_ids)} items...")
+            
+            # Construir parámetros
+            params = self._get_auth_params()
+            if description:
+                params["description"] = description
+            if expires:
+                params["expires"] = str(expires)
+            
+            # La API requiere múltiples parámetros 'id' para cada item
+            url = f"{self.base_url}/rest/createShare.view"
+            url_params = "&".join([f"{k}={v}" for k, v in params.items()])
+            id_params = "&".join([f"id={item_id}" for item_id in item_ids])
+            full_url = f"{url}?{url_params}&{id_params}"
+            
+            response = await self.client.get(full_url)
+            
+            if response.status_code != 200:
+                print(f"❌ Error al crear share: {response.status_code}")
+                return None
+            
+            data = response.json()
+            subsonic_response = data.get("subsonic-response", {})
+            
+            if subsonic_response.get("status") == "failed":
+                error = subsonic_response.get("error", {})
+                print(f"❌ Error de Subsonic: {error.get('message', 'Unknown')}")
+                return None
+            
+            # Extraer información del share
+            shares = subsonic_response.get("shares", {}).get("share", [])
+            if isinstance(shares, dict):
+                shares = [shares]
+            
+            if not shares:
+                print(f"❌ No se recibió información del share")
+                return None
+            
+            share = shares[0]
+            share_id = share.get("id", "")
+            share_url = share.get("url", "")
+            
+            share_info = {
+                "id": share_id,
+                "url": share_url,
+                "description": share.get("description", description or ""),
+                "created": share.get("created", ""),
+                "expires": share.get("expires"),
+                "visit_count": share.get("visitCount", 0)
+            }
+            
+            print(f"✅ Share creado: {share_url}")
+            return share_info
+            
+        except Exception as e:
+            print(f"❌ Error creando share: {e}")
+            return None
+    
+    async def get_album_tracks(self, album_id: str) -> List[Track]:
+        """Obtener todas las canciones de un álbum
+        
+        Args:
+            album_id: ID del álbum
+            
+        Returns:
+            Lista de tracks del álbum
+        """
+        try:
+            data = await self._make_request("getAlbum", {"id": album_id})
+            album_data = data.get("album", {})
+            
+            songs = album_data.get("song", [])
+            if isinstance(songs, dict):
+                songs = [songs]
+            
+            tracks = []
+            for song in songs:
+                track = Track(
+                    id=song.get("id", ""),
+                    title=song.get("title", ""),
+                    artist=song.get("artist", ""),
+                    album=song.get("album", ""),
+                    duration=song.get("duration"),
+                    year=song.get("year"),
+                    genre=song.get("genre"),
+                    play_count=song.get("playCount"),
+                    path=song.get("path"),
+                    cover_url=None
+                )
+                tracks.append(track)
+            
+            return tracks
+            
+        except Exception as e:
+            print(f"❌ Error obteniendo tracks del álbum: {e}")
+            return []
+    
     async def close(self):
         """Cerrar conexión"""
         await self.client.aclose()

@@ -36,7 +36,12 @@ class Artist(BaseModel):
     bio: Optional[str] = None
     image_url: Optional[str] = None
 
-class LastFMTrack(BaseModel):
+class ScrobbleTrack(BaseModel):
+    """Track model para datos de ListenBrainz/MusicBrainz
+    
+    Representa un track de servicios de scrobbling como ListenBrainz
+    con enriquecimiento opcional de datos de MusicBrainz.
+    """
     name: str
     artist: str
     album: Optional[str] = None
@@ -45,7 +50,12 @@ class LastFMTrack(BaseModel):
     url: Optional[str] = None
     image_url: Optional[str] = None
 
-class LastFMArtist(BaseModel):
+class ScrobbleArtist(BaseModel):
+    """Artist model para datos de ListenBrainz/MusicBrainz
+    
+    Representa un artista de servicios de scrobbling como ListenBrainz
+    con enriquecimiento opcional de datos de MusicBrainz.
+    """
     name: str
     playcount: Optional[int] = None
     url: Optional[str] = None
@@ -56,12 +66,12 @@ class Recommendation(BaseModel):
     track: Track
     reason: str
     confidence: float
-    source: str  # "navidrome", "lastfm", "ai"
+    source: str  # "navidrome", "listenbrainz", "musicbrainz", "ai"
     tags: List[str] = []
 
 class UserProfile(BaseModel):
-    recent_tracks: List[LastFMTrack] = []
-    top_artists: List[LastFMArtist] = []
+    recent_tracks: List[ScrobbleTrack] = []
+    top_artists: List[ScrobbleArtist] = []
     favorite_genres: List[str] = []
     mood_preference: str = ""
     activity_context: str = ""

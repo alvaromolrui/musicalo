@@ -5,10 +5,9 @@ import os
 import json
 import random
 import google.generativeai as genai
-from models.schemas import Recommendation, Track, LastFMTrack, LastFMArtist
+from models.schemas import Recommendation, Track, ScrobbleTrack, ScrobbleArtist
 from services.navidrome_service import NavidromeService
 from services.listenbrainz_service import ListenBrainzService
-from services.lastfm_service import LastFMService
 from services.ai_service import MusicRecommendationService
 from services.playlist_service import PlaylistService
 from services.music_agent_service import MusicAgentService
@@ -45,26 +44,15 @@ class TelegramService:
             print("⚠️ Bot en modo público - cualquier usuario puede usarlo")
             print("💡 Para hacerlo privado, configura TELEGRAM_ALLOWED_USER_IDS en .env")
         
-        # Detectar qué servicio de scrobbling usar
-        # PRIORIDAD: ListenBrainz > Last.fm (ListenBrainz tiene mejor API y sin límites)
-        self.lastfm = None
+        # Usar ListenBrainz para datos de escucha y descubrimiento
         if os.getenv("LISTENBRAINZ_USERNAME"):
             self.music_service = self.listenbrainz
             self.music_service_name = "ListenBrainz"
-            print("✅ Usando ListenBrainz para datos de escucha")
-            # Mantener Last.fm disponible para descubrimiento si está configurado
-            if os.getenv("LASTFM_API_KEY") and os.getenv("LASTFM_USERNAME"):
-                self.lastfm = LastFMService()
-                print("✅ Last.fm también disponible para descubrimiento")
-        elif os.getenv("LASTFM_API_KEY") and os.getenv("LASTFM_USERNAME"):
-            self.lastfm = LastFMService()
-            self.music_service = self.lastfm
-            self.music_service_name = "Last.fm"
-            print("✅ Usando Last.fm para datos de escucha")
+            print("✅ Usando ListenBrainz para datos de escucha y descubrimiento")
         else:
             self.music_service = None
             self.music_service_name = None
-            print("⚠️ No hay servicio de scrobbling configurado (Last.fm o ListenBrainz)")
+            print("⚠️ No hay servicio de scrobbling configurado. Por favor configura LISTENBRAINZ_USERNAME en .env")
     
     def _is_user_allowed(self, user_id: int) -> bool:
         """Verifica si un usuario está autorizado para usar el bot"""
@@ -120,6 +108,7 @@ Puedes dar todos los detalles que quieras:
 <b>📝 Comandos disponibles:</b>
 /recommend - Obtener recomendaciones personalizadas
 /playlist &lt;descripción&gt; - Crear playlist M3U 🎵
+/share &lt;nombre&gt; - Compartir música con enlace público 🔗
 /library - Explorar tu biblioteca musical
 /stats - Ver estadísticas de escucha
 /releases [week/month/year] - Lanzamientos recientes 🆕
@@ -127,7 +116,7 @@ Puedes dar todos los detalles que quieras:
 /help - Mostrar ayuda
 
 <b>¿Cómo funciona?</b>
-Analizo tu actividad en Last.fm/ListenBrainz y tu biblioteca de Navidrome para sugerirte música que realmente te gustará.
+Analizo tu actividad en ListenBrainz y tu biblioteca de Navidrome para sugerirte música que realmente te gustará. Uso MusicBrainz para descubrir artistas relacionados y obtener metadatos detallados.
 
 ¡Simplemente escríbeme lo que necesites! 🎶"""
         
@@ -166,6 +155,7 @@ Sé todo lo detallado que quieras:
 • /recommend artist - Recomendar artistas
 • /recommend track - Recomendar canciones
 • /playlist &lt;descripción&gt; - Crear playlist M3U 🎵
+• /share &lt;nombre&gt; - Compartir música con enlace público 🔗
 • /library - Ver tu biblioteca musical
 • /stats - Estadísticas de escucha
 • /releases - Lanzamientos recientes de tus artistas 🆕
@@ -182,6 +172,12 @@ Sé todo lo detallado que quieras:
 • /recommend like extremoduro - Música parecida
 • /recommend como marea - Alternativa en español
 
+<b>Redescubrir tu biblioteca (🆕):</b>
+• /recommend biblioteca - Redescubrir música olvidada
+• /recommend biblioteca rock - Rock de tu biblioteca
+• /recommend biblioteca album - Álbumes olvidados
+💡 Te recomiendo música que YA tienes pero no escuchas
+
 <b>Búsqueda:</b>
 • /search queen - Buscar Queen
 • /search bohemian rhapsody - Buscar canción
@@ -190,6 +186,12 @@ Sé todo lo detallado que quieras:
 • /playlist rock de los 80s - Playlist de rock ochentero
 • /playlist jazz suave - Música jazz relajante
 • /playlist 20 canciones de Queen - Playlist con cantidad específica
+
+<b>Compartir música (🆕):</b>
+• /share The Dark Side of the Moon - Compartir álbum
+• /share Bohemian Rhapsody - Compartir canción
+• /share Queen - Compartir todas las canciones del artista
+💡 Genera enlace público con reproducción y descarga habilitadas 🎧📥
 
 <b>Lanzamientos Recientes (🆕):</b>
 • /releases - Esta semana (por defecto)
@@ -208,9 +210,10 @@ Sé todo lo detallado que quieras:
 • 📊 Actualizar (estadísticas)
 
 <b>Servicios:</b>
-• Last.fm: Análisis de escucha y descubrimiento
+• ListenBrainz: Análisis de escucha y recomendaciones colaborativas
+• MusicBrainz: Metadatos detallados y descubrimiento por relaciones
 • Navidrome: Tu biblioteca musical
-• Gemini AI: Recomendaciones inteligentes
+• Gemini AI: Recomendaciones inteligentes contextuales
 
 <b>💡 Tip:</b> Puedes preguntarme cualquier cosa sobre música directamente, sin usar comandos. ¡Prueba!"""
         
@@ -227,6 +230,8 @@ Sé todo lo detallado que quieras:
         - /recommend track → Solo canciones
         - /recommend rock → Recomendaciones de rock
         - /recommend album metal → Álbumes de metal
+        - /recommend biblioteca → Recomendaciones solo de tu biblioteca (redescubrimiento)
+        - /recommend biblioteca rock → Recomendaciones de rock de tu biblioteca
         """
         # Parsear argumentos
         rec_type = "general"  # general, album, artist, track
@@ -234,6 +239,7 @@ Sé todo lo detallado que quieras:
         similar_to = None  # Para búsquedas "similar a..."
         recommendation_limit = 5  # Por defecto
         custom_prompt = None  # Para descripciones específicas
+        from_library_only = False  # NUEVO: solo de biblioteca
         
         # Extraer argumentos especiales (vienen de handle_message)
         if context.args:
@@ -254,6 +260,13 @@ Sé todo lo detallado que quieras:
         
         if context.args:
             args = [arg.lower() for arg in context.args]
+            
+            # NUEVO: Detectar flag de "biblioteca"/"library"
+            if any(word in args for word in ["biblioteca", "library", "lib", "mi", "redescubrir", "redescubrimiento"]):
+                from_library_only = True
+                # Remover esas palabras de args
+                args = [a for a in args if a not in ["biblioteca", "library", "lib", "mi", "redescubrir", "redescubrimiento"]]
+                print(f"📚 Modo biblioteca detectado: from_library_only=True")
             
             # Primero detectar tipo de recomendación (puede estar en cualquier posición)
             if any(word in args for word in ["album", "disco", "cd", "álbum"]):
@@ -285,111 +298,135 @@ Sé todo lo detallado que quieras:
                     genre_filter = " ".join(args)
         
         # Mensaje personalizado según el tipo
+        library_prefix = "📚 de tu biblioteca" if from_library_only else ""
+        
         if custom_prompt:
-            await update.message.reply_text(f"🎨 Analizando tu petición: '{custom_prompt}'...")
+            msg = f"🎨 Analizando tu petición: '{custom_prompt}'"
+            if from_library_only:
+                msg += " (solo de tu biblioteca)"
+            await update.message.reply_text(msg + "...")
         elif similar_to:
             await update.message.reply_text(f"🔍 Buscando música similar a '{similar_to}'...")
         elif rec_type == "album":
-            await update.message.reply_text(f"📀 Analizando álbumes{f' de {genre_filter}' if genre_filter else ''}...")
+            await update.message.reply_text(f"📀 Analizando álbumes{library_prefix}{f' de {genre_filter}' if genre_filter else ''}...")
         elif rec_type == "artist":
-            await update.message.reply_text(f"🎤 Buscando artistas{f' de {genre_filter}' if genre_filter else ''}...")
+            await update.message.reply_text(f"🎤 Buscando artistas{library_prefix}{f' de {genre_filter}' if genre_filter else ''}...")
         elif rec_type == "track":
-            await update.message.reply_text(f"🎵 Buscando canciones{f' de {genre_filter}' if genre_filter else ''}...")
+            await update.message.reply_text(f"🎵 Buscando canciones{library_prefix}{f' de {genre_filter}' if genre_filter else ''}...")
         else:
-            await update.message.reply_text("🎵 Analizando tus gustos musicales...")
+            if from_library_only:
+                await update.message.reply_text("📚 Analizando tu biblioteca para redescubrir música...")
+            else:
+                await update.message.reply_text("🎵 Analizando tus gustos musicales...")
         
         try:
             recommendations = []
             
-            # Si es una búsqueda "similar a...", usar Last.fm directamente
+            # Si es una búsqueda "similar a...", usar ListenBrainz directamente
             if similar_to:
                 print(f"🎯 Usando límite: {recommendation_limit} para similares")
                 
-                if self.lastfm:
-                    print(f"🔍 Buscando similares a '{similar_to}' en Last.fm (tipo: {rec_type})...")
-                    # Buscar más artistas de los necesarios por si algunos no tienen álbumes/tracks
-                    search_limit = max(30, recommendation_limit * 5)
-                    similar_artists = await self.lastfm.get_similar_artists(similar_to, limit=search_limit)
+                print(f"🔍 Buscando similares a '{similar_to}' en ListenBrainz+MusicBrainz (tipo: {rec_type})...")
+                # Buscar más artistas de los necesarios por si algunos no tienen álbumes/tracks
+                search_limit = max(30, recommendation_limit * 5)
+                # Pasar MusicBrainz como fallback para buscar relaciones de artistas
+                similar_artists = await self.listenbrainz.get_similar_artists_from_recording(
+                    similar_to, 
+                    limit=search_limit,
+                    musicbrainz_service=self.agent.musicbrainz
+                )
+                
+                if similar_artists:
+                    # Añadir variedad: mezclar los resultados para no siempre mostrar los mismos
+                    # Mantener los top 5 pero mezclar el resto
+                    top_artists = similar_artists[:5]
+                    rest_artists = similar_artists[5:]
+                    random.shuffle(rest_artists)
+                    mixed_artists = top_artists + rest_artists
                     
-                    if similar_artists:
-                        # Añadir variedad: mezclar los resultados para no siempre mostrar los mismos
-                        # Mantener los top 5 pero mezclar el resto
-                        top_artists = similar_artists[:5]
-                        rest_artists = similar_artists[5:]
-                        random.shuffle(rest_artists)
-                        mixed_artists = top_artists + rest_artists
+                    print(f"🎲 Mezclando artistas para variedad (total: {len(mixed_artists)})")
+                    
+                    # Crear recomendaciones de los artistas similares
+                    # Continuar hasta tener suficientes recomendaciones
+                    for similar_artist in mixed_artists:
+                        if len(recommendations) >= recommendation_limit:
+                            break  # Ya tenemos suficientes recomendaciones
+                        from models.schemas import Track
                         
-                        print(f"🎲 Mezclando artistas para variedad (total: {len(mixed_artists)})")
+                        title = ""
+                        album_name = ""
+                        reason = ""
+                        artist_url = similar_artist.url if similar_artist.url else ""
                         
-                        # Crear recomendaciones de los artistas similares
-                        # Continuar hasta tener suficientes recomendaciones
-                        for similar_artist in mixed_artists:
-                            if len(recommendations) >= recommendation_limit:
-                                break  # Ya tenemos suficientes recomendaciones
-                            from models.schemas import Track
-                            
-                            title = ""
-                            album_name = ""
-                            reason = ""
-                            artist_url = similar_artist.url if similar_artist.url else ""
-                            
-                            # Obtener datos específicos según el tipo
-                            if rec_type == "album":
-                                top_albums = await self.lastfm.get_artist_top_albums(similar_artist.name, limit=1)
-                                if top_albums:
-                                    album_data = top_albums[0]
-                                    album_name = album_data.get("name", similar_artist.name)
-                                    title = f"{album_name}"  # Solo el nombre del álbum
-                                    artist_url = album_data.get("url", artist_url)
-                                    reason = f"📀 Álbum top de {similar_artist.name}, artista similar a {similar_to}"
-                                    print(f"   📀 Encontrado álbum: {album_name} de {similar_artist.name}")
-                                else:
-                                    # Si no hay álbum disponible, buscar el siguiente artista
-                                    print(f"   ⚠️ No se encontró álbum para {similar_artist.name}")
-                                    continue  # Saltar este artista y buscar el siguiente
-                            
-                            elif rec_type == "track":
-                                top_tracks = await self.lastfm.get_artist_top_tracks(similar_artist.name, limit=1)
-                                if top_tracks:
-                                    track_data = top_tracks[0]
-                                    title = track_data.name
-                                    artist_url = track_data.url if track_data.url else artist_url
-                                    reason = f"🎵 Canción top de artista similar a {similar_to}"
-                                else:
-                                    title = f"Música de {similar_artist.name}"
-                                    reason = f"🎵 Similar a {similar_to}"
-                            
+                        # Obtener datos específicos según el tipo usando MusicBrainz
+                        if rec_type == "album":
+                            if self.agent.musicbrainz:
+                                top_albums = await self.agent.musicbrainz.get_artist_top_albums(similar_artist.name, limit=1)
                             else:
-                                title = similar_artist.name
-                                reason = f"🎯 Similar a {similar_to}"
-                            
-                            track = Track(
-                                id=f"lastfm_similar_{similar_artist.name.replace(' ', '_')}",
-                                title=title,
-                                artist=similar_artist.name,
-                                album=album_name,
-                                duration=None,
-                                year=None,
-                                genre="",
-                                play_count=None,
-                                path=artist_url,
-                                cover_url=None
-                            )
-                            
-                            from models.schemas import Recommendation
-                            recommendation = Recommendation(
-                                track=track,
-                                reason=reason,
-                                confidence=0.9,
-                                source="Last.fm",
-                                tags=[]
-                            )
-                            recommendations.append(recommendation)
-                    else:
-                        await update.message.reply_text(f"😔 No encontré artistas similares a '{similar_to}'")
-                        return
+                                top_albums = []
+                            if top_albums:
+                                album_data = top_albums[0]
+                                album_name = album_data.get("name", similar_artist.name)
+                                title = f"{album_name}"  # Solo el nombre del álbum
+                                artist_url = album_data.get("url", artist_url)
+                                reason = f"📀 Álbum top de {similar_artist.name}, artista similar a {similar_to}"
+                                print(f"   📀 Encontrado álbum: {album_name} de {similar_artist.name}")
+                            else:
+                                # Si no hay álbum disponible, buscar el siguiente artista
+                                print(f"   ⚠️ No se encontró álbum para {similar_artist.name}")
+                                continue  # Saltar este artista y buscar el siguiente
+                        
+                        elif rec_type == "track":
+                            if self.agent.musicbrainz:
+                                top_tracks = await self.agent.musicbrainz.get_artist_top_tracks(similar_artist.name, limit=1)
+                            else:
+                                top_tracks = []
+                            if top_tracks:
+                                track_data = top_tracks[0]
+                                title = track_data.get("name", f"Música de {similar_artist.name}")
+                                artist_url = track_data.get("url", artist_url)
+                                reason = f"🎵 Canción top de artista similar a {similar_to}"
+                            else:
+                                title = f"Música de {similar_artist.name}"
+                                reason = f"🎵 Similar a {similar_to}"
+                        
+                        else:
+                            title = similar_artist.name
+                            reason = f"🎯 Similar a {similar_to}"
+                        
+                        track = Track(
+                            id=f"listenbrainz_similar_{similar_artist.name.replace(' ', '_')}",
+                            title=title,
+                            artist=similar_artist.name,
+                            album=album_name,
+                            duration=None,
+                            year=None,
+                            genre="",
+                            play_count=None,
+                            path=artist_url,
+                            cover_url=None
+                        )
+                        
+                        from models.schemas import Recommendation
+                        recommendation = Recommendation(
+                            track=track,
+                            reason=reason,
+                            confidence=0.9,
+                            source="ListenBrainz+MusicBrainz",
+                            tags=[]
+                        )
+                        recommendations.append(recommendation)
                 else:
-                    await update.message.reply_text("⚠️ Necesitas configurar Last.fm para buscar similares.")
+                    await update.message.reply_text(
+                        f"😔 No encontré artistas similares a '{similar_to}'\n\n"
+                        f"💡 Esto puede pasar si:\n"
+                        f"• El artista es muy nuevo o poco conocido\n"
+                        f"• ListenBrainz no tiene suficientes datos\n"
+                        f"• No hay relaciones registradas en MusicBrainz\n\n"
+                        f"Puedes intentar:\n"
+                        f"• Buscar el artista en tu biblioteca: /search {similar_to}\n"
+                        f"• Pedir recomendaciones generales: /recommend"
+                    )
                     return
             
             else:
@@ -398,28 +435,18 @@ Sé todo lo detallado que quieras:
                 if not self.music_service:
                     await update.message.reply_text(
                         "⚠️ No hay servicio de scrobbling configurado.\n\n"
-                        "Por favor configura Last.fm o ListenBrainz para recibir recomendaciones personalizadas."
+                        "Por favor configura ListenBrainz (LISTENBRAINZ_USERNAME en .env) para recibir recomendaciones personalizadas."
                     )
                     return
                 
-                # Obtener datos del usuario con fallback
+                # Obtener datos del usuario
                 recent_tracks = await self.music_service.get_recent_tracks(limit=20)
                 top_artists = await self.music_service.get_top_artists(limit=10)
-                
-                # FALLBACK: Si ListenBrainz falla o no devuelve datos, intentar con Last.fm
-                if not recent_tracks and self.lastfm:
-                    print(f"⚠️ {self.music_service_name} no devolvió escuchas, intentando con Last.fm...")
-                    try:
-                        recent_tracks = await self.lastfm.get_recent_tracks(limit=20)
-                        top_artists = await self.lastfm.get_top_artists(limit=10)
-                        print(f"✅ Fallback exitoso: {len(recent_tracks)} tracks de Last.fm")
-                    except Exception as e:
-                        print(f"❌ Fallback a Last.fm también falló: {e}")
                 
                 if not recent_tracks:
                     await update.message.reply_text(
                         f"⚠️ No se encontraron escuchas recientes.\n\n"
-                        "Asegúrate de tener escuchas registradas en ListenBrainz o Last.fm para recibir recomendaciones personalizadas."
+                        "Asegúrate de tener escuchas registradas en ListenBrainz para recibir recomendaciones personalizadas."
                     )
                     return
                 
@@ -434,7 +461,9 @@ Sé todo lo detallado que quieras:
                 )
                 
                 # Generar recomendaciones (recommendation_limit ya está definido arriba)
-                if custom_prompt:
+                if from_library_only:
+                    print(f"📚 Generando recomendaciones SOLO de biblioteca (tipo: {rec_type}, género: {genre_filter})")
+                elif custom_prompt:
                     print(f"🎯 Generando recomendaciones con prompt personalizado: {custom_prompt}")
                 else:
                     print(f"🎯 Generando recomendaciones (tipo: {rec_type}, género: {genre_filter}) para {len(recent_tracks)} tracks y {len(top_artists)} artistas...")
@@ -444,7 +473,8 @@ Sé todo lo detallado que quieras:
                     limit=recommendation_limit,
                     recommendation_type=rec_type,
                     genre_filter=genre_filter,
-                    custom_prompt=custom_prompt
+                    custom_prompt=custom_prompt,
+                    from_library_only=from_library_only
                 )
                 print(f"✅ Recomendaciones generadas: {len(recommendations)}")
             
@@ -492,7 +522,13 @@ Sé todo lo detallado que quieras:
                     text += f"   🔗 Fuente: {rec.source}\n"
                 # Agregar enlace si existe (está en el campo path)
                 if rec.track.path:
-                    text += f"   🌐 <a href=\"{rec.track.path}\">Ver en Last.fm</a>\n"
+                    # Determinar el nombre del servicio según la URL
+                    service_name = "Ver información"
+                    if "musicbrainz.org" in rec.track.path:
+                        service_name = "Ver en MusicBrainz"
+                    elif "listenbrainz.org" in rec.track.path:
+                        service_name = "Ver en ListenBrainz"
+                    text += f"   🌐 <a href=\"{rec.track.path}\">{service_name}</a>\n"
                 text += f"   🎯 {int(rec.confidence * 100)}% match\n\n"
             
             # Botones de interacción (callback_data limitado a 64 bytes)
@@ -628,7 +664,7 @@ Sé todo lo detallado que quieras:
             if not self.music_service:
                 await update.message.reply_text(
                     "⚠️ No hay servicio de scrobbling configurado.\n\n"
-                    "Por favor configura Last.fm o ListenBrainz para ver tus estadísticas."
+                    "Por favor configura ListenBrainz (LISTENBRAINZ_USERNAME en .env) para ver tus estadísticas."
                 )
                 return
             
@@ -1055,7 +1091,7 @@ Sé todo lo detallado que quieras:
             print(f"✅ Obtenidas {library_count} recomendaciones de biblioteca")
             
             # Las playlists SIEMPRE son 100% de tu biblioteca local
-            # No se agregan canciones externas de Last.fm
+            # No se agregan canciones externas, solo de Navidrome
             
             if not recommendations:
                 # Obtener información de debug para ayudar al usuario
@@ -1140,6 +1176,136 @@ Sé todo lo detallado que quieras:
             await update.message.reply_text(f"❌ Error creando playlist: {str(e)}")
     
     @_check_authorization
+    async def share_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Comando /share - Crear enlace compartible de música
+        
+        Uso:
+        - /share Pink Floyd - The Dark Side of the Moon
+        - /share Bohemian Rhapsody
+        - /share Queen (todas las canciones del artista)
+        """
+        if not context.args:
+            await update.message.reply_text(
+                "🔗 <b>Compartir Música</b>\n\n"
+                "<b>Uso:</b> <code>/share &lt;nombre&gt;</code>\n\n"
+                "<b>Puedes compartir:</b>\n"
+                "• Álbumes: <code>/share The Dark Side of the Moon</code>\n"
+                "• Canciones: <code>/share Bohemian Rhapsody</code>\n"
+                "• Artistas: <code>/share Queen</code> (todas sus canciones)\n\n"
+                "💡 <b>Qué obtienes:</b>\n"
+                "  🔗 Enlace público con interfaz web de Navidrome\n"
+                "  🎧 Reproducir música en streaming\n"
+                "  📥 Descargar los archivos\n"
+                "  📋 Ver lista completa de canciones\n\n"
+                "✨ El enlace es público - no requiere autenticación\n"
+                "⚙️ Asegúrate de tener ND_DEFAULTDOWNLOADABLESHARE=true en tu configuración",
+                parse_mode='HTML'
+            )
+            return
+        
+        search_term = " ".join(context.args)
+        await update.message.reply_text(f"🔍 Buscando '{search_term}' para compartir...")
+        
+        try:
+            # 1. Buscar en la biblioteca
+            results = await self.navidrome.search(search_term, limit=10)
+            
+            items_to_share = []
+            share_type = ""
+            found_name = ""
+            
+            # Priorizar: Álbumes > Canciones > Artistas
+            if results.get('albums'):
+                # Compartir primer álbum encontrado
+                album = results['albums'][0]
+                found_name = f"📀 {album.artist} - {album.name}"
+                share_type = "álbum"
+                
+                # Obtener IDs de todas las canciones del álbum
+                album_tracks = await self.navidrome.get_album_tracks(album.id)
+                items_to_share = [t.id for t in album_tracks]
+                
+            elif results.get('tracks'):
+                # Compartir primera canción encontrada
+                track = results['tracks'][0]
+                found_name = f"🎵 {track.artist} - {track.title}"
+                share_type = "canción"
+                items_to_share = [track.id]
+                
+            elif results.get('artists'):
+                # Compartir todas las canciones del artista
+                artist = results['artists'][0]
+                found_name = f"🎤 {artist.name}"
+                share_type = "artista"
+                
+                # Buscar todas las canciones del artista
+                artist_tracks = await self.navidrome.search(artist.name, limit=500)
+                # Filtrar solo las del artista exacto
+                items_to_share = [
+                    t.id for t in artist_tracks.get('tracks', []) 
+                    if t.artist.lower() == artist.name.lower()
+                ]
+            
+            if not items_to_share:
+                await update.message.reply_text(
+                    f"😔 No encontré '{search_term}' en tu biblioteca.\n\n"
+                    "💡 Intenta buscar primero con <code>/search {search_term}</code> "
+                    "para verificar qué hay disponible.",
+                    parse_mode='HTML'
+                )
+                return
+            
+            # 2. Crear share en Navidrome
+            description = f"Compartido desde Musicalo: {found_name}"
+            share_info = await self.navidrome.create_share(
+                items_to_share,
+                description=description
+            )
+            
+            if not share_info:
+                await update.message.reply_text(
+                    "❌ No pude crear el enlace para compartir.\n\n"
+                    "Verifica que tu instancia de Navidrome tenga habilitada "
+                    "la función de compartir (shares)."
+                )
+                return
+            
+            # 3. Formatear respuesta
+            text = f"""✅ <b>Enlace compartido creado</b>
+
+{found_name}
+📦 <b>{len(items_to_share)}</b> {'canción' if len(items_to_share) == 1 else 'canciones'}
+
+🔗 <b>Enlace del share:</b>
+<code>{share_info['url']}</code>
+
+💡 <b>Al abrir este enlace:</b>
+• 🎧 Podrás reproducir la música en streaming
+• 📥 Podrás descargar los archivos
+• 📋 Verás la lista completa de canciones
+
+📋 <b>Información:</b>
+• Tipo: {share_type}
+• ID: <code>{share_info['id']}</code>
+• Enlace público sin autenticación"""
+
+            # Si es un enlace con muchas canciones, agregar detalles
+            if len(items_to_share) > 1:
+                text += f"\n• Compartiendo {len(items_to_share)} canciones"
+            
+            await update.message.reply_text(text, parse_mode='HTML')
+            print(f"✅ Share creado: {share_info['url']} ({len(items_to_share)} items)")
+            
+        except Exception as e:
+            print(f"❌ Error en share_command: {e}")
+            import traceback
+            traceback.print_exc()
+            await update.message.reply_text(
+                f"❌ Error creando enlace: {str(e)}\n\n"
+                "Verifica tu configuración de Navidrome."
+            )
+    
+    @_check_authorization
     async def _handle_conversational_query(self, update: Update, user_message: str):
         """Manejar consultas conversacionales usando el agente musical"""
         try:
@@ -1148,7 +1314,7 @@ Sé todo lo detallado que quieras:
             user_id = update.effective_user.id
             
             # USAR EL AGENTE MUSICAL con soporte conversacional
-            # El agente buscará en biblioteca + Last.fm automáticamente
+            # El agente buscará en biblioteca + ListenBrainz + MusicBrainz automáticamente
             result = await self.agent.query(
                 user_message,
                 user_id=user_id,
@@ -1626,6 +1792,29 @@ Sé todo lo detallado que quieras:
                 else:
                     # Fallback a conversación si no hay artista específico
                     await self._handle_conversational_query(update, user_message)
+            
+            elif intent == "recomendar_biblioteca":
+                # Recomendaciones DE la biblioteca (redescubrimiento)
+                print(f"📚 Intent: recomendar_biblioteca detectado")
+                
+                # Extraer parámetros
+                genre = params.get("genre", params.get("genres", [""])[0] if "genres" in params else "")
+                rec_type = params.get("type", "general")
+                
+                # Construir args para el comando
+                args = ["biblioteca"]
+                
+                if rec_type and rec_type in ["album", "artist", "track"]:
+                    args.append(rec_type)
+                
+                if genre:
+                    args.append(genre)
+                
+                args.append("__limit=5")
+                
+                context.args = args
+                print(f"   Llamando /recommend con args: {args}")
+                await self.recommend_command(update, context)
             
             elif intent == "referencia":
                 # Usuario hace referencia a algo anterior ("más de eso", "otro así")

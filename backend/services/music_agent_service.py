@@ -3,7 +3,6 @@ import os
 import asyncio
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
-from services.lastfm_service import LastFMService
 from services.navidrome_service import NavidromeService
 from services.listenbrainz_service import ListenBrainzService
 from services.musicbrainz_service import MusicBrainzService
@@ -24,14 +23,6 @@ class MusicAgentService:
         self.conversation_manager = ConversationManager()
         
         # Inicializar servicios disponibles
-        self.lastfm = None
-        if os.getenv("LASTFM_API_KEY") and os.getenv("LASTFM_USERNAME"):
-            try:
-                self.lastfm = LastFMService()
-                print("✅ Agente musical: Last.fm habilitado")
-            except Exception as e:
-                print(f"⚠️ Agente musical: Error inicializando Last.fm: {e}")
-        
         self.navidrome = NavidromeService()
         
         self.listenbrainz = None
@@ -45,20 +36,15 @@ class MusicAgentService:
                 print(f"⚠️ Agente musical: Error inicializando ListenBrainz: {e}")
         
         # Determinar servicios para cada propósito
-        # HISTORIAL: Priorizar ListenBrainz (más datos, sin límites de API)
-        # Pero solo si está realmente disponible (no solo configurado)
+        # HISTORIAL Y DESCUBRIMIENTO: ListenBrainz (open-source, sin límites)
         if listenbrainz_available and self.listenbrainz:
             self.history_service = self.listenbrainz
             self.history_service_name = "ListenBrainz"
-        elif self.lastfm:
-            self.history_service = self.lastfm
-            self.history_service_name = "Last.fm"
+            self.discovery_service = self.listenbrainz
         else:
             self.history_service = None
             self.history_service_name = None
-        
-        # RECOMENDACIONES Y METADATOS: Solo Last.fm (tiene mejores APIs para esto)
-        self.discovery_service = self.lastfm
+            self.discovery_service = None
         
         # MUSICBRAINZ: Para verificación de metadatos
         self.musicbrainz = None
@@ -74,7 +60,7 @@ class MusicAgentService:
         self._cache_ttl = {}
         
         print(f"📊 Servicio de historial: {self.history_service_name if self.history_service_name else 'No disponible'}")
-        print(f"🔍 Servicio de descubrimiento: {'Last.fm' if self.discovery_service else 'No disponible'}")
+        print(f"🔍 Servicio de descubrimiento: {'ListenBrainz' if self.discovery_service else 'No disponible'}")
     
     def _get_cache(self, key: str, ttl_seconds: int = 300):
         """Obtener del caché si no ha expirado
@@ -215,14 +201,18 @@ class MusicAgentService:
                     tasks = []
                     
                     # Top artists
-                    primary_service = self.listenbrainz.get_top_artists if self.listenbrainz else None
-                    fallback_service = self.lastfm.get_top_artists if self.lastfm else None
-                    tasks.append(self._get_with_fallback(primary_service, fallback_service, limit=5))
+                    service = self.listenbrainz.get_top_artists if self.listenbrainz else None
+                    if service:
+                        tasks.append(service(limit=5))
+                    else:
+                        tasks.append(asyncio.sleep(0))  # Placeholder
                     
                     # Recent tracks
-                    primary_recent = self.listenbrainz.get_recent_tracks if self.listenbrainz else None
-                    fallback_recent = self.lastfm.get_recent_tracks if self.lastfm else None
-                    tasks.append(self._get_with_fallback(primary_recent, fallback_recent, limit=1))
+                    recent_service = self.listenbrainz.get_recent_tracks if self.listenbrainz else None
+                    if recent_service:
+                        tasks.append(recent_service(limit=1))
+                    else:
+                        tasks.append(asyncio.sleep(0))  # Placeholder
                     
                     # Ejecutar en paralelo
                     results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -260,11 +250,11 @@ class MusicAgentService:
 
 REGLAS CRÍTICAS:
 1. SIEMPRE consulta PRIMERO la biblioteca (📚) para ver qué tiene el usuario
-2. LUEGO complementa con Last.fm (🌍) para recomendaciones y descubrimientos
+2. LUEGO complementa con ListenBrainz/MusicBrainz (🌍) para recomendaciones y descubrimientos
 3. Si preguntan "mejor disco/álbum de X":
    a) Verifica QUÉ TIENE en biblioteca de ese artista
-   b) Combina con recomendaciones de Last.fm
-   c) Responde: "En tu biblioteca tienes X, Y, Z. Según Last.fm, el mejor es..."
+   b) Combina con información de MusicBrainz
+   c) Responde: "En tu biblioteca tienes X, Y, Z. Según MusicBrainz, el mejor es..."
 4. Si preguntan "qué tengo de X" → USA SOLO BIBLIOTECA
 5. NUNCA digas "no tienes nada" sin VERIFICAR primero en los datos de biblioteca
 6. VERIFICA coincidencia exacta de artistas - no mezcles artistas diferentes
@@ -278,16 +268,16 @@ IMPORTANTE - Diferentes tipos de peticiones:
 
 2. "Recomiéndame un disco DE [artista]"
    → Busca en BIBLIOTECA primero
-   → Si no tiene → Busca en LAST.FM y recomienda
-   → Ejemplo: "No tienes de [artista] en biblioteca, pero en Last.fm su mejor álbum es X"
+   → Si no tiene → Busca en MUSICBRAINZ y recomienda
+   → Ejemplo: "No tienes de [artista] en biblioteca, pero en MusicBrainz su mejor álbum es X"
 
 3. "Recomiéndame un disco" (sin artista específico)
-   → USA BIBLIOTECA + LAST.FM
+   → USA BIBLIOTECA + LISTENBRAINZ/MUSICBRAINZ
    → Combina: algo de su biblioteca + descubrimientos nuevos
-   → Ejemplo: "De tu biblioteca: X. También te gustará Y (nuevo en Last.fm)"
+   → Ejemplo: "De tu biblioteca: X. También te gustará Y (descubrimiento nuevo)"
 
 4. "Recomiéndame algo nuevo / que no tenga"
-   → USA PRINCIPALMENTE LAST.FM
+   → USA PRINCIPALMENTE LISTENBRAINZ/MUSICBRAINZ
    → Recomienda música que NO está en biblioteca
    → Basado en sus gustos pero nuevo contenido
 
@@ -320,7 +310,7 @@ Responde ahora de forma natural y conversacional:"""
             return {
                 "answer": answer,
                 "data_used": data_context,
-                "links": self._extract_lastfm_links(data_context),
+                "links": self._extract_links(data_context),
                 "success": True,
                 "session_id": user_id
             }
@@ -652,7 +642,7 @@ Responde ahora de forma natural y conversacional:"""
                 print(f"⚠️ Error obteniendo datos de Navidrome: {e}")
                 data["library"]["error"] = str(e)
         
-        # Datos de escucha (Priorizar ListenBrainz con fallback a Last.fm)
+        # Datos de escucha (ListenBrainz)
         if needs_listening_history:
             try:
                 print(f"📊 Obteniendo historial de escucha...")
@@ -662,30 +652,25 @@ Responde ahora de forma natural y conversacional:"""
                 task_names = []
                 
                 # Recent tracks (siempre)
-                primary_recent = self.listenbrainz.get_recent_tracks if self.listenbrainz else None
-                fallback_recent = self.lastfm.get_recent_tracks if self.lastfm else None
-                tasks.append(self._get_with_fallback(primary_recent, fallback_recent, limit=20))
-                task_names.append("recent_tracks")
+                if self.listenbrainz:
+                    tasks.append(self.listenbrainz.get_recent_tracks(limit=20))
+                    task_names.append("recent_tracks")
                 
                 # Top artists (siempre)
-                primary_artists = self.listenbrainz.get_top_artists if self.listenbrainz else None
-                fallback_artists = self.lastfm.get_top_artists if self.lastfm else None
-                tasks.append(self._get_with_fallback(primary_artists, fallback_artists, limit=10))
-                task_names.append("top_artists")
+                if self.listenbrainz:
+                    tasks.append(self.listenbrainz.get_top_artists(limit=10))
+                    task_names.append("top_artists")
                 
                 # Top tracks (solo si se necesita)
                 if "canción" in query_lower or "track" in query_lower or "tema" in query_lower:
-                    primary_tracks = self.listenbrainz.get_top_tracks if self.listenbrainz else None
-                    fallback_tracks = self.lastfm.get_top_tracks if self.lastfm else None
-                    tasks.append(self._get_with_fallback(primary_tracks, fallback_tracks, limit=10))
-                    task_names.append("top_tracks")
+                    if self.listenbrainz:
+                        tasks.append(self.listenbrainz.get_top_tracks(limit=10))
+                        task_names.append("top_tracks")
                 
                 # Stats (solo si se necesita)
                 if "estadística" in query_lower or "stats" in query_lower or "cuánto" in query_lower:
-                    primary_stats = self.listenbrainz.get_user_stats if self.listenbrainz and hasattr(self.listenbrainz, 'get_user_stats') else None
-                    fallback_stats = self.lastfm.get_user_stats if self.lastfm and hasattr(self.lastfm, 'get_user_stats') else None
-                    if primary_stats or fallback_stats:
-                        tasks.append(self._get_with_fallback(primary_stats, fallback_stats))
+                    if self.listenbrainz and hasattr(self.listenbrainz, 'get_user_stats'):
+                        tasks.append(self.listenbrainz.get_user_stats())
                         task_names.append("stats")
                 
                 # Ejecutar todas las tareas en paralelo
@@ -698,61 +683,69 @@ Responde ahora de forma natural y conversacional:"""
                     else:
                         data["listening_history"][task_names[i]] = [] if task_names[i] != "stats" else {}
                 
-                service_used = "ListenBrainz" if self.listenbrainz and data["listening_history"].get("recent_tracks") else "Last.fm" if self.lastfm else "Ninguno"
+                service_used = "ListenBrainz" if self.listenbrainz and data["listening_history"].get("recent_tracks") else "Ninguno"
                 print(f"✅ Historial obtenido desde: {service_used}")
                 
             except Exception as e:
                 print(f"⚠️ Error obteniendo historial de escucha: {e}")
                 data["listening_history"]["error"] = str(e)
         
-        # Búsqueda de contenido similar (SIEMPRE Last.fm para esto)
+        # Búsqueda de contenido similar (ListenBrainz CF)
         if self.discovery_service and ("similar" in query_lower or "parecido" in query_lower or "como" in query_lower):
             try:
-                print(f"🔍 Buscando contenido similar en Last.fm")
+                print(f"🔍 Buscando contenido similar en ListenBrainz")
                 # Extraer nombre de artista/álbum de la query
                 words = query.split()
                 for i, word in enumerate(words):
                     if word.lower() in ["similar", "parecido", "como"] and i + 1 < len(words):
                         potential_artist = " ".join(words[i+1:])
-                        similar_artists = await self.discovery_service.get_similar_artists(potential_artist, limit=5)
+                        similar_artists = await self.discovery_service.get_similar_artists_from_recording(
+                            potential_artist, 
+                            limit=5,
+                            musicbrainz_service=self.musicbrainz
+                        )
                         if similar_artists:
                             data["similar_content"] = similar_artists
                         break
             except Exception as e:
                 print(f"⚠️ Error buscando contenido similar: {e}")
         
-        # Buscar información de Last.fm sobre artistas específicos cuando preguntan por "mejor disco/álbum"
-        if self.discovery_service and needs_library_search and search_term and any(word in query_lower for word in ["mejor", "recomend"]):
+        # Buscar información de MusicBrainz sobre artistas específicos cuando preguntan por "mejor disco/álbum"
+        if self.musicbrainz and needs_library_search and search_term and any(word in query_lower for word in ["mejor", "recomend"]):
             try:
-                print(f"🌍 Buscando información de descubrimiento en Last.fm para '{search_term}'...")
-                # Obtener top álbumes del artista desde Last.fm
-                top_albums = await self.discovery_service.get_artist_top_albums(search_term, limit=10)
+                print(f"🌍 Buscando información en MusicBrainz para '{search_term}'...")
+                # Obtener top álbumes del artista desde MusicBrainz
+                top_albums = await self.musicbrainz.get_artist_top_albums(search_term, limit=10)
                 if top_albums:
-                    data["lastfm_artist_info"] = {
+                    data["musicbrainz_artist_info"] = {
                         "artist": search_term,
                         "top_albums": top_albums
                     }
-                    print(f"✅ Encontrados {len(top_albums)} álbumes de '{search_term}' en Last.fm")
+                    print(f"✅ Encontrados {len(top_albums)} álbumes de '{search_term}' en MusicBrainz")
             except Exception as e:
-                print(f"⚠️ Error obteniendo info de Last.fm para '{search_term}': {e}")
+                print(f"⚠️ Error obteniendo info de MusicBrainz para '{search_term}': {e}")
         
         # Buscar música nueva activamente cuando lo pidan
         if needs_new_music:
             try:
                 print(f"🌍 Buscando música NUEVA basada en gustos del usuario...")
                 
-                # Obtener top artistas del historial con fallback
-                primary_artists = self.listenbrainz.get_top_artists if self.listenbrainz else None
-                fallback_artists = self.lastfm.get_top_artists if self.lastfm else None
-                top_artists = await self._get_with_fallback(primary_artists, fallback_artists, limit=5)
+                # Obtener top artistas del historial
+                top_artists = []
+                if self.listenbrainz:
+                    top_artists = await self.listenbrainz.get_top_artists(limit=5)
                 
-                # Buscar artistas similares usando Last.fm para descubrimiento
+                # Buscar artistas similares usando ListenBrainz para descubrimiento
                 if top_artists and self.discovery_service:
                     # OPTIMIZACIÓN: Paralelizar búsqueda de artistas similares
                     similar_tasks = []
                     for top_artist in top_artists[:3]:  # Solo los top 3
                         similar_tasks.append(
-                            self.discovery_service.get_similar_artists(top_artist.name, limit=3)
+                            self.discovery_service.get_similar_artists_from_recording(
+                                top_artist.name, 
+                                limit=3,
+                                musicbrainz_service=self.musicbrainz
+                            )
                         )
                     
                     # Ejecutar búsquedas en paralelo
@@ -890,7 +883,7 @@ Responde ahora de forma natural y conversacional:"""
                 formatted += f"\n📚 === BIBLIOTECA LOCAL === \n"
                 formatted += f"⚠️ NO TIENES '{search_term.upper()}' EN TU BIBLIOTECA\n\n"
         
-        # Historial de escucha (Last.fm o ListenBrainz) - SOLO SI ES RELEVANTE
+        # Historial de escucha (ListenBrainz) - SOLO SI ES RELEVANTE
         if data.get("listening_history"):
             hist = data["listening_history"]
             
@@ -942,11 +935,11 @@ Responde ahora de forma natural y conversacional:"""
                     formatted += "\n"
                 formatted += "\n"
         
-        # Información de Last.fm sobre artista específico
-        if data.get("lastfm_artist_info"):
-            info = data["lastfm_artist_info"]
-            formatted += f"\n🌍 === INFORMACIÓN DE LAST.FM: {info['artist'].upper()} ===\n"
-            formatted += f"📊 TOP ÁLBUMES MÁS POPULARES (según Last.fm):\n\n"
+        # Información de MusicBrainz sobre artista específico
+        if data.get("musicbrainz_artist_info"):
+            info = data["musicbrainz_artist_info"]
+            formatted += f"\n🌍 === INFORMACIÓN DE MUSICBRAINZ: {info['artist'].upper()} ===\n"
+            formatted += f"📊 TOP ÁLBUMES MÁS POPULARES (según MusicBrainz):\n\n"
             for i, album in enumerate(info["top_albums"][:10], 1):
                 # Puede ser dict o objeto
                 if isinstance(album, dict):
@@ -965,7 +958,7 @@ Responde ahora de forma natural y conversacional:"""
                     formatted += f" | {url}"
                 formatted += "\n"
             formatted += "\n💡 IMPORTANTE: Usa esta info para recomendar el mejor álbum\n"
-            formatted += f"💡 Combina lo que tiene en biblioteca + popularidad en Last.fm\n\n"
+            formatted += f"💡 Combina lo que tiene en biblioteca + información de MusicBrainz\n\n"
         
         # Contenido similar
         if data.get("similar_content"):
@@ -976,7 +969,7 @@ Responde ahora de forma natural y conversacional:"""
         
         # NUEVO: Descubrimientos (música que NO está en biblioteca pero puede recomendar)
         if data.get("new_discoveries"):
-            formatted += f"\n🌍 === MÚSICA NUEVA PARA DESCUBRIR (de Last.fm) ===\n"
+            formatted += f"\n🌍 === MÚSICA NUEVA PARA DESCUBRIR (de ListenBrainz) ===\n"
             formatted += f"📌 IMPORTANTE: Estos NO están en tu biblioteca pero PUEDES recomendarlos\n"
             formatted += f"🎯 Basado en tus gustos, te pueden gustar:\n\n"
             
@@ -1020,14 +1013,14 @@ Responde ahora de forma natural y conversacional:"""
         
         return formatted
     
-    def _extract_lastfm_links(self, data: Dict[str, Any]) -> List[str]:
-        """Extraer todos los enlaces de Last.fm del contexto
+    def _extract_links(self, data: Dict[str, Any]) -> List[str]:
+        """Extraer todos los enlaces relevantes del contexto
         
         Args:
             data: Diccionario con todos los datos
             
         Returns:
-            Lista de URLs únicas de Last.fm
+            Lista de URLs únicas de MusicBrainz/ListenBrainz
         """
         links = []
         
@@ -1091,19 +1084,28 @@ Responde ahora de forma natural y conversacional:"""
         except Exception as e:
             print(f"Error buscando en biblioteca: {e}")
         
-        # Información de descubrimiento (Last.fm)
+        # Información de descubrimiento (ListenBrainz + MusicBrainz)
         if self.discovery_service:
             try:
-                # Artistas similares
-                info["similar_artists"] = await self.discovery_service.get_similar_artists(artist_name, limit=5)
-                
-                # Top álbumes
-                info["top_albums"] = await self.discovery_service.get_artist_top_albums(artist_name, limit=5)
-                
-                # Top tracks
-                info["top_tracks"] = await self.discovery_service.get_artist_top_tracks(artist_name, limit=5)
+                # Artistas similares usando ListenBrainz CF o MusicBrainz
+                info["similar_artists"] = await self.discovery_service.get_similar_artists_from_recording(
+                    artist_name, 
+                    limit=5,
+                    musicbrainz_service=self.musicbrainz
+                )
             except Exception as e:
-                print(f"Error obteniendo info de Last.fm: {e}")
+                print(f"Error obteniendo artistas similares: {e}")
+        
+        # Información de MusicBrainz
+        if self.musicbrainz:
+            try:
+                # Top álbumes
+                info["top_albums"] = await self.musicbrainz.get_artist_top_albums(artist_name, limit=5)
+                
+                # Top tracks  
+                info["top_tracks"] = await self.musicbrainz.get_artist_top_tracks(artist_name, limit=5)
+            except Exception as e:
+                print(f"Error obteniendo info de MusicBrainz: {e}")
         
         return info
     
@@ -1461,8 +1463,6 @@ Responde ahora de forma natural y conversacional:"""
         """Cerrar todas las conexiones"""
         try:
             await self.navidrome.close()
-            if self.lastfm:
-                await self.lastfm.close()
             if self.listenbrainz:
                 await self.listenbrainz.close()
             if self.musicbrainz:
