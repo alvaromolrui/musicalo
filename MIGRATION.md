@@ -142,20 +142,30 @@ Esta rama (`remove-lastfm-use-listenbrainz`) migra completamente el proyecto de 
 
 ### Mejoras en Búsqueda de Similares
 
-**Sistema de 3 estrategias**:
+**Sistema de 3 estrategias** (en orden):
 
 1. **ListenBrainz CF** (collaborative filtering)
-   - Usa recomendaciones personalizadas
-   - Agrupa por artista
+   - Usa recomendaciones personalizadas basadas en usuarios similares
+   - Agrupa por artista y ordena por score
+   - Mejor para artistas populares con suficientes datos
    
 2. **MusicBrainz Tags** (`find_similar_by_tags`)
-   - Busca artistas con géneros/tags similares
+   - Busca artistas globalmente con géneros/tags similares
    - Excluye personas individuales (solo bandas/proyectos)
    - Logging detallado de tags encontrados
+   - Útil cuando ListenBrainz CF no tiene datos
    
-3. **Fallback informativo**
-   - Mensajes claros explicando por qué falló
-   - Tips para el usuario
+3. **IA/Gemini** (conocimiento musical general) 🆕
+   - Fallback cuando MusicBrainz no tiene tags/géneros
+   - Usa conocimiento general de música de la IA
+   - Genera artistas similares basándose en estilo/época/sonido
+   - Crítico para artistas nicho sin metadata (ej: Mujeres, Albertucho, Sanguijuelas del Guadiana)
+   - Siempre encuentra resultados si el artista es conocido
+
+**Resultado**: 
+- "similar a Mujeres" → Funciona aunque no tenga tags en MusicBrainz
+- "similar a Oasis" → Da bandas (Blur, The Verve) no miembros (Liam Gallagher)
+- "similar a cualquier artista" → Siempre encuentra algo gracias a las 3 estrategias
 
 ## 🚀 Instrucciones de Despliegue
 
@@ -218,10 +228,11 @@ Prueba estos casos después de desplegar:
    → Debería dar Blur, The Verve, etc. (NO miembros de Oasis)
    ```
 
-3. **Búsqueda de similares para artistas nicho**:
+3. **Búsqueda de similares para artistas nicho (SIN tags en MusicBrainz)**:
    ```
    similar a Mujeres
-   → Debería encontrar artistas con tags similares si existen
+   → Usará Estrategia 3 (IA)
+   → Debería dar: Savages, The Courtneys, Parquet Courts, etc.
    ```
 
 4. **Recomendaciones generales**:
