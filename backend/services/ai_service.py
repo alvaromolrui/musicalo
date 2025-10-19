@@ -145,29 +145,36 @@ class MusicRecommendationService:
             
             recommendations = []
             
-            # PRIORIDAD 1: Siempre usar IA primero para recomendaciones de mayor calidad
-            # La IA entiende mejor el contexto y genera mejores recomendaciones
-            if not custom_prompt:
-                # Si no hay custom_prompt, crear uno basado en el perfil
-                custom_prompt = "música que me pueda gustar basándote en mi perfil musical"
-                if genre_filter:
+            # DECISIÓN: ¿Usar IA o solo ListenBrainz+MusicBrainz?
+            # IA solo para peticiones específicas (con género o custom_prompt)
+            # ListenBrainz+MusicBrainz para recomendaciones generales basadas en historial
+            use_ai = bool(genre_filter or custom_prompt)
+            
+            if use_ai:
+                # Usuario pidió algo específico - usar IA
+                if not custom_prompt and genre_filter:
                     custom_prompt = f"música de género {genre_filter}"
+                
+                print(f"🎨 Generando recomendaciones con IA (criterio específico: {custom_prompt[:100]}...)...")
+                custom_recs = await self._generate_custom_prompt_recommendations(
+                    user_profile,
+                    analysis,
+                    custom_prompt,
+                    limit,
+                    recommendation_type
+                )
+                recommendations.extend(custom_recs)
+                print(f"✅ Encontradas {len(custom_recs)} recomendaciones de IA")
             
-            print(f"🎨 Generando recomendaciones con IA (criterio: {custom_prompt[:100]}...)...")
-            custom_recs = await self._generate_custom_prompt_recommendations(
-                user_profile,
-                analysis,
-                custom_prompt,
-                limit,
-                recommendation_type
-            )
-            recommendations.extend(custom_recs)
-            print(f"✅ Encontradas {len(custom_recs)} recomendaciones de IA")
-            
-            # PRIORIDAD 2: Si la IA no generó suficientes, usar ListenBrainz como complemento
+            # Usar ListenBrainz+MusicBrainz para descubrimiento basado en historial
             if len(recommendations) < limit and include_new_music and len(user_profile.top_artists) > 0:
                 remaining_limit = limit - len(recommendations)
-                print(f"🌍 Buscando música nueva usando ListenBrainz (tipo: {recommendation_type}, género: {genre_filter})...")
+                
+                if use_ai:
+                    print(f"🌍 Complementando con ListenBrainz+MusicBrainz...")
+                else:
+                    print(f"🌍 Generando recomendaciones desde ListenBrainz+MusicBrainz basadas en tu historial...")
+                
                 new_music_recs = await self._generate_listenbrainz_recommendations(
                     user_profile, 
                     remaining_limit, 
