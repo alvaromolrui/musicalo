@@ -463,7 +463,34 @@ Aphex Twin - Selected Ambient Works | Electrónica ambient pionera con texturas 
                 ai_prompt,
                 generation_config=generation_config
             )
-            ai_response = response.text.strip()
+            
+            # Manejar errores de seguridad de Gemini
+            try:
+                ai_response = response.text.strip()
+            except ValueError as e:
+                # Si la respuesta fue bloqueada por seguridad, intentar sin lista de biblioteca
+                print(f"⚠️ Respuesta bloqueada por filtros de seguridad de Gemini")
+                print(f"   Reintentando sin lista detallada de biblioteca...")
+                
+                # Prompt simplificado sin artistas específicos
+                ai_prompt_simple = f"""TAREA: Genera {limit} recomendaciones musicales.
+
+PERFIL: Escucha {', '.join(top_artists[:3]) if top_artists else 'música variada'}
+
+CRITERIO: {custom_prompt}
+
+FORMATO (cada línea):
+[Artista] - [Álbum] | [Razón de 15-40 palabras con mayúscula y punto.]
+
+NO generes análisis. EMPIEZA DIRECTAMENTE:
+"""
+                
+                response = self.model.generate_content(ai_prompt_simple, generation_config=generation_config)
+                try:
+                    ai_response = response.text.strip()
+                except ValueError:
+                    print(f"❌ IA bloqueada por seguridad incluso con prompt simple")
+                    return []
             
             print(f"📝 Respuesta de IA recibida (longitud: {len(ai_response)})")
             print(f"📝 DEBUG - Respuesta completa:\n{ai_response}\n---END---")
