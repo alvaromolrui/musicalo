@@ -348,18 +348,19 @@ TIPO DE RECOMENDACIÓN:
 {recommendation_type} (album = álbumes, artist = artistas, track = canciones, general = cualquiera)
 
 TU TAREA:
-1. Analiza cuidadosamente la petición del usuario y todos sus detalles específicos
-2. Ten en cuenta sus gustos actuales pero prioriza lo que está pidiendo específicamente
-3. Si menciona características específicas (época, estilo, instrumentos, mood, energía, etc.), enfócate en eso
-4. Si menciona un artista/banda como referencia, busca similitudes pero también piensa en otros que cumplan los criterios
-5. Genera exactamente {limit} recomendaciones que cumplan con TODOS los criterios mencionados
+1. **PRIORIDAD ABSOLUTA**: Lo que el usuario está pidiendo ahora es MÁS IMPORTANTE que su perfil actual
+2. Si pide un género específico (ej: "electrónica"), IGNORA su perfil de rock/hip-hop y recomienda SOLO ese género
+3. Si menciona características específicas (época, estilo, instrumentos, mood, energía, etc.), enfócate EXCLUSIVAMENTE en eso
+4. El perfil del usuario es solo referencia de contexto, NO lo uses si contradice la petición actual
+5. Genera exactamente {limit} recomendaciones DIFERENTES que cumplan con TODOS los criterios mencionados
 
-IMPORTANTE:
-- Sé ESPECÍFICO con nombres de artistas, álbumes y canciones reales
-- Si pide características específicas (ej: "rock progresivo de los 70s"), busca artistas que cumplan exactamente eso
-- Si pide algo "similar a X", piensa en qué hace especial a X y busca otros con esas cualidades
-- Si menciona múltiples criterios (ej: "rock energético con buenos solos de guitarra"), TODOS deben cumplirse
-- Las recomendaciones deben ser variadas entre sí pero todas cumplir los criterios
+IMPORTANTE - EVITAR ERRORES COMUNES:
+- ❌ NO recomiendes el perfil del usuario si pide otro género (ej: si pide electrónica, NO recomiendes hip-hop)
+- ❌ NO repitas el mismo artista/álbum múltiples veces
+- ✅ Sé ESPECÍFICO con nombres de artistas, álbumes y canciones reales
+- ✅ Si pide características específicas (ej: "rock progresivo de los 70s"), busca artistas que cumplan EXACTAMENTE eso
+- ✅ Si pide algo "similar a X", piensa en qué hace especial a X y busca otros con esas cualidades
+- ✅ Las recomendaciones deben ser VARIADAS entre sí pero todas cumplir los criterios
 
 FORMATO DE RESPUESTA:
 Proporciona EXACTAMENTE {limit} recomendaciones en este formato:
@@ -424,10 +425,14 @@ Genera las {limit} recomendaciones ahora:"""
                             cover_url=None
                         )
                         
-                        # Crear recomendación con contexto del prompt
+                        # Limpiar la razón (cortar si es muy larga y agregar ...)
+                        if len(reason) > 200:
+                            reason = reason[:197] + "..."
+                        
+                        # Crear recomendación
                         recommendation = Recommendation(
                             track=track,
-                            reason=f"{reason} (según: {custom_prompt[:50]}...)",
+                            reason=reason,
                             confidence=0.95,  # Alta confianza porque es específico
                             source="AI (Gemini)",
                             tags=["custom", "specific"]

@@ -115,7 +115,7 @@ Puedes dar todos los detalles que quieras:
 /help - Mostrar ayuda
 
 <b>¿Cómo funciona?</b>
-Analizo tu actividad en Last.fm/ListenBrainz y tu biblioteca de Navidrome para sugerirte música que realmente te gustará.
+Analizo tu actividad en ListenBrainz y tu biblioteca de Navidrome para sugerirte música que realmente te gustará. Uso MusicBrainz para descubrir artistas relacionados y obtener metadatos detallados.
 
 ¡Simplemente escríbeme lo que necesites! 🎶"""
         
@@ -196,9 +196,10 @@ Sé todo lo detallado que quieras:
 • 📊 Actualizar (estadísticas)
 
 <b>Servicios:</b>
-• Last.fm: Análisis de escucha y descubrimiento
+• ListenBrainz: Análisis de escucha y recomendaciones colaborativas
+• MusicBrainz: Metadatos detallados y descubrimiento por relaciones
 • Navidrome: Tu biblioteca musical
-• Gemini AI: Recomendaciones inteligentes
+• Gemini AI: Recomendaciones inteligentes contextuales
 
 <b>💡 Tip:</b> Puedes preguntarme cualquier cosa sobre música directamente, sin usar comandos. ¡Prueba!"""
         
@@ -477,7 +478,13 @@ Sé todo lo detallado que quieras:
                     text += f"   🔗 Fuente: {rec.source}\n"
                 # Agregar enlace si existe (está en el campo path)
                 if rec.track.path:
-                    text += f"   🌐 <a href=\"{rec.track.path}\">Ver en Last.fm</a>\n"
+                    # Determinar el nombre del servicio según la URL
+                    service_name = "Ver información"
+                    if "musicbrainz.org" in rec.track.path:
+                        service_name = "Ver en MusicBrainz"
+                    elif "listenbrainz.org" in rec.track.path:
+                        service_name = "Ver en ListenBrainz"
+                    text += f"   🌐 <a href=\"{rec.track.path}\">{service_name}</a>\n"
                 text += f"   🎯 {int(rec.confidence * 100)}% match\n\n"
             
             # Botones de interacción (callback_data limitado a 64 bytes)
@@ -613,7 +620,7 @@ Sé todo lo detallado que quieras:
             if not self.music_service:
                 await update.message.reply_text(
                     "⚠️ No hay servicio de scrobbling configurado.\n\n"
-                    "Por favor configura Last.fm o ListenBrainz para ver tus estadísticas."
+                    "Por favor configura ListenBrainz (LISTENBRAINZ_USERNAME en .env) para ver tus estadísticas."
                 )
                 return
             
@@ -1040,7 +1047,7 @@ Sé todo lo detallado que quieras:
             print(f"✅ Obtenidas {library_count} recomendaciones de biblioteca")
             
             # Las playlists SIEMPRE son 100% de tu biblioteca local
-            # No se agregan canciones externas de Last.fm
+            # No se agregan canciones externas, solo de Navidrome
             
             if not recommendations:
                 # Obtener información de debug para ayudar al usuario
@@ -1133,7 +1140,7 @@ Sé todo lo detallado que quieras:
             user_id = update.effective_user.id
             
             # USAR EL AGENTE MUSICAL con soporte conversacional
-            # El agente buscará en biblioteca + Last.fm automáticamente
+            # El agente buscará en biblioteca + ListenBrainz + MusicBrainz automáticamente
             result = await self.agent.query(
                 user_message,
                 user_id=user_id,
