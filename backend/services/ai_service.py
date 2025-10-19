@@ -27,7 +27,38 @@ class MusicRecommendationService:
             except Exception as e:
                 print(f"⚠️ Error inicializando MusicBrainz: {e}")
         
+        # Cache simple para optimizar rendimiento
+        self._library_artists_cache = None
+        self._library_artists_cache_time = 0
+        self._cache_ttl = 300  # 5 minutos
+        
         print("✅ Servicio de recomendaciones usando ListenBrainz + MusicBrainz")
+    
+    async def _get_library_artists_cached(self) -> set:
+        """Obtener lista de artistas de biblioteca con caché de 5 minutos
+        
+        Returns:
+            Set de nombres de artistas en minúsculas
+        """
+        import time
+        current_time = time.time()
+        
+        # Si el cache es válido, usarlo
+        if (self._library_artists_cache is not None and 
+            current_time - self._library_artists_cache_time < self._cache_ttl):
+            print(f"💾 Usando cache de artistas de biblioteca ({len(self._library_artists_cache)} artistas)")
+            return self._library_artists_cache
+        
+        # Cache expirado o no existe, obtener de nuevo
+        try:
+            library_data = await self.navidrome.get_artists(limit=500)
+            self._library_artists_cache = {artist.name.lower() for artist in library_data}
+            self._library_artists_cache_time = current_time
+            print(f"📚 Biblioteca cargada: {len(self._library_artists_cache)} artistas (cache por {self._cache_ttl}s)")
+            return self._library_artists_cache
+        except Exception as e:
+            print(f"⚠️ Error obteniendo artistas de biblioteca: {e}")
+            return set()
     
     async def analyze_user_profile(self, user_profile: UserProfile) -> MusicAnalysis:
         """Analizar el perfil musical del usuario"""
@@ -222,21 +253,16 @@ class MusicRecommendationService:
             recommendations = []
             processed_artists = set()
             
-            # Obtener lista de artistas de la biblioteca para excluirlos
-            library_artists = set()
-            try:
-                library_data = await self.navidrome.get_artists(limit=500)
-                library_artists = {artist.name.lower() for artist in library_data}
-                print(f"📚 Biblioteca: {len(library_artists)} artistas para excluir de recomendaciones")
-            except Exception as e:
-                print(f"⚠️ No se pudo obtener lista de biblioteca: {e}")
+            # Obtener lista de artistas de la biblioteca para excluirlos (con cache)
+            library_artists = await self._get_library_artists_cached()
             
             # Seleccionar aleatoriamente algunos top artistas para variar las recomendaciones
-            available_top_artists = user_profile.top_artists[:10]  # Considerar top 10
-            num_artists_to_use = min(5, len(available_top_artists))
+            # OPTIMIZACIÓN: Reducido de 5 a 3 artistas para ser más rápido
+            available_top_artists = user_profile.top_artists[:8]  # Considerar top 8
+            num_artists_to_use = min(3, len(available_top_artists))  # Máximo 3 artistas
             selected_artists = random.sample(available_top_artists, num_artists_to_use) if len(available_top_artists) > num_artists_to_use else available_top_artists
             
-            print(f"🔍 Generando recomendaciones de ListenBrainz para {len(selected_artists)} artistas (seleccionados aleatoriamente)")
+            print(f"🔍 Generando recomendaciones de ListenBrainz para {len(selected_artists)} artistas (optimizado para velocidad)")
             
             # Para asegurar diversidad, tomar 1 recomendación por artista
             # Obtener artistas similares basados en los artistas seleccionados
@@ -246,9 +272,10 @@ class MusicRecommendationService:
                 
                 print(f"🎤 Buscando artistas similares a: {top_artist.name}")
                 # Obtener más artistas similares y seleccionar aleatoriamente
+                # OPTIMIZACIÓN: Reducido de 10 a 7 para ser más rápido
                 similar_artists = await self.listenbrainz.get_similar_artists_from_recording(
                     top_artist.name, 
-                    limit=10,
+                    limit=7,
                     musicbrainz_service=self.musicbrainz
                 )
                 print(f"   Encontrados {len(similar_artists)} artistas similares")
@@ -387,13 +414,9 @@ class MusicRecommendationService:
             recent_artists = [track.artist for track in user_profile.recent_tracks[:15]]
             top_artists = [artist.name for artist in user_profile.top_artists[:10]]
             
-            # Obtener artistas de biblioteca para excluir
-            library_artists_list = []
-            try:
-                library_data = await self.navidrome.get_artists(limit=500)
-                library_artists_list = [artist.name for artist in library_data]
-            except:
-                pass
+            # Obtener artistas de biblioteca para excluir (con cache)
+            library_artists_set = await self._get_library_artists_cached()
+            library_artists_list = list(library_artists_set)
             
             # Crear un prompt inteligente para la IA que entienda las especificaciones
             ai_prompt = f"""Eres un experto curador musical. Tu ÚNICA tarea es generar una lista de recomendaciones.
@@ -402,8 +425,9 @@ PERFIL DEL USUARIO:
 - Top artistas: {', '.join(top_artists[:5]) if top_artists else 'Desconocidos'}
 - Artistas recientes: {', '.join(set(recent_artists[:10])) if recent_artists else 'Desconocidos'}
 
-ARTISTAS QUE YA TIENE EN BIBLIOTECA (NO recomendar):
-{', '.join(library_artists_list[:50]) if library_artists_list else 'No disponible'}
+ARTISTAS QUE YA TIENE EN BIBLIOTECA (NO recomendar estos):
+{', '.join(library_artists_list[:30]) if library_artists_list else 'No disponible'}
+(mostrados solo los primeros 30 de {len(library_artists_list)} total)
 
 PETICIÓN DEL USUARIO:
 "{custom_prompt}"
@@ -448,12 +472,13 @@ Daft Punk - Discovery | Electrónica francesa con influencias funk y disco, prod
 
 GENERA {limit} RECOMENDACIONES AHORA (sin texto adicional):"""
 
-            # Generar con Gemini con configuración para respuestas más predecibles
+            # Generar con Gemini con configuración para respuestas más predecibles y rápidas
+            # OPTIMIZACIÓN: Reducido max_output_tokens para respuestas más rápidas
             generation_config = {
                 'temperature': 0.7,
                 'top_p': 0.9,
                 'top_k': 40,
-                'max_output_tokens': 2048,
+                'max_output_tokens': 800,  # Suficiente para 5-10 recomendaciones
             }
             
             response = self.model.generate_content(

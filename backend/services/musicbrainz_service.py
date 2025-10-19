@@ -1245,7 +1245,8 @@ class MusicBrainzService:
             similar_artists = []
             seen_artists = set([artist_name.lower()])
             
-            for tag in search_tags[:3]:  # Usar solo los 3 tags principales
+            # OPTIMIZACIÓN: Reducido de 3 a 2 tags para ser más rápido (cada búsqueda tarda ~1 seg)
+            for tag in search_tags[:2]:  # Usar solo los 2 tags principales
                 if len(similar_artists) >= limit:
                     break
                 
@@ -1253,11 +1254,12 @@ class MusicBrainzService:
                 await self._rate_limit()
                 
                 # Buscar artistas con este tag
+                # OPTIMIZACIÓN: Reducido de 20 a 15 para ser más rápido
                 data = await self._make_request(
                     "artist",
                     {
                         "query": f'tag:"{tag}"',
-                        "limit": 20
+                        "limit": 15
                     }
                 )
                 

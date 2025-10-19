@@ -11,6 +11,11 @@ class ListenBrainzService:
         self.token = os.getenv("LISTENBRAINZ_TOKEN")  # Opcional
         self.base_url = "https://api.listenbrainz.org/1"  # API v1, no v1.0
         self.client = httpx.AsyncClient(timeout=30.0)
+        
+        # Cache para recomendaciones (se renueva cada 5 minutos)
+        self._recommendations_cache = None
+        self._recommendations_cache_time = 0
+        self._cache_ttl = 300  # 5 minutos
     
     async def _make_request(self, endpoint: str, params: Optional[Dict] = None) -> Dict[str, Any]:
         """Realizar petición a la API de ListenBrainz"""
@@ -313,6 +318,7 @@ class ListenBrainzService:
         """Obtener recomendaciones colaborativas personalizadas de ListenBrainz
         
         Usa collaborative filtering basado en usuarios similares.
+        Cache de 5 minutos para optimizar velocidad.
         
         Args:
             count: Número de recomendaciones a obtener
@@ -321,6 +327,16 @@ class ListenBrainzService:
             Lista de grabaciones recomendadas
         """
         try:
+            # Usar cache si está disponible y no ha expirado
+            import time
+            current_time = time.time()
+            
+            if (self._recommendations_cache is not None and 
+                current_time - self._recommendations_cache_time < self._cache_ttl):
+                print(f"💾 Usando cache de recomendaciones ({len(self._recommendations_cache)} recomendaciones)")
+                return self._recommendations_cache[:count]
+            
+            # Cache expirado o no existe, obtener de nuevo
             params = {"count": count}
             data = await self._make_request(
                 f"cf/recommendation/user/{self.username}/recording",
@@ -340,7 +356,11 @@ class ListenBrainzService:
                     "release_name": rec.get("release_name")
                 })
             
-            print(f"✅ Obtenidas {len(recommendations)} recomendaciones de ListenBrainz")
+            # Guardar en cache
+            self._recommendations_cache = recommendations
+            self._recommendations_cache_time = current_time
+            
+            print(f"✅ Obtenidas {len(recommendations)} recomendaciones de ListenBrainz (cacheadas por 5min)")
             return recommendations
             
         except Exception as e:
@@ -563,7 +583,8 @@ class ListenBrainzService:
             # ESTRATEGIA 1: Usar recomendaciones de ListenBrainz
             print(f"   📊 Estrategia 1: Intentando con recomendaciones de ListenBrainz CF...")
             try:
-                recommendations = await self.get_recommendations(count=100)
+                # OPTIMIZACIÓN: Reducido de 100 a 50 para ser más rápido (usa cache si existe)
+                recommendations = await self.get_recommendations(count=50)
                 
                 if recommendations:
                     print(f"   📊 Obtenidas {len(recommendations)} recomendaciones de ListenBrainz")
@@ -643,6 +664,7 @@ class ListenBrainzService:
                     import google.generativeai as genai
                     
                     # Usar IA para generar artistas similares
+                    # OPTIMIZACIÓN: Usar modelo flash-exp más rápido
                     model = genai.GenerativeModel('gemini-2.0-flash-exp')
                     
                     prompt = f"""Eres un experto en música. Genera una lista de {limit} artistas similares a "{artist_name}".
@@ -663,7 +685,14 @@ Yo La Tengo
 
 Genera {limit} artistas similares a {artist_name}:"""
                     
-                    response = model.generate_content(prompt)
+                    # OPTIMIZACIÓN: Configuración para respuesta más rápida
+                    generation_config = {
+                        'temperature': 0.5,  # Más determinista
+                        'max_output_tokens': 300,  # Solo necesitamos nombres
+                        'top_p': 0.8
+                    }
+                    
+                    response = model.generate_content(prompt, generation_config=generation_config)
                     ai_response = response.text.strip()
                     
                     # Parsear respuesta
@@ -729,7 +758,8 @@ Genera {limit} artistas similares a {artist_name}:"""
         """
         try:
             # Obtener recomendaciones generales y filtrar
-            recommendations = await self.get_recommendations(count=limit * 2)
+            # OPTIMIZACIÓN: Usar cache si existe
+            recommendations = await self.get_recommendations(count=min(50, limit * 2))
             
             similar_tracks = []
             for rec in recommendations:
