@@ -353,8 +353,7 @@ class NavidromeService:
         self, 
         item_ids: List[str], 
         description: Optional[str] = None,
-        expires: Optional[int] = None,
-        downloadable: bool = True
+        expires: Optional[int] = None
     ) -> Optional[Dict[str, str]]:
         """Crear enlace compartible para canciones o álbumes
         
@@ -362,13 +361,12 @@ class NavidromeService:
             item_ids: Lista de IDs de canciones o álbumes a compartir
             description: Descripción opcional del share
             expires: Tiempo de expiración en milisegundos desde epoch (opcional)
-            downloadable: Si True, permite descargar la música (default: True)
             
         Returns:
-            Dict con 'id', 'url' y 'description' del share, o None si falla
+            Dict con 'id', 'url', 'download_url' y 'description' del share, o None si falla
         """
         try:
-            print(f"🔗 Creando share para {len(item_ids)} items (descarga: {downloadable})...")
+            print(f"🔗 Creando share para {len(item_ids)} items...")
             
             # Construir parámetros
             params = self._get_auth_params()
@@ -376,9 +374,6 @@ class NavidromeService:
                 params["description"] = description
             if expires:
                 params["expires"] = str(expires)
-            
-            # Permitir descarga
-            params["downloadable"] = "true" if downloadable else "false"
             
             # La API requiere múltiples parámetros 'id' para cada item
             url = f"{self.base_url}/rest/createShare.view"
@@ -410,16 +405,25 @@ class NavidromeService:
                 return None
             
             share = shares[0]
+            share_id = share.get("id", "")
+            share_url = share.get("url", "")
+            
+            # Crear URL de descarga directa usando el endpoint download
+            # La URL de descarga usa el share ID para acceso público sin autenticación
+            download_url = f"{self.base_url}/share/{share_id}/download"
+            
             share_info = {
-                "id": share.get("id", ""),
-                "url": share.get("url", ""),
+                "id": share_id,
+                "url": share_url,
+                "download_url": download_url,
                 "description": share.get("description", description or ""),
                 "created": share.get("created", ""),
                 "expires": share.get("expires"),
                 "visit_count": share.get("visitCount", 0)
             }
             
-            print(f"✅ Share creado: {share_info['url']}")
+            print(f"✅ Share creado: {share_url}")
+            print(f"📥 URL de descarga: {download_url}")
             return share_info
             
         except Exception as e:

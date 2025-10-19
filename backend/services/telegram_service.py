@@ -108,7 +108,7 @@ Puedes dar todos los detalles que quieras:
 <b>📝 Comandos disponibles:</b>
 /recommend - Obtener recomendaciones personalizadas
 /playlist &lt;descripción&gt; - Crear playlist M3U 🎵
-/share &lt;nombre&gt; - Compartir con enlace público + descarga 📥
+/share &lt;nombre&gt; - Generar enlaces de reproducción + descarga 🎧📥
 /library - Explorar tu biblioteca musical
 /stats - Ver estadísticas de escucha
 /releases [week/month/year] - Lanzamientos recientes 🆕
@@ -155,7 +155,7 @@ Sé todo lo detallado que quieras:
 • /recommend artist - Recomendar artistas
 • /recommend track - Recomendar canciones
 • /playlist &lt;descripción&gt; - Crear playlist M3U 🎵
-• /share &lt;nombre&gt; - Compartir con enlace + descarga 📥
+• /share &lt;nombre&gt; - Generar enlaces (reproducir + descargar) 🎧📥
 • /library - Ver tu biblioteca musical
 • /stats - Estadísticas de escucha
 • /releases - Lanzamientos recientes de tus artistas 🆕
@@ -191,7 +191,7 @@ Sé todo lo detallado que quieras:
 • /share The Dark Side of the Moon - Compartir álbum
 • /share Bohemian Rhapsody - Compartir canción
 • /share Queen - Compartir todas las canciones del artista
-💡 Genera un enlace público con descarga habilitada 📥
+💡 Genera 2 enlaces: uno para reproducir 🎧 y otro para descargar 📥
 
 <b>Lanzamientos Recientes (🆕):</b>
 • /releases - Esta semana (por defecto)
@@ -1192,8 +1192,10 @@ Sé todo lo detallado que quieras:
                 "• Álbumes: <code>/share The Dark Side of the Moon</code>\n"
                 "• Canciones: <code>/share Bohemian Rhapsody</code>\n"
                 "• Artistas: <code>/share Queen</code> (todas sus canciones)\n\n"
-                "💡 El enlace generado es público y permite <b>descargar</b> la música 📥\n"
-                "✨ No requiere autenticación - compártelo con quien quieras",
+                "💡 Genera 2 enlaces:\n"
+                "  🎧 Reproducir online (interfaz web)\n"
+                "  📥 Descargar directamente (archivo)\n"
+                "✨ Ambos enlaces son públicos - no requieren autenticación",
                 parse_mode='HTML'
             )
             return
@@ -1271,15 +1273,17 @@ Sé todo lo detallado que quieras:
 {found_name}
 📦 <b>{len(items_to_share)}</b> {'canción' if len(items_to_share) == 1 else 'canciones'}
 
-🔗 <b>Enlace público:</b>
+🎧 <b>Reproducir online:</b>
 <code>{share_info['url']}</code>
+
+📥 <b>Descargar directamente:</b>
+<code>{share_info['download_url']}</code>
 
 💡 <b>Información:</b>
 • Tipo: {share_type}
 • ID del share: <code>{share_info['id']}</code>
-• Este enlace es público y no requiere autenticación
-• Permite escuchar y <b>descargar</b> la música 📥
-• Cualquiera con el enlace puede acceder"""
+• Los enlaces son públicos y no requieren autenticación
+• El enlace de descarga descarga automáticamente los archivos"""
 
             # Si es un enlace con muchas canciones, agregar detalles
             if len(items_to_share) > 1:
