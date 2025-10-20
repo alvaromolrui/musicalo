@@ -1204,10 +1204,9 @@ Sé todo lo detallado que quieras:
                 "💡 <b>Qué obtienes:</b>\n"
                 "  🔗 Enlace público con interfaz web de Navidrome\n"
                 "  🎧 Reproducir música en streaming\n"
-                "  📥 Descargar los archivos\n"
+                "  📥 Descargar los archivos (habilitado por defecto)\n"
                 "  📋 Ver lista completa de canciones\n\n"
-                "✨ El enlace es público - no requiere autenticación\n"
-                "⚙️ Asegúrate de tener ND_DEFAULTDOWNLOADABLESHARE=true en tu configuración",
+                "✨ El enlace es público - no requiere autenticación",
                 parse_mode='HTML'
             )
             return
