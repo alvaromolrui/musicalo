@@ -5,6 +5,33 @@ Todos los cambios notables en este proyecto serán documentados en este archivo.
 El formato está basado en [Keep a Changelog](https://keepachangelog.com/es/1.0.0/),
 y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
+## [4.0.1-alpha] - 2025-10-20
+
+### 🔧 Mejorado
+- **🔍 Búsqueda Ultra-Flexible**: Sistema de variaciones ortográficas y plurales
+  - Manejo automático de errores ortográficos comunes (qu→k, c→k, k→qu, k→c)
+  - Eliminación automática de plurales (canciones→cancion, álbumes→álbum)
+  - Búsqueda con palabras individuales y orden inverso
+  - Aplicado tanto a `/search` como `/share`
+  - Ejemplos: "inquebrantables" encuentra "inkebrantable", "sfdk inquebrantables" encuentra resultados en cualquier orden
+- **📋 Parseo Menos Estricto en `/share`**: Búsqueda más permisiva con coincidencias parciales
+  - Matching flexible de artistas (coincidencias parciales en lugar de exactas)
+  - Búsqueda de respaldo automática con palabras individuales
+  - Notificación visual cuando se activa búsqueda flexible
+
+### 🧹 Refactorizado
+- **🔗 Limpieza de Código de Shares**: Simplificación de la función `create_share`
+  - Eliminado código innecesario relacionado con parámetro `downloadable` (no funcional en API de Navidrome)
+  - Eliminados todos los logs de debug redundantes
+  - Reducción de ~140 líneas a ~80 líneas más limpias y mantenibles
+  - Documentación actualizada sobre limitaciones de la API de Navidrome
+  - Mensajes de usuario más honestos sobre funcionalidad de descargas
+
+### 📝 Documentación
+- Actualizado README con información precisa sobre funcionalidad de shares
+- Agregada nota sobre dependencia de configuración del servidor para descargas
+- Documentadas limitaciones de la API de Subsonic/Navidrome respecto a parámetro `downloadable`
+
 ## [4.0.0-alpha] - 2025-10-19
 
 ### 🎉 Migración Completa a Stack 100% Open-Source

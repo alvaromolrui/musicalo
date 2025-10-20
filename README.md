@@ -1,6 +1,6 @@
 # Musicalo 🎵🤖
 
-[![Version](https://img.shields.io/badge/Version-4.0.0--alpha-orange.svg)](VERSION)
+[![Version](https://img.shields.io/badge/Version-4.0.1--alpha-orange.svg)](VERSION)
 [![Docker Hub](https://img.shields.io/badge/Docker%20Hub-alvaromolrui%2Fmusicalo-blue?logo=docker)](https://hub.docker.com/r/alvaromolrui/musicalo)
 [![GitHub](https://img.shields.io/badge/GitHub-alvaromolrui%2Fmusicalo-black?logo=github)](https://github.com/alvaromolrui/musicalo)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
