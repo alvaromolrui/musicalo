@@ -1184,7 +1184,38 @@ Sé todo lo detallado que quieras:
             traceback.print_exc()
             await update.message.reply_text(f"❌ Error creando playlist: {str(e)}")
     
-    @_check_authorization
+    def _generate_search_variations(self, search_term: str) -> list:
+        """Generar variaciones del término de búsqueda para matching flexible"""
+        variations = [search_term]
+        
+        # Quitar plural (última 's')
+        if search_term.endswith('s') and len(search_term) > 2:
+            variations.append(search_term[:-1])
+        
+        # Variaciones ortográficas comunes
+        # q -> k, c -> k (común en español)
+        if 'qu' in search_term or 'c' in search_term:
+            variant = search_term.replace('qu', 'k').replace('c', 'k')
+            variations.append(variant)
+            if variant.endswith('s'):
+                variations.append(variant[:-1])
+        
+        # k -> qu, k -> c
+        if 'k' in search_term:
+            variations.append(search_term.replace('k', 'qu'))
+            variations.append(search_term.replace('k', 'c'))
+        
+        # Palabras individuales (si hay más de una)
+        words = search_term.split()
+        if len(words) > 1:
+            # Agregar cada palabra individual
+            variations.extend(words)
+            # Orden inverso
+            variations.append(' '.join(reversed(words)))
+        
+        # Remover duplicados y strings vacíos
+        return list(set(v for v in variations if v and len(v) > 1))
+    
     async def share_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Comando /share - Crear enlace compartible de música
         
@@ -1218,8 +1249,26 @@ Sé todo lo detallado que quieras:
         await update.message.reply_text(f"🔍 Buscando '{search_term_normalized}' para compartir...")
         
         try:
-            # 1. Buscar en la biblioteca con mayor límite para ser menos estricto
-            results = await self.navidrome.search(search_term_normalized, limit=20)
+            # 1. Generar variaciones del término de búsqueda
+            search_variations = self._generate_search_variations(search_term_normalized.lower())
+            print(f"🔍 Variaciones de búsqueda: {search_variations}")
+            
+            # 2. Intentar búsquedas con cada variación hasta encontrar resultados
+            results = None
+            successful_search_term = None
+            
+            for variation in search_variations:
+                temp_results = await self.navidrome.search(variation, limit=20)
+                if temp_results.get('albums') or temp_results.get('tracks') or temp_results.get('artists'):
+                    results = temp_results
+                    successful_search_term = variation
+                    if variation != search_term_normalized.lower():
+                        print(f"✅ Encontrado con variación: '{variation}'")
+                    break
+            
+            # Si no se encontró nada, usar los resultados de la última búsqueda
+            if not results:
+                results = await self.navidrome.search(search_term_normalized, limit=20)
             
             items_to_share = []
             share_type = ""
@@ -1304,11 +1353,11 @@ Sé todo lo detallado que quieras:
             
             # 2. Informar si se encontró algo diferente con búsqueda flexible
             search_was_flexible = False
-            if results.get('albums') or results.get('tracks') or results.get('artists'):
-                # Búsqueda directa exitosa
-                search_was_flexible = False
-            else:
-                # Se usó búsqueda flexible
+            if successful_search_term and successful_search_term != search_term_normalized.lower():
+                # Se usó una variación del término de búsqueda
+                search_was_flexible = True
+            elif not (results.get('albums') or results.get('tracks') or results.get('artists')):
+                # Se usó búsqueda flexible de palabras individuales
                 search_was_flexible = True
             
             # 3. Crear share en Navidrome
