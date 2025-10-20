@@ -66,53 +66,44 @@ La IA entiende múltiples criterios y genera recomendaciones precisas que cumple
 ## 🚀 Instalación
 
 ### Prerrequisitos
-- **Docker y Docker Compose** (recomendado) o Python 3.11+
+- **Docker y Docker Compose** instalados en tu sistema
 - Servidor **Navidrome** funcionando
 - Cuenta de **ListenBrainz** (open-source, gratuita)
 - **API key de Google Gemini** (gratuita)
 - **Token de bot de Telegram**
 
-### 🐳 Opción 1: Docker (Recomendado)
+### 🐳 Instalación con Docker Hub
+
+La forma más sencilla de instalar Musicalo es usando la imagen oficial pre-construida de Docker Hub:
 
 ```bash
-# 1. Clonar repositorio
-git clone https://github.com/alvaromolrui/musicalo.git
+# 1. Crear directorio para el proyecto
+mkdir musicalo
 cd musicalo
 
-# 2. Configurar credenciales
-cp env.example .env
-nano .env  # Editar con tus credenciales
+# 2. Descargar archivo de configuración de ejemplo
+wget https://raw.githubusercontent.com/alvaromolrui/musicalo/main/env.example
+mv env.example .env
 
-# 3. Iniciar bot (usa imagen pre-construida de Docker Hub)
+# 3. Editar el archivo .env con tus credenciales
+nano .env  # O usa tu editor favorito
+
+# 4. Descargar docker-compose.yml
+wget https://raw.githubusercontent.com/alvaromolrui/musicalo/main/docker-compose.yml
+
+# 5. Iniciar el bot (descargará automáticamente la imagen de Docker Hub)
 docker-compose up -d
 ```
 
+**La imagen se descargará automáticamente de Docker Hub** ([alvaromolrui/musicalo](https://hub.docker.com/r/alvaromolrui/musicalo)) en tu primer inicio.
+
 **Comandos útiles:**
 ```bash
-docker-compose logs -f      # Ver logs
-docker-compose restart      # Reiniciar
-docker-compose down         # Detener
-docker-compose pull         # Actualizar a última versión
-```
-
-### 📦 Opción 2: Instalación Manual (Sin Docker)
-
-```bash
-# 1. Clonar repositorio
-git clone https://github.com/alvaromolrui/musicalo.git
-cd musicalo
-
-# 2. Instalar dependencias
-pip install -r requirements.txt
-
-# 3. Configurar
-cp env.example .env
-nano .env
-# Cambiar NAVIDROME_URL a: http://localhost:4533
-# (para instalación local sin Docker)
-
-# 4. Ejecutar
-python start-bot.py
+docker-compose logs -f      # Ver logs en tiempo real
+docker-compose restart      # Reiniciar el bot
+docker-compose down         # Detener el bot
+docker-compose pull         # Actualizar a la última versión
+docker-compose up -d        # Aplicar actualización
 ```
 
 ## ⚙️ Configuración
@@ -215,11 +206,7 @@ TELEGRAM_ALLOWED_USER_IDS=123456789,987654321,555444333
 **Paso 3: Reiniciar el Bot**
 
 ```bash
-# Si usas Docker
 docker-compose restart
-
-# Si lo ejecutas manualmente
-python start-bot.py
 ```
 
 ### ✅ Verificar Configuración
@@ -273,6 +260,21 @@ La IA entiende tu intención y responde usando tus datos reales de ListenBrainz 
 - **`/share`** - Crear enlace para compartir música • Ej: /share The dark side of the moon
 - **`/start`** - Iniciar el bot
 - **`/help`** - Mostrar ayuda completa
+
+### Lista de comandos
+
+```
+recommend - Recomendaciones musicales • Ej: /recommend rock
+playlist - Crear playlist M3U • Ej: /playlist jazz suave
+nowplaying - Ver qué se está reproduciendo ahora • Muestra todos los reproductores activos
+library - Explorar biblioteca
+stats - Estadísticas en Listenbrainz • Ej: /stats week
+search - Buscar música en la biblioteca • Ej: /search queen
+releases - Consultar nuevos lanzamientos de artistas de la biblioteca • Ej: /releases week
+share - Crear enlace para compartir música • Ej: /share The dark side of the moon
+start - Iniciar el bot
+help - Mostrar ayuda completa
+```
 
 ### Ejemplos con Comandos
 
@@ -341,67 +343,6 @@ El sistema utiliza múltiples enfoques:
 - **Descubrimiento**: Sugerencias para expandir horizontes
 - **Explicabilidad**: Razones claras para cada recomendación
 - **Búsqueda inversa con MusicBrainz**: Identifica artistas de tu biblioteca que cumplen criterios específicos (género, país, época)
-
-## 🔮 Roadmap
-
-- [x] **Modo conversacional**: Chat natural con la IA ✅ (v1.1.0)
-- [x] **Bot privado**: Control de acceso por usuario ✅ (v1.1.1)
-- [x] **Integración MusicBrainz**: Búsquedas avanzadas por género/país/época ✅ (v2.0.0-alpha)
-- [x] **Now Playing**: Consulta en tiempo real de reproducción actual ✅ (v4.0.0-alpha)
-- [ ] **Notificaciones inteligentes**: Alertas basadas en patrones de escucha
-- [ ] **Playlists automáticas**: Creación de playlists por IA
-- [ ] **Integración con Spotify**: Acceso a biblioteca de Spotify
-- [ ] **Recomendaciones colaborativas**: Basadas en usuarios similares
-- [ ] **Análisis de sentimientos**: Recomendaciones por estado de ánimo
-- [ ] **Estadísticas avanzadas**: Gráficos y análisis detallados
-- [ ] **Sincronización múltiple**: Múltiples cuentas de música
-
-## 👨‍💻 Para Desarrolladores
-
-### 🔄 CI/CD Automático
-
-El repositorio incluye GitHub Actions que automáticamente:
-
-- ✅ **Construye la imagen** en cada push a `main`
-- ✅ **Sube a Docker Hub** como `alvaromolrui/musicalo:latest`
-- ✅ **Multiplataforma** (AMD64 y ARM64)
-- ✅ **Cache optimizado** para builds más rápidos
-- ✅ **Tags automáticos** para releases
-
-### 📦 Configurar GitHub Actions
-
-Para que funcione el CI/CD automático:
-
-1. **Ve a GitHub** → Tu repositorio → Settings → Secrets
-2. **Añade estos secrets:**
-   - `DOCKER_USERNAME`: `alvaromolrui`
-   - `DOCKER_PASSWORD`: Tu token de Docker Hub
-
-3. **Obtener token de Docker Hub:**
-   - Ve a [hub.docker.com](https://hub.docker.com)
-   - Settings → Security → New Access Token
-   - Copia el token y pégalo en `DOCKER_PASSWORD`
-
-### 🏷️ Releases y Versionado
-
-```bash
-# Crear release con tag
-git tag v1.0.0
-git push origin v1.0.0
-
-# Esto automáticamente creará:
-# - alvaromolrui/musicalo:v1.0.0
-# - alvaromolrui/musicalo:1.0
-# - alvaromolrui/musicalo:latest (si es la rama main)
-```
-
-## 🤝 Contribuir
-
-1. Fork el proyecto
-2. Crea una rama para tu feature (`git checkout -b feature/AmazingFeature`)
-3. Commit tus cambios (`git commit -m 'Add some AmazingFeature'`)
-4. Push a la rama (`git push origin feature/AmazingFeature`)
-5. Abre un Pull Request
 
 ## 📄 Licencia
 
