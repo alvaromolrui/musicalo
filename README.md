@@ -265,7 +265,7 @@ La IA entiende tu intención y responde usando tus datos reales de ListenBrainz 
 
 - **`/recommend`** - Recomendaciones musicales • Ej: /recommend rock
 - **`/playlist`** - Crear playlist M3U • Ej: /playlist jazz suave
-- **`/nowlisten`** - Ver qué se está reproduciendo ahora • Muestra todos los reproductores activos
+- **`/nowplaying`** - Ver qué se está reproduciendo ahora • Muestra todos los reproductores activos
 - **`/library`** - Explorar biblioteca
 - **`/stats`** - Estadísticas en Listenbrainz • Ej: /stats week
 - **`/search`** - Buscar música en la biblioteca • Ej: /search queen
@@ -299,7 +299,7 @@ La IA entiende tu intención y responde usando tus datos reales de ListenBrainz 
 
 ### Comandos de Música
 - **`/recommend`** - Recomendaciones personalizadas con IA
-- **`/nowlisten`** - Ver qué se está reproduciendo actualmente en todos los reproductores
+- **`/nowplaying`** - Ver qué se está reproduciendo actualmente en todos los reproductores
 - **`/library`** - Explorar biblioteca musical
 - **`/stats`** - Estadísticas de escucha y patrones
 - **`/search <término>`** - Buscar canciones, artistas o álbumes

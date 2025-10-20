@@ -110,7 +110,7 @@ Puedes dar todos los detalles que quieras:
 /recommend - Obtener recomendaciones personalizadas
 /playlist &lt;descripción&gt; - Crear playlist M3U 🎵
 /share &lt;nombre&gt; - Compartir música con enlace público 🔗
-/nowlisten - Ver qué se está reproduciendo ahora 🎧
+/nowplaying - Ver qué se está reproduciendo ahora 🎧
 /library - Explorar tu biblioteca musical
 /stats - Ver estadísticas de escucha
 /releases [week/month/year] - Lanzamientos recientes 🆕
@@ -159,7 +159,7 @@ Sé todo lo detallado que quieras:
 • /recommend track - Recomendar canciones
 • /playlist &lt;descripción&gt; - Crear playlist M3U 🎵
 • /share &lt;nombre&gt; - Compartir música con enlace público 🔗
-• /nowlisten - Ver qué se está reproduciendo ahora 🎧
+• /nowplaying - Ver qué se está reproduciendo ahora 🎧
 • /library - Ver tu biblioteca musical
 • /stats - Estadísticas de escucha
 • /releases - Lanzamientos recientes de tus artistas 🆕
@@ -198,7 +198,7 @@ Sé todo lo detallado que quieras:
 💡 Genera enlace público con reproducción y descarga habilitadas 🎧📥
 
 <b>Reproducción actual (🆕):</b>
-• /nowlisten - Ver qué se está reproduciendo ahora
+• /nowplaying - Ver qué se está reproduciendo ahora
 💡 Muestra lo que está sonando en TODOS los reproductores conectados al servidor
 💡 También puedes preguntar: "¿Qué estoy escuchando?"
 
@@ -1315,8 +1315,8 @@ Sé todo lo detallado que quieras:
             )
     
     @_check_authorization
-    async def nowlisten_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Comando /nowlisten - Mostrar qué se está reproduciendo actualmente
+    async def nowplaying_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Comando /nowplaying - Mostrar qué se está reproduciendo actualmente
         
         Muestra información de lo que se está reproduciendo en todos los reproductores
         conectados al servidor de Navidrome.
@@ -1378,7 +1378,7 @@ Este comando muestra lo que se está reproduciendo actualmente en TODOS los repr
             await update.message.reply_text(text, parse_mode='HTML')
             
         except Exception as e:
-            print(f"❌ Error en nowlisten_command: {e}")
+            print(f"❌ Error en nowplaying_command: {e}")
             import traceback
             traceback.print_exc()
             await update.message.reply_text(
