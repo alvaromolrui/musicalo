@@ -1005,17 +1005,46 @@ Sé todo lo detallado que quieras:
             return
         
         search_term = " ".join(context.args)
-        await update.message.reply_text(f"🔍 Buscando '{search_term}' en tu biblioteca...")
+        # Normalizar el término de búsqueda
+        search_term_normalized = " ".join(search_term.split())
+        
+        await update.message.reply_text(f"🔍 Buscando '{search_term_normalized}' en tu biblioteca...")
         
         try:
-            # Buscar en la biblioteca
-            results = await self.navidrome.search(search_term, limit=10)
+            # Generar variaciones del término de búsqueda para mayor flexibilidad
+            search_variations = self._generate_search_variations(search_term_normalized.lower())
+            print(f"🔍 Variaciones de búsqueda: {search_variations}")
+            
+            # Intentar búsquedas con cada variación hasta encontrar resultados
+            results = None
+            successful_search_term = None
+            
+            for variation in search_variations:
+                temp_results = await self.navidrome.search(variation, limit=20)
+                if temp_results.get('tracks') or temp_results.get('albums') or temp_results.get('artists'):
+                    results = temp_results
+                    successful_search_term = variation
+                    if variation != search_term_normalized.lower():
+                        print(f"✅ Encontrado con variación: '{variation}'")
+                    break
+            
+            # Si no se encontró nada con variaciones, intentar búsqueda normal
+            if not results:
+                results = await self.navidrome.search(search_term_normalized, limit=20)
             
             if not results['tracks'] and not results['albums'] and not results['artists']:
-                await update.message.reply_text(f"😔 No se encontraron resultados para '{search_term}'")
+                await update.message.reply_text(
+                    f"😔 No se encontraron resultados para '{search_term_normalized}'.\n\n"
+                    "💡 Intenta con diferentes palabras clave o verifica la ortografía."
+                )
                 return
             
-            text = f"🔍 <b>Resultados para '{search_term}':</b>\n\n"
+            # Indicar si se usó una variación diferente
+            search_info = ""
+            if successful_search_term and successful_search_term != search_term_normalized.lower():
+                search_info = f" <i>(búsqueda flexible activada)</i>"
+            
+            text = f"🔍 <b>Resultados para '{search_term_normalized}':</b>{search_info}\n\n"
             
             # Mostrar canciones
             if results['tracks']:
@@ -1040,11 +1069,11 @@ Sé todo lo detallado que quieras:
             # Botones de acción
             keyboard = []
             if results['tracks']:
-                keyboard.append([InlineKeyboardButton("🎵 Ver más canciones", callback_data=f"search_tracks_{search_term}")])
+                keyboard.append([InlineKeyboardButton("🎵 Ver más canciones", callback_data=f"search_tracks_{search_term_normalized}")])
             if results['albums']:
-                keyboard.append([InlineKeyboardButton("📀 Ver más álbumes", callback_data=f"search_albums_{search_term}")])
+                keyboard.append([InlineKeyboardButton("📀 Ver más álbumes", callback_data=f"search_albums_{search_term_normalized}")])
             if results['artists']:
-                keyboard.append([InlineKeyboardButton("🎤 Ver más artistas", callback_data=f"search_artists_{search_term}")])
+                keyboard.append([InlineKeyboardButton("🎤 Ver más artistas", callback_data=f"search_artists_{search_term_normalized}")])
             
             reply_markup = InlineKeyboardMarkup(keyboard) if keyboard else None
             
