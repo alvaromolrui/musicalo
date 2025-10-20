@@ -385,6 +385,11 @@ class NavidromeService:
             id_params = "&".join([f"id={item_id}" for item_id in item_ids])
             full_url = f"{url}?{url_params}&{id_params}"
             
+            # Debug: imprimir URL completa (sin mostrar password/token por seguridad)
+            debug_params = {k: v for k, v in params.items() if k not in ['t', 's']}
+            print(f"🔍 DEBUG - Parámetros del share: {debug_params}")
+            print(f"🔍 DEBUG - IDs compartidos: {len(item_ids)} items")
+            
             response = await self.client.get(full_url)
             
             if response.status_code != 200:
@@ -412,16 +417,21 @@ class NavidromeService:
             share_id = share.get("id", "")
             share_url = share.get("url", "")
             
+            # Debug: ver todos los campos devueltos por el share
+            print(f"🔍 DEBUG - Respuesta del share: {share}")
+            
             share_info = {
                 "id": share_id,
                 "url": share_url,
                 "description": share.get("description", description or ""),
                 "created": share.get("created", ""),
                 "expires": share.get("expires"),
-                "visit_count": share.get("visitCount", 0)
+                "visit_count": share.get("visitCount", 0),
+                "downloadable": share.get("downloadable")  # Agregar campo downloadable
             }
             
             print(f"✅ Share creado: {share_url}")
+            print(f"   Downloadable: {share.get('downloadable', 'no especificado')}")
             return share_info
             
         except Exception as e:
