@@ -353,8 +353,7 @@ class NavidromeService:
         self, 
         item_ids: List[str], 
         description: Optional[str] = None,
-        expires: Optional[int] = None,
-        downloadable: bool = True
+        expires: Optional[int] = None
     ) -> Optional[Dict[str, str]]:
         """Crear enlace compartible para canciones o álbumes
         
@@ -362,25 +361,17 @@ class NavidromeService:
             item_ids: Lista de IDs de canciones o álbumes a compartir
             description: Descripción opcional del share
             expires: Tiempo de expiración en milisegundos desde epoch (opcional)
-            downloadable: Si el share permite descargas (por defecto True)
             
         Returns:
             Dict con 'id', 'url' y 'description' del share, o None si falla
             
-        NOTA IMPORTANTE sobre downloadable:
-            A pesar de enviar downloadable=true tanto en createShare como en updateShare,
-            Navidrome puede IGNORAR este parámetro por completo. Esto parece ser una
-            limitación de la implementación actual de la API de Subsonic en Navidrome.
-            
-            El único workaround confiable es:
-            1. Establecer ND_DEFAULTDOWNLOADABLESHARE=true en la configuración del servidor
-            2. O editar manualmente el share desde la interfaz web de Navidrome
-            
-            Referencia: https://github.com/navidrome/navidrome/issues/
-            (Este comportamiento ha sido observado en Navidrome v0.49+)
+        Nota:
+            Las descargas en el share se controlan mediante la configuración del servidor
+            ND_DEFAULTDOWNLOADABLESHARE. La API de Navidrome ignora el parámetro 
+            'downloadable' tanto en createShare como en updateShare.
         """
         try:
-            print(f"🔗 Creando share para {len(item_ids)} items (downloadable={downloadable})...")
+            print(f"🔗 Creando share para {len(item_ids)} items...")
             
             # Construir parámetros
             params = self._get_auth_params()
@@ -388,19 +379,12 @@ class NavidromeService:
                 params["description"] = description
             if expires:
                 params["expires"] = str(expires)
-            # Agregar parámetro downloadable explícitamente
-            params["downloadable"] = "true" if downloadable else "false"
             
             # La API requiere múltiples parámetros 'id' para cada item
             url = f"{self.base_url}/rest/createShare.view"
             url_params = "&".join([f"{k}={v}" for k, v in params.items()])
             id_params = "&".join([f"id={item_id}" for item_id in item_ids])
             full_url = f"{url}?{url_params}&{id_params}"
-            
-            # Debug: imprimir URL completa (sin mostrar password/token por seguridad)
-            debug_params = {k: v for k, v in params.items() if k not in ['t', 's']}
-            print(f"🔍 DEBUG - Parámetros del share: {debug_params}")
-            print(f"🔍 DEBUG - IDs compartidos: {len(item_ids)} items")
             
             response = await self.client.get(full_url)
             
@@ -429,54 +413,16 @@ class NavidromeService:
             share_id = share.get("id", "")
             share_url = share.get("url", "")
             
-            # Debug: ver todos los campos devueltos por el share
-            print(f"🔍 DEBUG - Respuesta del share: {share}")
-            print(f"🔍 DEBUG - Campo 'downloadable' en respuesta: {share.get('downloadable', 'NO PRESENTE')}")
-            
-            # IMPORTANTE: Navidrome IGNORA el parámetro downloadable en createShare
-            # Debemos usar updateShare después para forzar downloadable=true
-            if downloadable:
-                print(f"🔄 Ejecutando updateShare para forzar downloadable=true...")
-                try:
-                    update_params = self._get_auth_params()
-                    update_params["id"] = share_id  # updateShare usa 'id', no 'shareId'
-                    update_params["downloadable"] = "true"
-                    
-                    update_url = f"{self.base_url}/rest/updateShare.view"
-                    url_params = "&".join([f"{k}={v}" for k, v in update_params.items()])
-                    update_full_url = f"{update_url}?{url_params}"
-                    
-                    print(f"🔍 DEBUG - Llamando updateShare con id={share_id}")
-                    update_response = await self.client.get(update_full_url)
-                    
-                    if update_response.status_code == 200:
-                        update_data = update_response.json()
-                        update_subsonic = update_data.get("subsonic-response", {})
-                        if update_subsonic.get("status") == "ok":
-                            print(f"✅ Share actualizado exitosamente con downloadable=true")
-                        else:
-                            error_msg = update_subsonic.get("error", {}).get("message", "Unknown")
-                            print(f"⚠️ updateShare falló: {error_msg}")
-                    else:
-                        print(f"⚠️ updateShare HTTP error: {update_response.status_code}")
-                        print(f"   Respuesta: {update_response.text}")
-                except Exception as e:
-                    print(f"⚠️ Error al ejecutar updateShare: {e}")
-                    import traceback
-                    traceback.print_exc()
-            
             share_info = {
                 "id": share_id,
                 "url": share_url,
                 "description": share.get("description", description or ""),
                 "created": share.get("created", ""),
                 "expires": share.get("expires"),
-                "visit_count": share.get("visitCount", 0),
-                "downloadable": share.get("downloadable")  # Agregar campo downloadable
+                "visit_count": share.get("visitCount", 0)
             }
             
             print(f"✅ Share creado: {share_url}")
-            print(f"   Downloadable: {share.get('downloadable', 'no especificado')}")
             return share_info
             
         except Exception as e:

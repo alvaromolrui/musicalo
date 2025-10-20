@@ -195,7 +195,7 @@ Sé todo lo detallado que quieras:
 • /share The Dark Side of the Moon - Compartir álbum
 • /share Bohemian Rhapsody - Compartir canción
 • /share Queen - Compartir todas las canciones del artista
-💡 Genera enlace público con reproducción y descarga habilitadas 🎧📥
+💡 Genera enlace público para reproducción en streaming 🎧
 
 <b>Reproducción actual (🆕):</b>
 • /nowplaying - Ver qué se está reproduciendo ahora
@@ -1204,9 +1204,9 @@ Sé todo lo detallado que quieras:
                 "💡 <b>Qué obtienes:</b>\n"
                 "  🔗 Enlace público con interfaz web de Navidrome\n"
                 "  🎧 Reproducir música en streaming\n"
-                "  📥 Descargar los archivos (habilitado por defecto)\n"
                 "  📋 Ver lista completa de canciones\n\n"
-                "✨ El enlace es público - no requiere autenticación",
+                "✨ El enlace es público - no requiere autenticación\n\n"
+                "ℹ️ <i>Las descargas dependen de la configuración de tu servidor</i>",
                 parse_mode='HTML'
             )
             return
@@ -1288,9 +1288,8 @@ Sé todo lo detallado que quieras:
 <code>{share_info['url']}</code>
 
 💡 <b>Al abrir este enlace:</b>
-• 🎧 Podrás reproducir la música en streaming
-• 📥 Podrás descargar los archivos
-• 📋 Verás la lista completa de canciones
+• 🎧 Reproducir la música en streaming
+• 📋 Ver la lista completa de canciones
 
 📋 <b>Información:</b>
 • Tipo: {share_type}
