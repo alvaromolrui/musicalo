@@ -1212,11 +1212,14 @@ Sé todo lo detallado que quieras:
             return
         
         search_term = " ".join(context.args)
-        await update.message.reply_text(f"🔍 Buscando '{search_term}' para compartir...")
+        # Normalizar el término de búsqueda (eliminar espacios extras, etc.)
+        search_term_normalized = " ".join(search_term.split())
+        
+        await update.message.reply_text(f"🔍 Buscando '{search_term_normalized}' para compartir...")
         
         try:
-            # 1. Buscar en la biblioteca
-            results = await self.navidrome.search(search_term, limit=10)
+            # 1. Buscar en la biblioteca con mayor límite para ser menos estricto
+            results = await self.navidrome.search(search_term_normalized, limit=20)
             
             items_to_share = []
             share_type = ""
@@ -1246,24 +1249,69 @@ Sé todo lo detallado que quieras:
                 found_name = f"🎤 {artist.name}"
                 share_type = "artista"
                 
-                # Buscar todas las canciones del artista
+                # Buscar todas las canciones del artista de forma más permisiva
                 artist_tracks = await self.navidrome.search(artist.name, limit=500)
-                # Filtrar solo las del artista exacto
+                
+                # Normalizar nombre del artista para matching flexible
+                artist_name_normalized = artist.name.lower().strip()
+                
+                # Filtrar canciones del artista (matching flexible)
                 items_to_share = [
                     t.id for t in artist_tracks.get('tracks', []) 
-                    if t.artist.lower() == artist.name.lower()
+                    if artist_name_normalized in t.artist.lower() or t.artist.lower() in artist_name_normalized
                 ]
             
             if not items_to_share:
-                await update.message.reply_text(
-                    f"😔 No encontré '{search_term}' en tu biblioteca.\n\n"
-                    "💡 Intenta buscar primero con <code>/search {search_term}</code> "
-                    "para verificar qué hay disponible.",
-                    parse_mode='HTML'
-                )
-                return
+                # Intentar búsqueda más flexible con palabras individuales
+                words = search_term_normalized.split()
+                if len(words) > 1:
+                    # Buscar con solo la primera palabra clave
+                    alt_results = await self.navidrome.search(words[0], limit=20)
+                    
+                    # Buscar coincidencias parciales en álbumes
+                    search_lower = search_term_normalized.lower()
+                    for album in alt_results.get('albums', []):
+                        album_name_lower = album.name.lower()
+                        album_artist_lower = album.artist.lower()
+                        # Matching flexible: cualquier palabra en común
+                        if any(word.lower() in album_name_lower or word.lower() in album_artist_lower for word in words):
+                            found_name = f"📀 {album.artist} - {album.name}"
+                            share_type = "álbum"
+                            album_tracks = await self.navidrome.get_album_tracks(album.id)
+                            items_to_share = [t.id for t in album_tracks]
+                            break
+                    
+                    # Si no hay álbumes, buscar en canciones
+                    if not items_to_share:
+                        for track in alt_results.get('tracks', []):
+                            track_title_lower = track.title.lower()
+                            track_artist_lower = track.artist.lower()
+                            if any(word.lower() in track_title_lower or word.lower() in track_artist_lower for word in words):
+                                found_name = f"🎵 {track.artist} - {track.title}"
+                                share_type = "canción"
+                                items_to_share = [track.id]
+                                break
+                
+                # Si aún no hay resultados, mostrar error
+                if not items_to_share:
+                    await update.message.reply_text(
+                        f"😔 No encontré '{search_term_normalized}' en tu biblioteca.\n\n"
+                        "💡 Intenta buscar primero con <code>/search {search_term_normalized}</code> "
+                        "para verificar qué hay disponible.",
+                        parse_mode='HTML'
+                    )
+                    return
             
-            # 2. Crear share en Navidrome
+            # 2. Informar si se encontró algo diferente con búsqueda flexible
+            search_was_flexible = False
+            if results.get('albums') or results.get('tracks') or results.get('artists'):
+                # Búsqueda directa exitosa
+                search_was_flexible = False
+            else:
+                # Se usó búsqueda flexible
+                search_was_flexible = True
+            
+            # 3. Crear share en Navidrome
             description = f"Compartido desde Musicalo: {found_name}"
             share_info = await self.navidrome.create_share(
                 items_to_share,
@@ -1278,7 +1326,7 @@ Sé todo lo detallado que quieras:
                 )
                 return
             
-            # 3. Formatear respuesta
+            # 4. Formatear respuesta
             text = f"""✅ <b>Enlace compartido creado</b>
 
 {found_name}
@@ -1296,6 +1344,10 @@ Sé todo lo detallado que quieras:
 • ID: <code>{share_info['id']}</code>
 • Enlace público sin autenticación"""
 
+            # Agregar nota si se usó búsqueda flexible
+            if search_was_flexible:
+                text += f"\n\nℹ️ <i>Búsqueda flexible activada - encontré el mejor resultado para '{search_term_normalized}'</i>"
+            
             # Si es un enlace con muchas canciones, agregar detalles
             if len(items_to_share) > 1:
                 text += f"\n• Compartiendo {len(items_to_share)} canciones"
