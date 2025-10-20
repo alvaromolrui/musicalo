@@ -420,6 +420,33 @@ class NavidromeService:
             # Debug: ver todos los campos devueltos por el share
             print(f"🔍 DEBUG - Respuesta del share: {share}")
             
+            # IMPORTANTE: Algunos servidores requieren updateShare para establecer downloadable
+            # Intentamos actualizar el share para asegurar que downloadable esté configurado
+            if downloadable and not share.get("downloadable"):
+                print(f"🔄 Intentando actualizar share con updateShare para forzar downloadable=true...")
+                try:
+                    update_params = self._get_auth_params()
+                    update_params["shareId"] = share_id
+                    update_params["downloadable"] = "true"
+                    
+                    update_url = f"{self.base_url}/rest/updateShare.view"
+                    update_url_params = "&".join([f"{k}={v}" for k, v in update_params.items()])
+                    update_full_url = f"{update_url}?{update_url_params}"
+                    
+                    update_response = await self.client.get(update_full_url)
+                    
+                    if update_response.status_code == 200:
+                        update_data = update_response.json()
+                        update_subsonic = update_data.get("subsonic-response", {})
+                        if update_subsonic.get("status") == "ok":
+                            print(f"✅ Share actualizado con downloadable=true")
+                        else:
+                            print(f"⚠️ updateShare respondió pero con status: {update_subsonic.get('status')}")
+                    else:
+                        print(f"⚠️ updateShare falló con código: {update_response.status_code}")
+                except Exception as e:
+                    print(f"⚠️ Error al actualizar share (esto es normal si no está soportado): {e}")
+            
             share_info = {
                 "id": share_id,
                 "url": share_url,
