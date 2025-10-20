@@ -366,6 +366,18 @@ class NavidromeService:
             
         Returns:
             Dict con 'id', 'url' y 'description' del share, o None si falla
+            
+        NOTA IMPORTANTE sobre downloadable:
+            A pesar de enviar downloadable=true tanto en createShare como en updateShare,
+            Navidrome puede IGNORAR este parámetro por completo. Esto parece ser una
+            limitación de la implementación actual de la API de Subsonic en Navidrome.
+            
+            El único workaround confiable es:
+            1. Establecer ND_DEFAULTDOWNLOADABLESHARE=true en la configuración del servidor
+            2. O editar manualmente el share desde la interfaz web de Navidrome
+            
+            Referencia: https://github.com/navidrome/navidrome/issues/
+            (Este comportamiento ha sido observado en Navidrome v0.49+)
         """
         try:
             print(f"🔗 Creando share para {len(item_ids)} items (downloadable={downloadable})...")
