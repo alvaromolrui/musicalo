@@ -97,6 +97,7 @@ Ya no necesitas recordar comandos. Escribe lo que quieras:
 • "Busca Queen en mi biblioteca"
 • "Muéstrame mis estadísticas"
 • "¿Qué álbumes tengo de Pink Floyd?"
+• "¿Qué estoy escuchando?"
 
 <b>🎨 Sé específico en tus peticiones:</b>
 Puedes dar todos los detalles que quieras:
@@ -109,6 +110,7 @@ Puedes dar todos los detalles que quieras:
 /recommend - Obtener recomendaciones personalizadas
 /playlist &lt;descripción&gt; - Crear playlist M3U 🎵
 /share &lt;nombre&gt; - Compartir música con enlace público 🔗
+/nowlisten - Ver qué se está reproduciendo ahora 🎧
 /library - Explorar tu biblioteca musical
 /stats - Ver estadísticas de escucha
 /releases [week/month/year] - Lanzamientos recientes 🆕
@@ -140,6 +142,7 @@ Ahora puedes escribirme directamente sin usar comandos:
 • "Muéstrame mis estadísticas"
 • "¿Qué artistas tengo en mi biblioteca?"
 • "Crea una playlist de rock progresivo"
+• "¿Qué estoy escuchando?"
 
 <b>🎨 Peticiones Específicas (NUEVO):</b>
 Sé todo lo detallado que quieras:
@@ -156,6 +159,7 @@ Sé todo lo detallado que quieras:
 • /recommend track - Recomendar canciones
 • /playlist &lt;descripción&gt; - Crear playlist M3U 🎵
 • /share &lt;nombre&gt; - Compartir música con enlace público 🔗
+• /nowlisten - Ver qué se está reproduciendo ahora 🎧
 • /library - Ver tu biblioteca musical
 • /stats - Estadísticas de escucha
 • /releases - Lanzamientos recientes de tus artistas 🆕
@@ -192,6 +196,11 @@ Sé todo lo detallado que quieras:
 • /share Bohemian Rhapsody - Compartir canción
 • /share Queen - Compartir todas las canciones del artista
 💡 Genera enlace público con reproducción y descarga habilitadas 🎧📥
+
+<b>Reproducción actual (🆕):</b>
+• /nowlisten - Ver qué se está reproduciendo ahora
+💡 Muestra lo que está sonando en TODOS los reproductores conectados al servidor
+💡 También puedes preguntar: "¿Qué estoy escuchando?"
 
 <b>Lanzamientos Recientes (🆕):</b>
 • /releases - Esta semana (por defecto)
@@ -1303,6 +1312,78 @@ Sé todo lo detallado que quieras:
             await update.message.reply_text(
                 f"❌ Error creando enlace: {str(e)}\n\n"
                 "Verifica tu configuración de Navidrome."
+            )
+    
+    @_check_authorization
+    async def nowlisten_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Comando /nowlisten - Mostrar qué se está reproduciendo actualmente
+        
+        Muestra información de lo que se está reproduciendo en todos los reproductores
+        conectados al servidor de Navidrome.
+        """
+        await update.message.reply_text("🎵 Consultando reproducción actual...")
+        
+        try:
+            # Obtener información de reproducción actual
+            now_playing = await self.navidrome.get_now_playing()
+            
+            if not now_playing:
+                text = """🎵 <b>Reproducción Actual</b>
+
+⚠️ No hay nada reproduciéndose en este momento.
+
+💡 <b>Posibles razones:</b>
+• No hay reproductores conectados al servidor
+• Los reproductores no están reproduciendo música
+• Los reproductores no reportan su estado
+
+<b>Cómo usar este comando:</b>
+Este comando muestra lo que se está reproduciendo actualmente en TODOS los reproductores conectados a tu servidor de Navidrome (aplicaciones móviles, web, etc.)"""
+                
+                await update.message.reply_text(text, parse_mode='HTML')
+                return
+            
+            # Formatear respuesta
+            text = f"🎵 <b>Reproducción Actual</b>\n\n"
+            text += f"✅ Hay <b>{len(now_playing)}</b> reproducción(es) activa(s):\n\n"
+            
+            for i, entry in enumerate(now_playing, 1):
+                text += f"<b>{i}.</b> 🎧 <b>{entry['artist']} - {entry['track']}</b>\n"
+                
+                if entry.get('album'):
+                    text += f"   📀 Álbum: {entry['album']}\n"
+                
+                if entry.get('year'):
+                    text += f"   📅 Año: {entry['year']}\n"
+                
+                text += f"   👤 Usuario: <code>{entry['username']}</code>\n"
+                text += f"   🎧 Reproductor: <i>{entry['player_name']}</i>\n"
+                
+                # Estado de reproducción
+                if entry.get('minutes_ago') == 0:
+                    text += f"   ▶️ <b>Reproduciendo ahora mismo</b>\n"
+                elif entry.get('minutes_ago'):
+                    text += f"   ⏱️ Comenzó hace {entry['minutes_ago']} minuto(s)\n"
+                
+                # Duración
+                if entry.get('duration'):
+                    mins = entry['duration'] // 60
+                    secs = entry['duration'] % 60
+                    text += f"   ⏳ Duración: {mins}:{secs:02d}\n"
+                
+                text += "\n"
+            
+            text += "💡 Este comando muestra lo que se está reproduciendo en <b>todos los reproductores</b> conectados al servidor."
+            
+            await update.message.reply_text(text, parse_mode='HTML')
+            
+        except Exception as e:
+            print(f"❌ Error en nowlisten_command: {e}")
+            import traceback
+            traceback.print_exc()
+            await update.message.reply_text(
+                "❌ Error obteniendo información de reproducción.\n\n"
+                "Verifica que tu servidor de Navidrome esté accesible y funcionando correctamente."
             )
     
     @_check_authorization

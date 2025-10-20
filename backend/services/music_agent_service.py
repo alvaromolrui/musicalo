@@ -427,6 +427,13 @@ Responde ahora de forma natural y conversacional:"""
             "nuevo", "nueva", "nuevos", "nuevas", "no tenga", "no tengo", "descubrir"
         ]) and not any(word in query_lower for word in ["mi biblioteca", "tengo", "teengo"])
         
+        # Detectar cuando preguntan por reproducción actual
+        needs_now_playing = any(word in query_lower for word in [
+            "estoy escuchando", "está sonando", "suena ahora", "está reproduciendo",
+            "reproduciendo", "playing", "now playing", "qué suena", "escuchando ahora",
+            "sonando ahora", "qué está sonando", "reproduciendo ahora", "play ahora"
+        ])
+        
         # Extraer término de búsqueda 
         # Si es recomendación + género, no extraer término (usar género)
         if is_recommendation_request and detected_genre:
@@ -440,6 +447,17 @@ Responde ahora de forma natural y conversacional:"""
             search_term = None
         
         print(f"🔍 DEBUG - search_term extraído: '{search_term}'")
+        
+        # Datos de reproducción actual (Navidrome)
+        if needs_now_playing:
+            try:
+                print(f"🎵 Obteniendo reproducción actual...")
+                now_playing = await self.navidrome.get_now_playing()
+                data["now_playing"] = now_playing
+                print(f"✅ Obtenida información de {len(now_playing)} reproducciones activas")
+            except Exception as e:
+                print(f"⚠️ Error obteniendo now playing: {e}")
+                data["now_playing"] = []
         
         # Datos de biblioteca (Navidrome)
         if needs_library_search:
@@ -814,6 +832,32 @@ Responde ahora de forma natural y conversacional:"""
             String formateado con toda la información para la IA
         """
         formatted = ""
+        
+        # Reproducción actual (si se preguntó por ello)
+        if data.get("now_playing") is not None:
+            formatted += f"\n🎵 === REPRODUCCIÓN ACTUAL ===\n"
+            now_playing = data["now_playing"]
+            if now_playing:
+                formatted += f"✅ Hay {len(now_playing)} reproducción(es) activa(s):\n\n"
+                for i, entry in enumerate(now_playing, 1):
+                    formatted += f"  {i}. {entry['artist']} - {entry['track']}"
+                    if entry.get('album'):
+                        formatted += f" (de {entry['album']})"
+                    formatted += f"\n     👤 Usuario: {entry['username']}"
+                    formatted += f" | 🎧 Reproductor: {entry['player_name']}"
+                    if entry.get('minutes_ago') == 0:
+                        formatted += f" | ▶️ Reproduciendo ahora mismo"
+                    elif entry.get('minutes_ago'):
+                        formatted += f" | ⏱️ Comenzó hace {entry['minutes_ago']} minuto(s)"
+                    if entry.get('duration'):
+                        mins = entry['duration'] // 60
+                        secs = entry['duration'] % 60
+                        formatted += f" | ⏳ Duración: {mins}:{secs:02d}"
+                    formatted += "\n"
+                formatted += "\n"
+            else:
+                formatted += "  ⚠️ No hay nada reproduciéndose en este momento\n"
+                formatted += "  💡 Asegúrate de tener reproductores conectados y activos en Navidrome\n\n"
         
         # SIEMPRE mostrar primero la biblioteca (si hay búsqueda)
         if data.get("library"):

@@ -19,6 +19,7 @@ Un bot de Telegram inteligente que utiliza IA para generar recomendaciones music
 - **🎶 MusicBrainz**: Metadatos detallados y descubrimiento basado en relaciones entre artistas
 - **🧠 Recomendaciones Inteligentes**: Sistema usando Google Gemini que aprende de tus gustos
 - **🔄 Variedad**: Diferentes recomendaciones cada vez
+- **🎧 Now Playing**: Consulta qué se está reproduciendo actualmente en todos tus reproductores
 - **📱 Acceso móvil**: Optimizado para usar desde tu smartphone
 - **🔒 Bot Privado**: Restringe el acceso solo a usuarios autorizados
 - **🎵 Playlists M3U**: Generación automática de playlists compatibles con Navidrome
@@ -254,6 +255,7 @@ del bot y proporciona tu ID de usuario.
 "dame 3 artistas parecidos a Queen"
 "¿qué he escuchado hoy de rock?"
 "busca música de Queen en mi biblioteca"
+"¿qué estoy escuchando?" (reproducción actual en tiempo real)
 "¿qué es el jazz?" (preguntas generales sobre música)
 ```
 
@@ -263,6 +265,7 @@ La IA entiende tu intención y responde usando tus datos reales de ListenBrainz 
 
 - **`/recommend`** - Recomendaciones musicales • Ej: /recommend rock
 - **`/playlist`** - Crear playlist M3U • Ej: /playlist jazz suave
+- **`/nowlisten`** - Ver qué se está reproduciendo ahora • Muestra todos los reproductores activos
 - **`/library`** - Explorar biblioteca
 - **`/stats`** - Estadísticas en Listenbrainz • Ej: /stats week
 - **`/search`** - Buscar música en la biblioteca • Ej: /search queen
@@ -296,6 +299,7 @@ La IA entiende tu intención y responde usando tus datos reales de ListenBrainz 
 
 ### Comandos de Música
 - **`/recommend`** - Recomendaciones personalizadas con IA
+- **`/nowlisten`** - Ver qué se está reproduciendo actualmente en todos los reproductores
 - **`/library`** - Explorar biblioteca musical
 - **`/stats`** - Estadísticas de escucha y patrones
 - **`/search <término>`** - Buscar canciones, artistas o álbumes
@@ -343,6 +347,7 @@ El sistema utiliza múltiples enfoques:
 - [x] **Modo conversacional**: Chat natural con la IA ✅ (v1.1.0)
 - [x] **Bot privado**: Control de acceso por usuario ✅ (v1.1.1)
 - [x] **Integración MusicBrainz**: Búsquedas avanzadas por género/país/época ✅ (v2.0.0-alpha)
+- [x] **Now Playing**: Consulta en tiempo real de reproducción actual ✅ (v4.0.0-alpha)
 - [ ] **Notificaciones inteligentes**: Alertas basadas en patrones de escucha
 - [ ] **Playlists automáticas**: Creación de playlists por IA
 - [ ] **Integración con Spotify**: Acceso a biblioteca de Spotify

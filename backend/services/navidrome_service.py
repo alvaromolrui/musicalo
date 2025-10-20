@@ -467,6 +467,51 @@ class NavidromeService:
             print(f"❌ Error obteniendo tracks del álbum: {e}")
             return []
     
+    async def get_now_playing(self) -> List[Dict[str, Any]]:
+        """Obtener información de lo que se está reproduciendo actualmente
+        
+        Returns:
+            Lista de diccionarios con información de reproducción actual en todos los reproductores.
+            Cada diccionario contiene:
+            - track: Título de la canción
+            - artist: Artista
+            - album: Álbum
+            - username: Usuario que está reproduciendo
+            - player_name: Nombre del reproductor
+            - minutes_ago: Hace cuántos minutos comenzó
+            - duration: Duración de la canción
+            - year: Año de lanzamiento
+        """
+        try:
+            print(f"🎵 Obteniendo información de reproducción actual...")
+            
+            data = await self._make_request("getNowPlaying", {})
+            entries = data.get("nowPlaying", {}).get("entry", [])
+            
+            # Normalizar a lista si es un solo elemento
+            if isinstance(entries, dict):
+                entries = [entries]
+            
+            now_playing = []
+            for entry in entries:
+                now_playing.append({
+                    "track": entry.get("title", ""),
+                    "artist": entry.get("artist", ""),
+                    "album": entry.get("album", ""),
+                    "username": entry.get("username", ""),
+                    "player_name": entry.get("playerName", ""),
+                    "minutes_ago": entry.get("minutesAgo", 0),
+                    "duration": entry.get("duration"),
+                    "year": entry.get("year")
+                })
+            
+            print(f"✅ Encontradas {len(now_playing)} reproducciones activas")
+            return now_playing
+            
+        except Exception as e:
+            print(f"❌ Error obteniendo now playing: {e}")
+            return []
+    
     async def close(self):
         """Cerrar conexión"""
         await self.client.aclose()
