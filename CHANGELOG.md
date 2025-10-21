@@ -8,6 +8,20 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 ## [4.2.0-alpha] - 2025-01-21
 
 ### 🐛 Arreglado
+- **CRÍTICO: Preguntas sobre género ahora LISTAN artistas (no recomiendan álbumes)**
+  - **Problema**: Las primeras 3 consultas recomendaban álbumes, solo la 4ta listaba artistas correctamente
+    - "¿Qué artistas de rap tengo?" → Recomendaba álbumes ❌
+    - "¿Qué tengo de rap?" → Recomendaba álbumes ❌
+    - "¿Qué más tengo de rap?" → Recomendaba álbumes ❌
+    - "¿Qué artistas de rap hay?" → Listaba artistas ✅
+  - **Causa**: Modelo interpretaba "qué tengo" como petición de recomendaciones
+  - **Solución**: Instrucción ULTRA-EXPLÍCITA al modelo
+    - ✅ "Esto es CONSULTA DE INFORMACIÓN, NO petición de recomendaciones"
+    - ✅ "LISTA TODOS LOS ARTISTAS (NO recomiendes álbumes)"
+    - ✅ Ejemplos de formato CORRECTO vs INCORRECTO
+    - ✅ 9 ejemplos de artistas rap a incluir (Kase.O, Nach, SFDK, Bad Bunny, Delaossa, Dellafuente, etc.)
+  - **Resultado**: TODAS las variantes ahora funcionan igual y listan artistas
+
 - **Prompt ahora muestra TODOS los artistas disponibles (no limitado a 80)**
   - **Problema**: Contexto obtenía 300-500 artistas pero prompt solo mostraba 80 (límite artificial)
   - **Impacto en usuario**: Filtrado incompleto, algunos artistas no visibles para el modelo
