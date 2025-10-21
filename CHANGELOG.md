@@ -8,12 +8,25 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 ## [4.2.0-alpha] - 2025-01-21
 
 ### 🐛 Arreglado
+- **Prompt ahora muestra TODOS los artistas disponibles (no limitado a 80)**
+  - **Problema**: Contexto obtenía 300-500 artistas pero prompt solo mostraba 80 (límite artificial)
+  - **Impacto en usuario**: Filtrado incompleto, algunos artistas no visibles para el modelo
+  - **Solución**: Eliminar límites artificiales en `system_prompts.py`
+    - Nivel 1: ~10 artistas → Muestra TODOS (no cambia)
+    - Nivel 2: 300 artistas → Muestra TODOS (~300) vs 80 antes
+    - Nivel 3: 500 artistas → Muestra TODOS (~500) vs 80 antes
+  - **Beneficios**:
+    - ✅ Filtrado de género 4x más completo (300 vs 80)
+    - ✅ Filtro anti-duplicados más efectivo (ve lista completa)
+    - ✅ Mejor aprovechamiento del contexto disponible
+  - **Resultado**: El modelo tiene información COMPLETA de tu biblioteca
+
 - **Filtrado de género por CONOCIMIENTO del modelo IA (no por búsqueda de texto)**
   - **Problema**: Al preguntar "¿Qué artistas de rap tengo?" solo mostraba 3 artistas cuando había más
   - **Causa**: Buscaba texto "rap" en Navidrome → Solo encuentra artistas con "rap" en nombre/álbum/tags
   - **Solución INTELIGENTE**: Usar conocimiento del modelo Gemini en vez de búsqueda de texto
-    1. ✅ El modelo **YA recibe** lista de 80 artistas en el contexto
-    2. ✅ Usa su **conocimiento musical** para filtrar cuáles son de rap (sabe que Kase.O es rap español, Post Malone es trap/rap, etc.)
+    1. ✅ El modelo **recibe lista COMPLETA** de artistas del contexto (300 en nivel 2, 500 en nivel 3)
+    2. ✅ Usa su **conocimiento musical** para filtrar cuáles son de rap (sabe que Kase.O es rap español, Post Malone es trap/rap, Nach es rap consciente, SFDK es rap hardcore, etc.)
     3. ✅ Si tiene **duda**, puede verificar con MusicBrainz
     4. ✅ Responde con **TODOS** los artistas de ese género
   - **Ventajas**:
