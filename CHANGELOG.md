@@ -8,30 +8,40 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 ## [4.2.0-alpha] - 2025-01-21
 
 ### ✨ Nuevo
-- **🧠 Sistema de Contexto Adaptativo en 3 Niveles**
-  - El agente ahora SIEMPRE tiene contexto de tu música, adaptándose automáticamente según la consulta
-  - **Nivel 1 (Mínimo)**: Se ejecuta en TODAS las consultas - Top 3 artistas (caché 1h)
-  - **Nivel 2 (Enriquecido)**: Se activa con palabras de recomendación - Top 10 + últimas 5 escuchas (caché 10min)
-  - **Nivel 3 (Completo)**: Se activa con consultas de perfil - Top 15 + últimas 20 + estadísticas (caché 5min)
+- **🧠 Sistema de Contexto Adaptativo en 3 Niveles con Periodos Progresivos**
+  - El agente ahora SIEMPRE tiene contexto de tu música Y biblioteca, adaptándose automáticamente
+  - **Nivel 1 (Mínimo)**: TODAS las consultas - Stats MENSUALES + resumen biblioteca (20 artistas, 10 álbumes, géneros) - caché 1h
+  - **Nivel 2 (Enriquecido)**: Recomendaciones - Stats ANUALES + biblioteca completa (100 artistas, 50 álbumes, todos géneros) - caché 15min
+  - **Nivel 3 (Completo)**: Estadísticas - Stats TODO EL TIEMPO + análisis detallado (500 artistas, 200 álbumes, géneros, décadas) - caché 10min
+  - **Biblioteca incluida en TODOS los niveles** - el agente siempre sabe qué música tienes disponible
   - Nuevos métodos: `_get_minimal_context()`, `_get_enriched_context()`, `_get_full_context()`
 
 ### 🔧 Mejorado
-- **⚡ Rendimiento Optimizado con Caché Escalonado**
-  - Consultas simples: 50ms (contexto mínimo desde caché)
-  - Recomendaciones (primera vez): 400-500ms (nivel 2)
+- **⚡ Rendimiento Optimizado con Caché Escalonado y Periodos Inteligentes**
+  - Consultas simples: 50ms (contexto mensual + biblioteca desde caché)
+  - Recomendaciones (primera vez): 800ms (stats anuales + biblioteca completa)
   - Recomendaciones (repetidas): 50ms (todo desde caché)
-  - Consultas de perfil: 600-800ms (nivel 3)
+  - Consultas de perfil: 1200ms (stats all-time + análisis completo)
   - **Reducción de latencia del 92%** en consultas repetidas
+  - TTL ajustados: 1h (mensual), 15min (anual), 10min (all-time)
 
 - **🎯 Detección Inteligente de Nivel Requerido**
   - Pattern matching automático para determinar qué contexto necesita
   - Palabras clave para nivel 2: "recomienda", "sugiere", "ponme", "parecido", "similar", "nuevo", "descubrir"
   - Palabras clave para nivel 3: "mi biblioteca", "qué tengo", "mis escuchas", "mis estadísticas", "mi perfil musical"
 
-- **📊 Contexto Siempre Disponible**
+- **📊 Contexto Siempre Disponible con Biblioteca Integrada**
   - El agente nunca responde "sin saber" quién eres
-  - Incluso en consultas simples como "Hola", tiene contexto de tus gustos
-  - Balance perfecto entre personalización y rendimiento
+  - **TODOS los niveles incluyen contexto de biblioteca** - sabe qué música tienes disponible
+  - Periodos progresivos (Mes → Año → Todo el tiempo) para relevancia contextual
+  - Incluso en consultas simples como "Hola", tiene contexto mensual + biblioteca
+  - Balance perfecto entre personalización, relevancia temporal y rendimiento
+
+- **🎵 Playlists Mejoradas**
+  - Query modificada para SIEMPRE incluir "con canciones de mi biblioteca"
+  - Palabra clave "playlist" agregada a needs_library_search
+  - Doble verificación: playlists SIEMPRE usan solo música que tienes
+  - El agente combina gustos anuales + disponibilidad en biblioteca
 
 - **🤖 TODOS los Comandos Ahora Usan el Agente con Contexto**
   - ✅ `/stats` → Análisis inteligentes con contexto nivel 3 (-63% código)

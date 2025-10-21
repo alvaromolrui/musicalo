@@ -45,37 +45,44 @@ La IA entiende múltiples criterios y genera recomendaciones precisas que cumple
 
 #### **Nivel 1: Contexto Mínimo** ⚡⚡⚡ (SIEMPRE activo)
 - Se ejecuta en **todas las consultas** sin excepción
-- Mantiene tus **top 3 artistas** en memoria
+- Escuchas: **Top 5 artistas del MES** + últimas 3 escuchas
+- Biblioteca: **20 artistas + 10 álbumes + top 5 géneros**
 - **Caché de 1 hora** para máxima velocidad
 - Respuestas en **~50ms** (instantáneo)
 
 #### **Nivel 2: Contexto Enriquecido** ⚡⚡ (Recomendaciones)
 - Se activa automáticamente cuando pides recomendaciones
-- Obtiene **top 10 artistas + últimas 5 escuchas**
-- **Caché de 10 minutos** (se actualiza dinámicamente)
-- Primera consulta: ~500ms, repetidas: ~50ms
+- Escuchas: **Top 10 artistas del AÑO** + últimas 10 escuchas + top álbumes
+- Biblioteca: **100 artistas + 50 álbumes + todos los géneros**
+- **Caché de 15 minutos** (se actualiza dinámicamente)
+- Primera consulta: ~800ms, repetidas: ~50ms
 
 #### **Nivel 3: Contexto Completo** ⚡ (Estadísticas)
 - Se activa cuando preguntas por tu perfil o estadísticas
-- Obtiene **top 15 artistas + últimas 20 escuchas + estadísticas completas**
-- **Caché de 5 minutos** (información fresca)
-- Primera consulta: ~700ms, repetidas: ~50ms
+- Escuchas: **Top 20 artistas de TODO EL TIEMPO** + últimas 30 + estadísticas completas
+- Biblioteca: **Análisis completo** (500 artistas, 200 álbumes, géneros, décadas)
+- **Caché de 10 minutos** (información histórica estable)
+- Primera consulta: ~1200ms, repetidas: ~50ms
 
 **Resultado:** El bot te conoce desde el primer mensaje y responde **92% más rápido** en consultas repetidas.
 
 ```
 Ejemplo de conversación:
 Tú: "Hola"
-Bot: "¡Hola! Veo que escuchas Extremoduro, Los Suaves y Barricada 🎸"
-     [Contexto nivel 1 - sabe tus gustos]
+Bot: "¡Hola! Este mes escuchas mucho Extremoduro, Los Suaves y Barricada 🎸
+      Tienes 150 álbumes de rock en tu biblioteca."
+     [Nivel 1: Estadísticas mensuales + resumen biblioteca]
 
 Tú: "Recomiéndame algo"
-Bot: "Basándome en que últimamente escuchas rock español..."
-     [Contexto nivel 2 - conoce tus escuchas recientes]
+Bot: "Este año Extremoduro es tu artista #1 con 234 escuchas.
+      De tus 50 álbumes de rock español, te recomiendo..."
+     [Nivel 2: Estadísticas anuales + biblioteca completa]
 
-Tú: "¿Cuánto he escuchado este mes?"
-Bot: "Has escuchado 523 canciones este mes, tu artista top es..."
-     [Contexto nivel 3 - estadísticas completas]
+Tú: "¿Cuál es mi artista más escuchado de todos los tiempos?"
+Bot: "En todo el tiempo has escuchado 10,523 canciones.
+      Extremoduro es #1 con 1,247 escuchas (12% del total).
+      Tu biblioteca tiene 2,350 canciones de 156 artistas..."
+     [Nivel 3: Estadísticas all-time + análisis completo biblioteca]
 ```
 
 **Todos los comandos aprovechan el contexto:** `/recommend`, `/stats`, `/playlist`, `/library`, `/releases`, `/search`, `/nowplaying`
@@ -378,10 +385,10 @@ help - Mostrar ayuda completa
 
 El sistema utiliza múltiples enfoques con **contexto adaptativo**:
 
-1. **Contexto en 3 Niveles** ⭐ **NUEVO**: Sistema inteligente que siempre conoce tus gustos
-   - Nivel 1 (Mínimo): Top 3 artistas - caché 1h
-   - Nivel 2 (Enriquecido): Top 10 + últimas 5 escuchas - caché 10min
-   - Nivel 3 (Completo): Top 15 + últimas 20 + estadísticas - caché 5min
+1. **Contexto en 3 Niveles** ⭐ **NUEVO**: Sistema inteligente con periodos progresivos
+   - Nivel 1 (Mínimo): Stats **MENSUALES** + resumen biblioteca - caché 1h
+   - Nivel 2 (Enriquecido): Stats **ANUALES** + biblioteca completa - caché 15min
+   - Nivel 3 (Completo): Stats **TODO EL TIEMPO** + análisis detallado - caché 10min
 2. **Análisis de perfil**: Patrones de escucha, géneros favoritos, diversidad
 3. **IA generativa**: Google Gemini para sugerencias contextuales
 4. **Similitud musical**: Artistas y géneros relacionados

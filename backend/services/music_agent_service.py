@@ -1478,31 +1478,66 @@ Responde ahora de forma natural y conversacional:"""
     async def _get_minimal_context(self, user_id: int) -> Dict:
         """NIVEL 1: Contexto mínimo y rápido (SIEMPRE se ejecuta)
         
-        Obtiene solo la información más básica con caché largo (1 hora).
-        Esto hace que el agente siempre tenga una idea general de tu música.
+        Obtiene estadísticas MENSUALES + resumen básico de biblioteca.
+        Caché de 1 hora (datos cambian lentamente).
         
         Args:
             user_id: ID del usuario
             
         Returns:
-            Diccionario con contexto mínimo
+            Diccionario con contexto mínimo (mensual + biblioteca básica)
         """
         cache_key = f"minimal_context_{user_id}"
         cached = self._get_cache(cache_key, ttl_seconds=3600)  # 1 hora
         
         if cached:
-            print("⚡ Usando contexto mínimo en caché (1h)")
+            print("⚡ Usando contexto mínimo en caché (1h) [Mensual + Biblioteca]")
             return cached
         
         context = {}
         
         try:
-            # Solo obtener top 3 artistas (muy rápido)
+            tasks = []
+            
+            # ESCUCHAS MENSUALES (ListenBrainz)
             if self.listenbrainz:
-                top_artists = await self.listenbrainz.get_top_artists(limit=3)
-                if top_artists:
-                    context['top_artists'] = [a.name for a in top_artists]
-                    print(f"✅ Contexto mínimo obtenido: {len(top_artists)} top artistas")
+                tasks.append(self.listenbrainz.get_top_artists(period='this_month', limit=5))
+                tasks.append(self.listenbrainz.get_recent_tracks(limit=3))
+            else:
+                tasks.extend([asyncio.sleep(0), asyncio.sleep(0)])
+            
+            # RESUMEN BÁSICO DE BIBLIOTECA (Navidrome)
+            tasks.append(self.navidrome.get_artists(limit=20))
+            tasks.append(self.navidrome.get_albums(limit=10))
+            
+            # Ejecutar en paralelo
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # Procesar escuchas mensuales
+            if not isinstance(results[0], Exception) and results[0]:
+                context['top_artists'] = [a.name for a in results[0]]
+                context['period'] = 'monthly'
+            
+            if len(results) > 1 and not isinstance(results[1], Exception) and results[1]:
+                context['last_track'] = f"{results[1][0].artist} - {results[1][0].name}"
+            
+            # Procesar biblioteca
+            if len(results) > 2 and not isinstance(results[2], Exception) and results[2]:
+                artists = results[2]
+                context['library_artists_count'] = len(artists)
+                context['library_featured_artists'] = [a.name for a in artists[:10]]
+            
+            if len(results) > 3 and not isinstance(results[3], Exception) and results[3]:
+                albums = results[3]
+                context['library_albums_count'] = len(albums)
+                # Extraer géneros
+                genres = set()
+                for album in albums:
+                    if hasattr(album, 'genre') and album.genre:
+                        genres.update([g.strip() for g in album.genre.split(',')])
+                context['library_top_genres'] = list(genres)[:5]
+            
+            print(f"✅ Contexto mínimo obtenido: {len(context.get('top_artists', []))} artistas mensuales, {context.get('library_artists_count', 0)} artistas en biblioteca")
         except Exception as e:
             print(f"⚠️ Error obteniendo contexto mínimo: {e}")
         
@@ -1513,131 +1548,212 @@ Responde ahora de forma natural y conversacional:"""
     async def _get_enriched_context(self, user_id: int, base_context: Dict) -> Dict:
         """NIVEL 2: Contexto enriquecido para recomendaciones
         
-        Agrega información más detallada cuando se detectan palabras de recomendación.
-        Usa caché de 10 minutos.
+        Obtiene estadísticas ANUALES + contexto completo de biblioteca.
+        Usa caché de 15 minutos (balance entre frescura y rendimiento).
         
         Args:
             user_id: ID del usuario
-            base_context: Contexto mínimo ya obtenido
+            base_context: Contexto mínimo ya obtenido (mensual + biblioteca básica)
             
         Returns:
-            Diccionario con contexto enriquecido
+            Diccionario con contexto enriquecido (anual + biblioteca completa)
         """
         cache_key = f"enriched_context_{user_id}"
-        cached = self._get_cache(cache_key, ttl_seconds=600)  # 10 minutos
+        cached = self._get_cache(cache_key, ttl_seconds=900)  # 15 minutos
         
         if cached:
-            print("⚡ Usando contexto enriquecido en caché (10min)")
+            print("⚡ Usando contexto enriquecido en caché (15min) [Anual + Biblioteca]")
             return {**base_context, **cached}
         
         enriched = dict(base_context)  # Copiar contexto base
         
         try:
+            tasks = []
+            
+            # ESCUCHAS ANUALES (ListenBrainz)
             if self.listenbrainz:
-                # Paralelizar obtención de datos
-                tasks = []
-                
-                # Top 10 artistas (si no están en el base)
-                if 'top_artists' not in enriched or len(enriched['top_artists']) < 10:
-                    tasks.append(self.listenbrainz.get_top_artists(limit=10))
-                else:
-                    tasks.append(asyncio.sleep(0))
-                
-                # Últimas 5 escuchas
-                tasks.append(self.listenbrainz.get_recent_tracks(limit=5))
-                
-                results = await asyncio.gather(*tasks, return_exceptions=True)
-                
-                # Procesar resultados
-                if not isinstance(results[0], Exception) and results[0]:
-                    enriched['top_artists'] = [a.name for a in results[0]]
-                
-                if len(results) > 1 and not isinstance(results[1], Exception) and results[1]:
-                    enriched['last_track'] = f"{results[1][0].artist} - {results[1][0].name}"
-                    enriched['recent_tracks'] = [
-                        f"{t.artist} - {t.name}" for t in results[1][:5]
-                    ]
-                
-                print(f"✅ Contexto enriquecido obtenido: {len(enriched.get('top_artists', []))} top artistas, {len(enriched.get('recent_tracks', []))} tracks recientes")
+                tasks.append(self.listenbrainz.get_top_artists(period='this_year', limit=10))
+                tasks.append(self.listenbrainz.get_recent_tracks(limit=10))
+                # Top álbumes del año si está disponible
+                if hasattr(self.listenbrainz, 'get_top_albums'):
+                    tasks.append(self.listenbrainz.get_top_albums(period='this_year', limit=5))
+            else:
+                tasks.extend([asyncio.sleep(0)] * 3)
+            
+            # CONTEXTO COMPLETO DE BIBLIOTECA (Navidrome)
+            tasks.append(self.navidrome.get_artists(limit=100))  # Más artistas
+            tasks.append(self.navidrome.get_albums(limit=50))  # Más álbumes
+            
+            # Ejecutar en paralelo
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # Procesar top artists anuales
+            if not isinstance(results[0], Exception) and results[0]:
+                enriched['top_artists_year'] = [a.name for a in results[0]]
+                enriched['period'] = 'yearly'
+            
+            # Procesar escuchas recientes
+            if len(results) > 1 and not isinstance(results[1], Exception) and results[1]:
+                recent = results[1]
+                enriched['recent_tracks'] = [f"{t.artist} - {t.name}" for t in recent[:10]]
+                # Extraer artistas únicos recientes
+                enriched['recent_artists'] = []
+                seen = set()
+                for t in recent:
+                    if t.artist not in seen:
+                        enriched['recent_artists'].append(t.artist)
+                        seen.add(t.artist)
+                        if len(enriched['recent_artists']) >= 5:
+                            break
+            
+            # Procesar top álbumes anuales (si existe)
+            if len(results) > 2 and not isinstance(results[2], Exception) and results[2]:
+                enriched['top_albums_year'] = results[2]
+            
+            # Procesar biblioteca completa
+            if len(results) > 3 and not isinstance(results[3], Exception) and results[3]:
+                artists = results[3]
+                enriched['library_artists_count'] = len(artists)
+                enriched['library_all_artists'] = [a.name for a in artists[:50]]
+            
+            if len(results) > 4 and not isinstance(results[4], Exception) and results[4]:
+                albums = results[4]
+                enriched['library_albums_count'] = len(albums)
+                # Extraer todos los géneros
+                genres = {}
+                for album in albums:
+                    if hasattr(album, 'genre') and album.genre:
+                        for g in album.genre.split(','):
+                            genre = g.strip().lower()
+                            genres[genre] = genres.get(genre, 0) + 1
+                # Top géneros
+                enriched['library_all_genres'] = sorted(genres.items(), key=lambda x: x[1], reverse=True)[:10]
+            
+            print(f"✅ Contexto enriquecido obtenido: {len(enriched.get('top_artists_year', []))} artistas anuales, {enriched.get('library_artists_count', 0)} artistas en biblioteca")
         except Exception as e:
             print(f"⚠️ Error obteniendo contexto enriquecido: {e}")
         
-        # Guardar en caché por 10 minutos
+        # Guardar en caché por 15 minutos
         cache_data = {k: v for k, v in enriched.items() if k not in base_context}
-        self._set_cache(cache_key, cache_data, ttl_seconds=600)
+        self._set_cache(cache_key, cache_data, ttl_seconds=900)
         
         return enriched
     
     async def _get_full_context(self, user_id: int, base_context: Dict) -> Dict:
         """NIVEL 3: Contexto completo para consultas de perfil
         
-        Obtiene toda la información disponible cuando el usuario pregunta
-        específicamente por su biblioteca o estadísticas.
-        Usa caché de 5 minutos.
+        Obtiene estadísticas de TODO EL TIEMPO + análisis completo de biblioteca.
+        Usa caché de 10 minutos (datos históricos cambian poco).
         
         Args:
             user_id: ID del usuario
-            base_context: Contexto ya obtenido (mínimo o enriquecido)
+            base_context: Contexto ya obtenido (anual + biblioteca completa)
             
         Returns:
-            Diccionario con contexto completo
+            Diccionario con contexto completo (all_time + biblioteca detallada)
         """
         cache_key = f"full_context_{user_id}"
-        cached = self._get_cache(cache_key, ttl_seconds=300)  # 5 minutos
+        cached = self._get_cache(cache_key, ttl_seconds=600)  # 10 minutos
         
         if cached:
-            print("⚡ Usando contexto completo en caché (5min)")
+            print("⚡ Usando contexto completo en caché (10min) [All-Time + Biblioteca Completa]")
             return {**base_context, **cached}
         
         full = dict(base_context)  # Copiar contexto base
         
         try:
+            tasks = []
+            
+            # ESCUCHAS DE TODO EL TIEMPO (ListenBrainz)
             if self.listenbrainz:
-                # Obtener estadísticas completas
-                tasks = [
-                    self.listenbrainz.get_top_artists(limit=15),
-                    self.listenbrainz.get_recent_tracks(limit=20),
-                ]
-                
-                # Si tiene método de estadísticas, agregarlo
+                tasks.append(self.listenbrainz.get_top_artists(period='all_time', limit=20))
+                tasks.append(self.listenbrainz.get_recent_tracks(limit=30))
+                # Top tracks de todo el tiempo
+                if hasattr(self.listenbrainz, 'get_top_tracks'):
+                    tasks.append(self.listenbrainz.get_top_tracks(period='all_time', limit=10))
+                # Top álbumes de todo el tiempo
+                if hasattr(self.listenbrainz, 'get_top_albums'):
+                    tasks.append(self.listenbrainz.get_top_albums(period='all_time', limit=10))
+                # Estadísticas generales
                 if hasattr(self.listenbrainz, 'get_user_stats'):
                     tasks.append(self.listenbrainz.get_user_stats())
+            else:
+                tasks.extend([asyncio.sleep(0)] * 5)
+            
+            # BIBLIOTECA COMPLETA CON ANÁLISIS (Navidrome)
+            tasks.append(self.navidrome.get_artists(limit=500))  # Todos los artistas
+            tasks.append(self.navidrome.get_albums(limit=200))  # Muchos álbumes para análisis
+            tasks.append(self.navidrome.get_tracks(limit=100))  # Sample de tracks
+            
+            # Ejecutar en paralelo
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # Procesar top artists de todo el tiempo
+            if not isinstance(results[0], Exception) and results[0]:
+                full['top_artists_alltime'] = [a.name for a in results[0]]
+                full['period'] = 'all_time'
+            
+            # Procesar escuchas recientes
+            if len(results) > 1 and not isinstance(results[1], Exception) and results[1]:
+                recent = results[1]
+                full['recent_tracks_extended'] = [f"{t.artist} - {t.name}" for t in recent[:30]]
+                # Extraer artistas únicos recientes
+                full['recent_artists_extended'] = []
+                seen = set()
+                for t in recent:
+                    if t.artist not in seen:
+                        full['recent_artists_extended'].append(t.artist)
+                        seen.add(t.artist)
+                        if len(full['recent_artists_extended']) >= 10:
+                            break
+            
+            # Procesar top tracks all_time
+            if len(results) > 2 and not isinstance(results[2], Exception) and results[2]:
+                full['top_tracks_alltime'] = results[2]
+            
+            # Procesar top albums all_time
+            if len(results) > 3 and not isinstance(results[3], Exception) and results[3]:
+                full['top_albums_alltime'] = results[3]
+            
+            # Procesar estadísticas
+            if len(results) > 4 and not isinstance(results[4], Exception) and results[4]:
+                full['stats'] = results[4]
+            
+            # Procesar BIBLIOTECA COMPLETA
+            if len(results) > 5 and not isinstance(results[5], Exception) and results[5]:
+                artists = results[5]
+                full['library_total_artists'] = len(artists)
+                full['library_complete_artists'] = [a.name for a in artists[:100]]
+            
+            if len(results) > 6 and not isinstance(results[6], Exception) and results[6]:
+                albums = results[6]
+                full['library_total_albums'] = len(albums)
+                # Análisis completo de géneros
+                genres = {}
+                decades = {}
+                for album in albums:
+                    if hasattr(album, 'genre') and album.genre:
+                        for g in album.genre.split(','):
+                            genre = g.strip().lower()
+                            genres[genre] = genres.get(genre, 0) + 1
+                    if hasattr(album, 'year') and album.year:
+                        decade = (album.year // 10) * 10
+                        decades[decade] = decades.get(decade, 0) + 1
                 
-                results = await asyncio.gather(*tasks, return_exceptions=True)
-                
-                # Procesar top artists
-                if not isinstance(results[0], Exception) and results[0]:
-                    full['top_artists'] = [a.name for a in results[0]]
-                    full['favorite_genres'] = list(set([
-                        getattr(a, 'genre', None) for a in results[0] 
-                        if getattr(a, 'genre', None)
-                    ]))[:5]
-                
-                # Procesar tracks recientes
-                if len(results) > 1 and not isinstance(results[1], Exception) and results[1]:
-                    recent = results[1]
-                    full['last_track'] = f"{recent[0].artist} - {recent[0].name}"
-                    full['recent_tracks'] = [f"{t.artist} - {t.name}" for t in recent[:10]]
-                    
-                    # Extraer artistas únicos recientes
-                    full['recent_artists'] = []
-                    seen = set()
-                    for t in recent:
-                        if t.artist not in seen:
-                            full['recent_artists'].append(t.artist)
-                            seen.add(t.artist)
-                
-                # Procesar estadísticas (si existen)
-                if len(results) > 2 and not isinstance(results[2], Exception) and results[2]:
-                    full['stats'] = results[2]
-                
-                print(f"✅ Contexto completo obtenido: {len(full.get('top_artists', []))} top artistas, {len(full.get('recent_tracks', []))} tracks recientes")
+                full['library_complete_genres'] = sorted(genres.items(), key=lambda x: x[1], reverse=True)
+                full['library_decades'] = sorted(decades.items(), key=lambda x: x[0], reverse=True)
+            
+            if len(results) > 7 and not isinstance(results[7], Exception) and results[7]:
+                tracks = results[7]
+                full['library_total_tracks'] = len(tracks)
+            
+            print(f"✅ Contexto completo obtenido: {len(full.get('top_artists_alltime', []))} artistas all-time, {full.get('library_total_artists', 0)} artistas en biblioteca")
         except Exception as e:
             print(f"⚠️ Error obteniendo contexto completo: {e}")
         
-        # Guardar en caché por 5 minutos
+        # Guardar en caché por 10 minutos
         cache_data = {k: v for k, v in full.items() if k not in base_context}
-        self._set_cache(cache_key, cache_data, ttl_seconds=300)
+        self._set_cache(cache_key, cache_data, ttl_seconds=600)
         
         return full
     
