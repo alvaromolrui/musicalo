@@ -333,67 +333,17 @@ Responde ahora de forma natural y conversacional:"""
         # Detectar palabras clave para optimizar búsquedas
         query_lower = query.lower()
         
-        # Detectar comando "busca más"
-        is_search_more = any(phrase in query_lower for phrase in [
-            "busca más", "buscar más", "busca mas", "buscar mas",
-            "más resultados", "más artistas", "continuar", "sigue buscando"
-        ])
-        
-        # Detectar comando "inmersión completa" / "dame todo"
-        is_deep_search = any(phrase in query_lower for phrase in [
-            "dame todo", "muéstrame todo", "búsqueda completa", "inmersión completa",
-            "todo lo que tengo", "toda mi", "todos los", "búsqueda profunda",
-            "sin límite", "completo", "busca todo", "buscar todo"
-        ])
-        
-        # Si dice "busca todo" o "dame todo" después de una pregunta de biblioteca,
-        # continuar con la última búsqueda pero sin límites
-        if is_deep_search and not is_search_more:
-            last_search = session.context.get("last_library_query", {})
-            if last_search.get("search_term"):
-                print(f"🔍 'Dame todo' detectado - continuando búsqueda de '{last_search['search_term']}'")
-                # Reutilizar el search_term de la búsqueda anterior
-                query = f"Dame todo lo que tengo de {last_search['search_term']}"
-                query_lower = query.lower()
-        
-        # Determinar límite de búsqueda según el tipo de consulta
-        if is_deep_search:
-            search_limit = 1000  # Inmersión completa - toda la biblioteca
-            print(f"🔍 INMERSIÓN COMPLETA activada (límite: {search_limit})")
-        elif is_search_more:
-            search_limit = 200  # "Busca más" - aumentar resultados
-            print(f"🔍 BUSCAR MÁS activado (límite: {search_limit})")
-        else:
-            search_limit = 50  # Primera búsqueda - paginada
+        # SIMPLIFICADO: SIEMPRE búsqueda completa de biblioteca (sin paginación)
+        search_limit = 1000  # Búsqueda completa siempre
+        mb_offset = 0  # MusicBrainz desde inicio
         
         # Obtener sesión para contexto
         session = self.conversation_manager.get_session(user_id)
         
-        if is_search_more:
-            print(f"🔍 Comando 'busca más' detectado")
-            last_search = session.context.get("last_mb_search", {})
-            
-            if last_search.get("genre") and last_search.get("has_more"):
-                # Continuar búsqueda anterior
-                detected_genre = last_search["genre"]
-                needs_library_search = True
-                is_recommendation_request = False
-                search_term = None
-                mb_offset = last_search["next_offset"]
-                print(f"   Continuando búsqueda de '{detected_genre}' desde artista {mb_offset}")
-            else:
-                print(f"   ⚠️ No hay búsqueda anterior para continuar")
-                # Responder que no hay búsqueda activa
-                data["no_active_search"] = True
-                data["message"] = "No hay ninguna búsqueda activa que continuar. Primero pregunta por un género, por ejemplo: '¿tengo algo de jazz?'"
-                return data
-        else:
-            mb_offset = 0  # Nueva búsqueda, empezar desde 0
-            
-            # Detectar si es una petición de RECOMENDACIÓN
-            is_recommendation_request = any(word in query_lower for word in [
-                "recomienda", "recomiéndame", "sugerencia", "sugiere", "sugiéreme",
-                "ponme", "pon", "quiero escuchar", "dame"
+        # Detectar si es una petición de RECOMENDACIÓN
+        is_recommendation_request = any(word in query_lower for word in [
+            "recomienda", "recomiéndame", "sugerencia", "sugiere", "sugiéreme",
+            "ponme", "pon", "quiero escuchar", "dame"
             ])
         print(f"🔍 DEBUG - is_recommendation_request: {is_recommendation_request}")
         
@@ -487,8 +437,6 @@ Responde ahora de forma natural y conversacional:"""
                     data["library"]["search_term"] = detected_genre
                     data["library"]["is_genre_search"] = True
                     data["library"]["detected_genre"] = detected_genre
-                    data["library"]["search_limit"] = search_limit
-                    data["library"]["is_deep_search"] = is_deep_search
                     
                     if any(search_results.values()):
                         data["library"]["has_content"] = True
@@ -536,8 +484,6 @@ Responde ahora de forma natural y conversacional:"""
                     data["library"]["search_term"] = detected_genre
                     data["library"]["is_genre_search"] = True
                     data["library"]["detected_genre"] = detected_genre
-                    data["library"]["search_limit"] = search_limit
-                    data["library"]["is_deep_search"] = is_deep_search
                     
                     local_albums_count = len(search_results.get('albums', []))
                     local_artists_count = len(search_results.get('artists', []))
@@ -545,11 +491,6 @@ Responde ahora de forma natural y conversacional:"""
                     if any(search_results.values()):
                         print(f"✅ Búsqueda local: {local_albums_count} álbumes, {local_artists_count} artistas de '{detected_genre}'")
                         
-                        # Guardar búsqueda en sesión para "dame todo" contextual
-                        session.context["last_library_query"] = {
-                            "search_term": detected_genre,
-                            "type": "genre"
-                        }
                     else:
                         print(f"⚠️ Búsqueda local: 0 resultados para '{detected_genre}'")
                     
@@ -674,18 +615,11 @@ Responde ahora de forma natural y conversacional:"""
                     data["library"]["search_results"] = filtered_results
                     data["library"]["search_term"] = search_term
                     data["library"]["is_genre_search"] = False
-                    data["library"]["search_limit"] = search_limit
-                    data["library"]["is_deep_search"] = is_deep_search
                     
                     if any(filtered_results.values()):
                         data["library"]["has_content"] = True
                         print(f"✅ Encontrado: {len(filtered_results.get('tracks', []))} tracks, {len(filtered_results.get('albums', []))} álbumes, {len(filtered_results.get('artists', []))} artistas")
                         
-                        # Guardar búsqueda en sesión para "dame todo" contextual
-                        session.context["last_library_query"] = {
-                            "search_term": search_term,
-                            "type": "artist"
-                        }
                     else:
                         data["library"]["has_content"] = False
                         print(f"⚠️ No se encontraron resultados para '{search_term}'")
@@ -1080,36 +1014,7 @@ Responde ahora de forma natural y conversacional:"""
         if not formatted:
             formatted = "\n⚠️ No hay datos disponibles para responder esta consulta.\n"
         
-        # Información sobre búsqueda incremental disponible
-        # Información sobre búsqueda profunda
-        if data.get("library", {}).get("search_limit"):
-            limit = data["library"]["search_limit"]
-            is_deep = data["library"].get("is_deep_search", False)
-            
-            if is_deep:
-                formatted += f"\n✅ === INMERSIÓN COMPLETA ACTIVADA ===\n"
-                formatted += f"✓ Búsqueda sin límites (hasta {limit} resultados)\n"
-                formatted += f"✓ Estos son TODOS los resultados disponibles en la biblioteca\n\n"
-            elif limit == 50:
-                formatted += f"\n💡 === BÚSQUEDA PAGINADA ===\n"
-                formatted += f"✓ Mostrando primeros {limit} resultados\n"
-                formatted += f"✓ Si el usuario quiere ver MÁS, puede decir:\n"
-                formatted += f"  • 'busca más' → Aumenta a 200 resultados\n"
-                formatted += f"  • 'dame todo' o 'muéstrame todo' → Búsqueda completa (1000 resultados)\n"
-                formatted += f"\n💬 SUGERENCIA: Si hay muchos resultados, menciona que puede ver más diciendo 'dame todo'.\n\n"
-            elif limit == 200:
-                formatted += f"\n💡 === BÚSQUEDA AMPLIADA ===\n"
-                formatted += f"✓ Mostrando hasta {limit} resultados (más que la búsqueda inicial)\n"
-                formatted += f"✓ Para ver TODO sin límites, puede decir 'dame todo'\n\n"
-        
-        # Búsqueda incremental de MusicBrainz
-        if data.get("library", {}).get("can_search_more"):
-            stats = data["library"]["mb_stats"]
-            formatted += f"\n💡 === BÚSQUEDA INCREMENTAL DE MUSICBRAINZ DISPONIBLE ===\n"
-            formatted += f"✓ Verificados hasta ahora: {stats['checked']}/{stats['total']} artistas\n"
-            formatted += f"✓ Quedan por verificar: {stats['remaining']} artistas\n"
-            formatted += f"\n💬 IMPORTANTE: Menciona al usuario que puede decir 'busca más' para verificar más artistas en MusicBrainz.\n"
-            formatted += f"Ejemplo: 'He verificado {stats['checked']} artistas. Si quieres que busque más a fondo, dime \"busca más\".'\n\n"
+        # Nota: Las búsquedas ahora siempre son completas (límite 1000)
         
         return formatted
     
