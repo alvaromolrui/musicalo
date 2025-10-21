@@ -230,334 +230,39 @@ Sé todo lo detallado que quieras:
     
     @_check_authorization
     async def recommend_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Comando /recommend - Generar recomendaciones
+        """Comando /recommend - Generar recomendaciones con IA
+        
+        Usa el agente conversacional con contexto adaptativo y reglas mejoradas
+        para generar recomendaciones de alta calidad.
         
         Uso:
-        - /recommend → Recomendaciones generales
-        - /recommend album → Solo álbumes
-        - /recommend artist → Solo artistas
-        - /recommend track → Solo canciones
-        - /recommend rock → Recomendaciones de rock
-        - /recommend album metal → Álbumes de metal
-        - /recommend biblioteca → Recomendaciones solo de tu biblioteca (redescubrimiento)
-        - /recommend biblioteca rock → Recomendaciones de rock de tu biblioteca
+        - /recommend → Recomendaciones generales (álbumes por defecto)
+        - /recommend rock → Álbumes de rock
+        - /recommend canciones → Solo canciones (excepción)
+        - /recommend biblioteca → Solo de tu biblioteca
         """
-        # Parsear argumentos
-        rec_type = "general"  # general, album, artist, track
-        genre_filter = None
-        similar_to = None  # Para búsquedas "similar a..."
-        recommendation_limit = 5  # Por defecto
-        custom_prompt = None  # Para descripciones específicas
-        from_library_only = False  # NUEVO: solo de biblioteca
+        # 🧠 Usar agente conversacional con contexto adaptativo
+        user_id = update.effective_user.id
         
-        # Extraer argumentos especiales (vienen de handle_message)
+        # Construir query para el agente
         if context.args:
-            for arg in context.args[:]:
-                if arg.startswith("__limit="):
-                    try:
-                        recommendation_limit = int(arg.split("=", 1)[1])
-                        context.args.remove(arg)
-                    except:
-                        pass
-                elif arg.startswith("__custom_prompt="):
-                    try:
-                        custom_prompt = arg.split("=", 1)[1]
-                        context.args.remove(arg)
-                        print(f"🎨 Custom prompt extraído: {custom_prompt}")
-                    except:
-                        pass
-        
-        if context.args:
-            args = [arg.lower() for arg in context.args]
-            
-            # NUEVO: Detectar flag de "biblioteca"/"library"
-            if any(word in args for word in ["biblioteca", "library", "lib", "mi", "redescubrir", "redescubrimiento"]):
-                from_library_only = True
-                # Remover esas palabras de args
-                args = [a for a in args if a not in ["biblioteca", "library", "lib", "mi", "redescubrir", "redescubrimiento"]]
-                print(f"📚 Modo biblioteca detectado: from_library_only=True")
-            
-            # Primero detectar tipo de recomendación (puede estar en cualquier posición)
-            if any(word in args for word in ["album", "disco", "cd", "álbum"]):
-                rec_type = "album"
-                args = [a for a in args if a not in ["album", "disco", "cd", "álbum"]]
-            elif any(word in args for word in ["artist", "artista", "banda", "grupo"]):
-                rec_type = "artist"
-                args = [a for a in args if a not in ["artist", "artista", "banda", "grupo"]]
-            elif any(word in args for word in ["track", "song", "cancion", "canción", "tema"]):
-                rec_type = "track"
-                args = [a for a in args if a not in ["track", "song", "cancion", "canción", "tema"]]
-            
-            # Luego detectar búsquedas "similar a..." o "como..."
-            if "similar" in args or "like" in args or "como" in args or "parecido" in args:
-                # Encontrar el índice de la palabra clave
-                similar_idx = -1
-                for keyword in ["similar", "like", "como", "parecido"]:
-                    if keyword in args:
-                        similar_idx = args.index(keyword)
-                        break
-                
-                if similar_idx >= 0 and similar_idx + 1 < len(args):
-                    # Tomar todo después de "similar"
-                    similar_to = " ".join(args[similar_idx + 1:])
-                    print(f"🔍 Búsqueda de similares a: {similar_to} (tipo: {rec_type})")
-            else:
-                # Si no hay "similar", el resto son géneros/estilos
-                if args:
-                    genre_filter = " ".join(args)
-        
-        # Mensaje personalizado según el tipo
-        library_prefix = "📚 de tu biblioteca" if from_library_only else ""
-        
-        if custom_prompt:
-            msg = f"🎨 Analizando tu petición: '{custom_prompt}'"
-            if from_library_only:
-                msg += " (solo de tu biblioteca)"
-            await update.message.reply_text(msg + "...")
-        elif similar_to:
-            await update.message.reply_text(f"🔍 Buscando música similar a '{similar_to}'...")
-        elif rec_type == "album":
-            await update.message.reply_text(f"📀 Analizando álbumes{library_prefix}{f' de {genre_filter}' if genre_filter else ''}...")
-        elif rec_type == "artist":
-            await update.message.reply_text(f"🎤 Buscando artistas{library_prefix}{f' de {genre_filter}' if genre_filter else ''}...")
-        elif rec_type == "track":
-            await update.message.reply_text(f"🎵 Buscando canciones{library_prefix}{f' de {genre_filter}' if genre_filter else ''}...")
+            description = " ".join(context.args)
+            agent_query = f"Recomiéndame 5 álbumes de {description}"
         else:
-            if from_library_only:
-                await update.message.reply_text("📚 Analizando tu biblioteca para redescubrir música...")
-            else:
-                await update.message.reply_text("🎵 Analizando tus gustos musicales...")
+            agent_query = "Recomiéndame 5 álbumes basándote en mis gustos"
+        
+        await update.message.reply_text("🎵 Analizando tus gustos musicales...")
         
         try:
-            recommendations = []
+            # Usar el agente con contexto adaptativo
+            result = await self.agent.query(agent_query, user_id)
             
-            # Si es una búsqueda "similar a...", usar ListenBrainz directamente
-            if similar_to:
-                print(f"🎯 Usando límite: {recommendation_limit} para similares")
-                
-                print(f"🔍 Buscando similares a '{similar_to}' en ListenBrainz+MusicBrainz (tipo: {rec_type})...")
-                # Buscar más artistas de los necesarios por si algunos no tienen álbumes/tracks
-                search_limit = max(30, recommendation_limit * 5)
-                # Pasar MusicBrainz como fallback para buscar relaciones de artistas
-                similar_artists = await self.listenbrainz.get_similar_artists_from_recording(
-                    similar_to, 
-                    limit=search_limit,
-                    musicbrainz_service=self.agent.musicbrainz
-                )
-                
-                if similar_artists:
-                    # Añadir variedad: mezclar los resultados para no siempre mostrar los mismos
-                    # Mantener los top 5 pero mezclar el resto
-                    top_artists = similar_artists[:5]
-                    rest_artists = similar_artists[5:]
-                    random.shuffle(rest_artists)
-                    mixed_artists = top_artists + rest_artists
-                    
-                    print(f"🎲 Mezclando artistas para variedad (total: {len(mixed_artists)})")
-                    
-                    # Crear recomendaciones de los artistas similares
-                    # Continuar hasta tener suficientes recomendaciones
-                    for similar_artist in mixed_artists:
-                        if len(recommendations) >= recommendation_limit:
-                            break  # Ya tenemos suficientes recomendaciones
-                        from models.schemas import Track
-                        
-                        title = ""
-                        album_name = ""
-                        reason = ""
-                        artist_url = similar_artist.url if similar_artist.url else ""
-                        
-                        # Obtener datos específicos según el tipo usando MusicBrainz
-                        if rec_type == "album":
-                            if self.agent.musicbrainz:
-                                top_albums = await self.agent.musicbrainz.get_artist_top_albums(similar_artist.name, limit=1)
-                            else:
-                                top_albums = []
-                            if top_albums:
-                                album_data = top_albums[0]
-                                album_name = album_data.get("name", similar_artist.name)
-                                title = f"{album_name}"  # Solo el nombre del álbum
-                                artist_url = album_data.get("url", artist_url)
-                                reason = f"📀 Álbum top de {similar_artist.name}, artista similar a {similar_to}"
-                                print(f"   📀 Encontrado álbum: {album_name} de {similar_artist.name}")
-                            else:
-                                # Si no hay álbum disponible, buscar el siguiente artista
-                                print(f"   ⚠️ No se encontró álbum para {similar_artist.name}")
-                                continue  # Saltar este artista y buscar el siguiente
-                        
-                        elif rec_type == "track":
-                            if self.agent.musicbrainz:
-                                top_tracks = await self.agent.musicbrainz.get_artist_top_tracks(similar_artist.name, limit=1)
-                            else:
-                                top_tracks = []
-                            if top_tracks:
-                                track_data = top_tracks[0]
-                                title = track_data.get("name", f"Música de {similar_artist.name}")
-                                artist_url = track_data.get("url", artist_url)
-                                reason = f"🎵 Canción top de artista similar a {similar_to}"
-                            else:
-                                title = f"Música de {similar_artist.name}"
-                                reason = f"🎵 Similar a {similar_to}"
-                        
-                        else:
-                            title = similar_artist.name
-                            reason = f"🎯 Similar a {similar_to}"
-                        
-                        track = Track(
-                            id=f"listenbrainz_similar_{similar_artist.name.replace(' ', '_')}",
-                            title=title,
-                            artist=similar_artist.name,
-                            album=album_name,
-                            duration=None,
-                            year=None,
-                            genre="",
-                            play_count=None,
-                            path=artist_url,
-                            cover_url=None
-                        )
-                        
-                        from models.schemas import Recommendation
-                        recommendation = Recommendation(
-                            track=track,
-                            reason=reason,
-                            confidence=0.9,
-                            source="ListenBrainz+MusicBrainz",
-                            tags=[]
-                        )
-                        recommendations.append(recommendation)
-                else:
-                    await update.message.reply_text(
-                        f"😔 No encontré artistas similares a '{similar_to}'\n\n"
-                        f"💡 Esto puede pasar si:\n"
-                        f"• El artista es muy nuevo o poco conocido\n"
-                        f"• ListenBrainz no tiene suficientes datos\n"
-                        f"• No hay relaciones registradas en MusicBrainz\n\n"
-                        f"Puedes intentar:\n"
-                        f"• Buscar el artista en tu biblioteca: /search {similar_to}\n"
-                        f"• Pedir recomendaciones generales: /recommend"
-                    )
-                    return
-            
+            if result.get('success') and result.get('answer'):
+                await update.message.reply_text(result['answer'], parse_mode='HTML')
             else:
-                # Búsqueda normal basada en tu perfil
-                # Verificar que haya servicio de scrobbling configurado
-                if not self.music_service:
-                    await update.message.reply_text(
-                        "⚠️ No hay servicio de scrobbling configurado.\n\n"
-                        "Por favor configura ListenBrainz (LISTENBRAINZ_USERNAME en .env) para recibir recomendaciones personalizadas."
-                    )
-                    return
-                
-                # Obtener datos del usuario
-                recent_tracks = await self.music_service.get_recent_tracks(limit=20)
-                top_artists = await self.music_service.get_top_artists(limit=10)
-                
-                if not recent_tracks:
-                    await update.message.reply_text(
-                        f"⚠️ No se encontraron escuchas recientes.\n\n"
-                        "Asegúrate de tener escuchas registradas en ListenBrainz para recibir recomendaciones personalizadas."
-                    )
-                    return
-                
-                # Crear perfil de usuario
-                from models.schemas import UserProfile
-                user_profile = UserProfile(
-                    recent_tracks=recent_tracks,
-                    top_artists=top_artists,
-                    favorite_genres=[],
-                    mood_preference="",
-                    activity_context=""
-                )
-                
-                # Generar recomendaciones (recommendation_limit ya está definido arriba)
-                if from_library_only:
-                    print(f"📚 Generando recomendaciones SOLO de biblioteca (tipo: {rec_type}, género: {genre_filter})")
-                elif custom_prompt:
-                    print(f"🎯 Generando recomendaciones con prompt personalizado: {custom_prompt}")
-                else:
-                    print(f"🎯 Generando recomendaciones (tipo: {rec_type}, género: {genre_filter}) para {len(recent_tracks)} tracks y {len(top_artists)} artistas...")
-                
-                recommendations = await self.ai.generate_recommendations(
-                    user_profile, 
-                    limit=recommendation_limit,
-                    recommendation_type=rec_type,
-                    genre_filter=genre_filter,
-                    custom_prompt=custom_prompt,
-                    from_library_only=from_library_only
-                )
-                print(f"✅ Recomendaciones generadas: {len(recommendations)}")
-            
-            if not recommendations:
-                print("❌ No se generaron recomendaciones")
-                await update.message.reply_text(
-                    "😔 No pude generar recomendaciones en este momento.\n\n"
-                    "Intenta de nuevo más tarde o verifica tu configuración."
-                )
-                return
-            
-            print(f"📝 Primera recomendación: {recommendations[0].track.artist} - {recommendations[0].track.title}")
-            
-            # Mostrar recomendaciones con título personalizado
-            if custom_prompt:
-                text = f"🎨 <b>Recomendaciones para:</b> <i>{custom_prompt}</i>\n\n"
-            elif similar_to:
-                text = f"🎯 <b>Música similar a '{similar_to}':</b>\n\n"
-            elif rec_type == "album":
-                text = f"📀 <b>Álbumes recomendados{f' de {genre_filter}' if genre_filter else ''}:</b>\n\n"
-            elif rec_type == "artist":
-                text = f"🎤 <b>Artistas recomendados{f' de {genre_filter}' if genre_filter else ''}:</b>\n\n"
-            elif rec_type == "track":
-                text = f"🎵 <b>Canciones recomendadas{f' de {genre_filter}' if genre_filter else ''}:</b>\n\n"
-            else:
-                text = "🎵 <b>Tus recomendaciones personalizadas:</b>\n\n"
-            
-            for i, rec in enumerate(recommendations, 1):
-                # Formato diferente según el tipo de recomendación
-                if rec_type == "album":
-                    # Para álbumes: mostrar prominentemente el nombre del álbum
-                    text += f"<b>{i}. 📀 {rec.track.title}</b>\n"
-                    text += f"   🎤 Artista: {rec.track.artist}\n"
-                elif rec_type == "artist":
-                    # Para artistas: solo el nombre del artista
-                    text += f"<b>{i}. 🎤 {rec.track.artist}</b>\n"
-                else:
-                    # Para canciones y general: formato estándar
-                    text += f"<b>{i}.</b> {rec.track.artist} - {rec.track.title}\n"
-                    if rec.track.album:
-                        text += f"   📀 {rec.track.album}\n"
-                
-                text += f"   💡 {rec.reason}\n"
-                if rec.source:
-                    text += f"   🔗 Fuente: {rec.source}\n"
-                # Agregar enlace si existe (está en el campo path)
-                if rec.track.path:
-                    # Determinar el nombre del servicio según la URL
-                    service_name = "Ver información"
-                    if "musicbrainz.org" in rec.track.path:
-                        service_name = "Ver en MusicBrainz"
-                    elif "listenbrainz.org" in rec.track.path:
-                        service_name = "Ver en ListenBrainz"
-                    text += f"   🌐 <a href=\"{rec.track.path}\">{service_name}</a>\n"
-                text += f"   🎯 {int(rec.confidence * 100)}% match\n\n"
-            
-            # Botones de interacción (callback_data limitado a 64 bytes)
-            keyboard = [
-                [InlineKeyboardButton("❤️ Me gusta", callback_data="like_rec"),
-                 InlineKeyboardButton("👎 No me gusta", callback_data="dislike_rec")],
-                [InlineKeyboardButton("🔄 Más recomendaciones", callback_data="more_recommendations")]
-            ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            
-            await update.message.reply_text(text, reply_markup=reply_markup, parse_mode='HTML')
-            print("✅ Recomendaciones enviadas correctamente")
-            
-            # Guardar recomendaciones en la sesión conversacional
-            user_id = update.effective_user.id
-            session = self.conversation_manager.get_session(user_id)
-            session.set_last_recommendations(recommendations)
-            
+                await update.message.reply_text("😔 No pude generar recomendaciones en este momento.")
         except Exception as e:
-            print(f"❌ Error en recommend_command: {type(e).__name__}: {str(e)}")
+            print(f"❌ Error generando recomendaciones: {e}")
             import traceback
             traceback.print_exc()
             await update.message.reply_text(f"❌ Error generando recomendaciones: {str(e)}")
