@@ -322,6 +322,23 @@ Responde ahora de forma natural y conversacional:"""
             "más resultados", "más artistas", "continuar", "sigue buscando"
         ])
         
+        # Detectar comando "inmersión completa" / "dame todo"
+        is_deep_search = any(phrase in query_lower for phrase in [
+            "dame todo", "muéstrame todo", "búsqueda completa", "inmersión completa",
+            "todo lo que tengo", "toda mi", "todos los", "búsqueda profunda",
+            "sin límite", "completo"
+        ])
+        
+        # Determinar límite de búsqueda según el tipo de consulta
+        if is_deep_search:
+            search_limit = 1000  # Inmersión completa - toda la biblioteca
+            print(f"🔍 INMERSIÓN COMPLETA activada (límite: {search_limit})")
+        elif is_search_more:
+            search_limit = 200  # "Busca más" - aumentar resultados
+            print(f"🔍 BUSCAR MÁS activado (límite: {search_limit})")
+        else:
+            search_limit = 50  # Primera búsqueda - paginada
+        
         # Obtener sesión para contexto
         session = self.conversation_manager.get_session(user_id)
         
@@ -436,13 +453,15 @@ Responde ahora de forma natural y conversacional:"""
             try:
                 # Si es recomendación por género, buscar el género
                 if is_recommendation_request and detected_genre and not search_term:
-                    print(f"🔍 Buscando en biblioteca por GÉNERO: '{detected_genre}' (query: '{query}')")
+                    print(f"🔍 Buscando en biblioteca por GÉNERO: '{detected_genre}' (query: '{query}') [límite: {search_limit}]")
                     # Buscar por género (Navidrome puede buscar por tags/géneros)
-                    search_results = await self.navidrome.search(detected_genre, limit=50)
+                    search_results = await self.navidrome.search(detected_genre, limit=search_limit)
                     data["library"]["search_results"] = search_results
                     data["library"]["search_term"] = detected_genre
                     data["library"]["is_genre_search"] = True
                     data["library"]["detected_genre"] = detected_genre
+                    data["library"]["search_limit"] = search_limit
+                    data["library"]["is_deep_search"] = is_deep_search
                     
                     if any(search_results.values()):
                         data["library"]["has_content"] = True
@@ -484,12 +503,14 @@ Responde ahora de forma natural y conversacional:"""
                 
                 # Si detectó un género pero NO es recomendación (ej: "tengo algo de jazz?")
                 elif detected_genre and not search_term:
-                    print(f"🔍 Buscando en biblioteca por GÉNERO (no recomendación): '{detected_genre}' (query: '{query}')")
+                    print(f"🔍 Buscando en biblioteca por GÉNERO (no recomendación): '{detected_genre}' (query: '{query}') [límite: {search_limit}]")
                     # Buscar por género en Navidrome primero
-                    search_results = await self.navidrome.search(detected_genre, limit=50)
+                    search_results = await self.navidrome.search(detected_genre, limit=search_limit)
                     data["library"]["search_term"] = detected_genre
                     data["library"]["is_genre_search"] = True
                     data["library"]["detected_genre"] = detected_genre
+                    data["library"]["search_limit"] = search_limit
+                    data["library"]["is_deep_search"] = is_deep_search
                     
                     local_albums_count = len(search_results.get('albums', []))
                     local_artists_count = len(search_results.get('artists', []))
@@ -575,7 +596,7 @@ Responde ahora de forma natural y conversacional:"""
                 
                 # Si hay un artista específico, buscar por artista
                 elif search_term:
-                    print(f"🔍 Buscando en biblioteca por ARTISTA: '{search_term}' (query: '{query}')")
+                    print(f"🔍 Buscando en biblioteca por ARTISTA: '{search_term}' (query: '{query}') [límite: {search_limit}]")
                     
                     # Generar variaciones del término para búsqueda más flexible
                     # Ej: "kaseo" → ["kaseo", "kase.o", "kase o", "kase. o"]
@@ -585,7 +606,7 @@ Responde ahora de forma natural y conversacional:"""
                     # Buscar con todas las variaciones y combinar resultados
                     combined_results = {"tracks": [], "albums": [], "artists": []}
                     for variation in search_variations:
-                        variation_results = await self.navidrome.search(variation, limit=20)
+                        variation_results = await self.navidrome.search(variation, limit=search_limit)
                         # Combinar resultados evitando duplicados
                         for result_type in ["tracks", "albums", "artists"]:
                             existing_ids = {item.id for item in combined_results[result_type]}
@@ -620,6 +641,8 @@ Responde ahora de forma natural y conversacional:"""
                     data["library"]["search_results"] = filtered_results
                     data["library"]["search_term"] = search_term
                     data["library"]["is_genre_search"] = False
+                    data["library"]["search_limit"] = search_limit
+                    data["library"]["is_deep_search"] = is_deep_search
                     
                     if any(filtered_results.values()):
                         data["library"]["has_content"] = True
@@ -1019,13 +1042,35 @@ Responde ahora de forma natural y conversacional:"""
             formatted = "\n⚠️ No hay datos disponibles para responder esta consulta.\n"
         
         # Información sobre búsqueda incremental disponible
+        # Información sobre búsqueda profunda
+        if data.get("library", {}).get("search_limit"):
+            limit = data["library"]["search_limit"]
+            is_deep = data["library"].get("is_deep_search", False)
+            
+            if is_deep:
+                formatted += f"\n✅ === INMERSIÓN COMPLETA ACTIVADA ===\n"
+                formatted += f"✓ Búsqueda sin límites (hasta {limit} resultados)\n"
+                formatted += f"✓ Estos son TODOS los resultados disponibles en la biblioteca\n\n"
+            elif limit == 50:
+                formatted += f"\n💡 === BÚSQUEDA PAGINADA ===\n"
+                formatted += f"✓ Mostrando primeros {limit} resultados\n"
+                formatted += f"✓ Si el usuario quiere ver MÁS, puede decir:\n"
+                formatted += f"  • 'busca más' → Aumenta a 200 resultados\n"
+                formatted += f"  • 'dame todo' o 'muéstrame todo' → Búsqueda completa (1000 resultados)\n"
+                formatted += f"\n💬 SUGERENCIA: Si hay muchos resultados, menciona que puede ver más diciendo 'dame todo'.\n\n"
+            elif limit == 200:
+                formatted += f"\n💡 === BÚSQUEDA AMPLIADA ===\n"
+                formatted += f"✓ Mostrando hasta {limit} resultados (más que la búsqueda inicial)\n"
+                formatted += f"✓ Para ver TODO sin límites, puede decir 'dame todo'\n\n"
+        
+        # Búsqueda incremental de MusicBrainz
         if data.get("library", {}).get("can_search_more"):
             stats = data["library"]["mb_stats"]
-            formatted += f"\n💡 === BÚSQUEDA INCREMENTAL DISPONIBLE ===\n"
+            formatted += f"\n💡 === BÚSQUEDA INCREMENTAL DE MUSICBRAINZ DISPONIBLE ===\n"
             formatted += f"✓ Verificados hasta ahora: {stats['checked']}/{stats['total']} artistas\n"
             formatted += f"✓ Quedan por verificar: {stats['remaining']} artistas\n"
-            formatted += f"\n💬 IMPORTANTE: Menciona al usuario que puede decir 'busca más' para verificar más artistas.\n"
-            formatted += f"Ejemplo: 'He verificado {stats['checked']} artistas de tu biblioteca. Si quieres que busque más a fondo, dime \"busca más\".'\n\n"
+            formatted += f"\n💬 IMPORTANTE: Menciona al usuario que puede decir 'busca más' para verificar más artistas en MusicBrainz.\n"
+            formatted += f"Ejemplo: 'He verificado {stats['checked']} artistas. Si quieres que busque más a fondo, dime \"busca más\".'\n\n"
         
         return formatted
     
