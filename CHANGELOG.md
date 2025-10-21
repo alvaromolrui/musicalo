@@ -8,6 +8,22 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 ## [4.2.0-alpha] - 2025-01-21
 
 ### 🐛 Arreglado
+- **Formato de texto corregido - Ahora usa HTML en vez de Markdown**
+  - **Problema**: El agente generaba `**texto**` (Markdown) pero Telegram espera `<b>texto</b>` (HTML)
+  - **Resultado**: Negritas y cursivas no se mostraban correctamente
+  - **Solución**: Instrucciones explícitas en ambos prompts para usar formato HTML
+    - Negrita: `<b>texto</b>` ✅ (NO `**texto**` ❌)
+    - Cursiva: `<i>texto</i>` ✅ (NO `*texto*` ❌)
+    - Código: `<code>texto</code>` ✅
+  - **Impacto**: Todos los mensajes del agente ahora se ven correctamente formateados
+
+- **Búsqueda en biblioteca SIMPLIFICADA - Siempre completa**
+  - **Antes**: Búsqueda paginada (50 → 200 → 1000) con "busca más" / "dame todo"
+  - **Ahora**: SIEMPRE búsqueda completa (1000 resultados) desde el inicio
+  - **Razón**: Eliminar fricción - el usuario quiere ver TODO cuando pregunta por su biblioteca
+  - **Código reducido**: -95 líneas de lógica de paginación
+  - **Resultado**: Respuestas más completas y directas, sin necesidad de pedir "dame todo"
+
 - **HOTFIX: SyntaxError al iniciar el bot (caracteres Unicode corruptos)**
   - **Problema**: `SyntaxError: '(' was never closed` en `system_prompts.py` línea 145
   - **Causa**: Caracteres de caja Unicode (`╔ ║ ╚ ═`) corruptos en Windows
