@@ -8,6 +8,13 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 ## [4.2.0-alpha] - 2025-01-21
 
 ### 🐛 Arreglado
+- **HOTFIX: SyntaxError al iniciar el bot (caracteres Unicode corruptos)**
+  - **Problema**: `SyntaxError: '(' was never closed` en `system_prompts.py` línea 145
+  - **Causa**: Caracteres de caja Unicode (`╔ ║ ╚ ═`) corruptos en Windows
+  - **Solución**: Reemplazados con ASCII simple (`= -`)
+  - **Impacto**: Bot ahora inicia correctamente en Windows sin errores de encoding
+  - **Nota**: Las reglas siguen siendo igual de visibles, solo cambia el formato de las cajas
+
 - **ULTRA-CRÍTICO: Reestructuración radical del prompt para FORZAR filtro anti-duplicados**
   - **Problema persistente**: Modelo seguía IGNORANDO reglas y recomendando artistas que ya tienes
   - **Artistas duplicados detectados**: Triángulo de Amor Bizarro, Vera Fauna, Los Punsetes, El Último Vecino, Novedades Carminha, La Bien Querida
