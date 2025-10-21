@@ -8,6 +8,19 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 ## [4.2.0-alpha] - 2025-01-21
 
 ### 🐛 Arreglado
+- **ULTRA-CRÍTICO: Reestructuración radical del prompt para FORZAR filtro anti-duplicados**
+  - **Problema persistente**: Modelo seguía IGNORANDO reglas y recomendando artistas que ya tienes
+  - **Artistas duplicados detectados**: Triángulo de Amor Bizarro, Vera Fauna, Los Punsetes, El Último Vecino, Novedades Carminha, La Bien Querida
+  - **Causa raíz**: Reglas demasiado abajo en el prompt + lista de artistas en 1 línea larga (fácil de ignorar)
+  - **Solución RADICAL**:
+    1. ✅ Reglas críticas movidas al **INICIO absoluto** del prompt (líneas 1-100)
+    2. ✅ Lista de artistas de biblioteca **ULTRA-VISIBLE** con caja de caracteres y 80 artistas en bloques de 10
+    3. ✅ Verificación paso-a-paso **JUSTO ANTES** de generar respuesta
+    4. ✅ Ejemplos explícitos de artistas que debe descartar
+    5. ✅ Imposible ignorar: lista visible en primeras 150 líneas del prompt
+  - **Mejora adicional**: "busca todo" ahora entiende contexto conversacional (si preguntas por rap y luego "busca todo" → busca todo el rap)
+  - **Resultado**: El modelo NO PUEDE ignorar las reglas - están literalmente en su cara desde la línea 1
+
 - **CRÍTICO: Reforzado filtro anti-duplicados - Ya NO recomienda música que tienes**
   - **Problema**: Agente recomendaba artistas/álbumes que ya están en tu biblioteca (Vera Fauna, Triángulo de Amor Bizarro)
   - **Causa**: Regla débil + contexto insuficiente (solo 10 artistas visibles de 100)
