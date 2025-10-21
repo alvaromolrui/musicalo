@@ -446,29 +446,43 @@ Responde ahora de forma natural y conversacional:"""
                     # En vez de eso, indicar al modelo que use su conocimiento
                     data["library"]["genre_query"] = detected_genre
                     data["library"]["is_genre_query"] = True
-                    # Determinar tipo de petición
-                    if is_recommendation_request:
-                        action = "recomienda algunos álbumes"
-                    else:
-                        action = "lista TODOS los artistas"
-                    
                     data["library"]["instruction"] = (
-                        f"El usuario pregunta sobre {detected_genre.upper()} en su biblioteca. "
-                        f"\n\nPROCESO PARA RESPONDER:"
+                        f"IMPORTANTE: El usuario pregunta QUÉ TIENE de {detected_genre.upper()} en su biblioteca."
+                        f"\n\nEsto es una CONSULTA DE INFORMACIÓN, NO una petición de recomendaciones."
+                        f"\n"
+                        f"\nLO QUE DEBES HACER:"
                         f"\n1. Mira la lista COMPLETA de 'ARTISTAS EN BIBLIOTECA' que recibirás arriba"
                         f"\n2. USA TU CONOCIMIENTO MUSICAL para identificar cuáles son de {detected_genre}"
                         f"\n   - Incluye subgéneros: rap = hip-hop, trap, urban, rap español"
                         f"\n   - Incluye fusiones: rock alternativo, indie rock, etc."
-                        f"\n3. Si tienes DUDA sobre algún artista, MusicBrainz está disponible para verificar"
-                        f"\n4. {action.capitalize()} de {detected_genre} que encuentres en la lista"
-                        f"\n\nEjemplos de CONOCIMIENTO a aplicar:"
+                        f"\n3. LISTA TODOS LOS ARTISTAS de {detected_genre} que encuentres"
+                        f"\n4. Si tienes DUDA sobre algún artista, MusicBrainz está disponible"
+                        f"\n"
+                        f"\nEjemplos de artistas RAP a incluir si están en la lista:"
                         f"\n  • Kase.O → Rap español ✓"
-                        f"\n  • Post Malone → Rap/Trap/Pop ✓"
+                        f"\n  • Nach → Rap español consciente ✓"
+                        f"\n  • SFDK → Rap español hardcore ✓"
                         f"\n  • Chico Blanco → Rap español ✓"
                         f"\n  • Rels B → Urban/R&B español ✓"
-                        f"\n  • SFDK → Rap español (hardcore) ✓"
-                        f"\n  • Nach → Rap español (consciente) ✓"
-                        f"\n\nSi no estás 100% seguro de un artista → Verifica con MusicBrainz antes de incluirlo/excluirlo"
+                        f"\n  • Post Malone → Rap/Trap/Pop ✓"
+                        f"\n  • Bad Bunny → Trap latino ✓"
+                        f"\n  • Delaossa → Rap/Trap español ✓"
+                        f"\n  • Dellafuente → Trap/Flamenco ✓"
+                        f"\n"
+                        f"\nFORMATO DE RESPUESTA:"
+                        f"\n  • LISTA SIMPLE de artistas (NO recomiendes álbumes)"
+                        f"\n  • Usa bullet points: • Artista 1, • Artista 2, etc."
+                        f"\n  • Si quieres agregar contexto, hazlo DESPUÉS de la lista"
+                        f"\n"
+                        f"\nEjemplo de respuesta CORRECTA:"
+                        f"\n  'Tienes estos artistas de rap en tu biblioteca:"
+                        f"\n   • Kase.O"
+                        f"\n   • SFDK"
+                        f"\n   • Nach"
+                        f"\n   ...(y lista completa)'"
+                        f"\n"
+                        f"\nEjemplo de respuesta INCORRECTA:"
+                        f"\n  '1. Kase.O - Kase.O Jazz Magnetism (2011): Una joya...' ← NO HAGAS ESTO"
                     )
                     
                     # Marcar que hay contenido para procesar (el contexto de biblioteca)
