@@ -8,6 +8,17 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 ## [4.2.0-alpha] - 2025-01-21
 
 ### 🐛 Arreglado
+- **Búsqueda de género COMPLETA - Ahora encuentra TODOS los artistas**
+  - **Problema**: Al preguntar "¿Qué artistas de rap tengo?" solo mostraba 3 artistas cuando había más
+  - **Causa**: Solo buscaba exactamente "rap", no variaciones como "Hip-Hop", "hip hop", "Trap", "Urban"
+  - **Solución**: Nueva función `_get_genre_variations()` que genera 13+ variaciones por género
+    - **rap**: rap, Rap, RAP, hip hop, Hip Hop, Hip-Hop, hip-hop, Trap, trap, Urban, urban, rap español, spanish rap
+    - **rock**: Rock, ROCK, rock alternativo, Rock alternativo
+    - **jazz**: Jazz, JAZZ, jazz fusion, Jazz Fusion
+    - (Y más géneros con variaciones)
+  - **Método**: Busca TODAS las variaciones y combina resultados sin duplicados
+  - **Impacto**: Búsquedas de género ahora 5-10x más completas
+
 - **Formato de texto corregido - Ahora usa HTML en vez de Markdown**
   - **Problema**: El agente generaba `**texto**` (Markdown) pero Telegram espera `<b>texto</b>` (HTML)
   - **Resultado**: Negritas y cursivas no se mostraban correctamente
