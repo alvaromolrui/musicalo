@@ -409,14 +409,14 @@ Responde ahora de forma natural y conversacional:"""
         ])
         
         # Extraer término de búsqueda 
-        # Si es recomendación + género, no extraer término (usar género)
-        if is_recommendation_request and detected_genre:
-            search_term = None  # No buscar artista específico
+        # Si detectó GÉNERO (rap, rock, jazz, etc.), NO extraer search_term
+        # Dejar que el modelo filtre por conocimiento
+        if detected_genre:
+            search_term = None  # Es pregunta sobre género, no sobre artista específico
+            print(f"   → Género detectado ('{detected_genre}'), NO extraer search_term")
         elif needs_library_search:
             search_term = self._extract_search_term(query)
-            # Si el término extraído coincide con el género detectado, priorizar género
-            if detected_genre and search_term and detected_genre.lower() in search_term.lower():
-                search_term = None  # Es una búsqueda de género, no de artista
+            print(f"   → Search term extraído: '{search_term}'")
         else:
             search_term = None
         
@@ -436,56 +436,8 @@ Responde ahora de forma natural y conversacional:"""
         # Datos de biblioteca (Navidrome)
         if needs_library_search:
             try:
-                # Si es recomendación por género, buscar el género
-                if is_recommendation_request and detected_genre and not search_term:
-                    print(f"🔍 Buscando en biblioteca por GÉNERO: '{detected_genre}' (query: '{query}') [límite: {search_limit}]")
-                    # Buscar por género (Navidrome puede buscar por tags/géneros)
-                    search_results = await self.navidrome.search(detected_genre, limit=search_limit)
-                    data["library"]["search_results"] = search_results
-                    data["library"]["search_term"] = detected_genre
-                    data["library"]["is_genre_search"] = True
-                    data["library"]["detected_genre"] = detected_genre
-                    
-                    if any(search_results.values()):
-                        data["library"]["has_content"] = True
-                        print(f"✅ Encontrado {len(search_results.get('albums', []))} álbumes, {len(search_results.get('artists', []))} artistas de género '{detected_genre}'")
-                    else:
-                        data["library"]["has_content"] = False
-                        print(f"⚠️ No se encontraron resultados para género '{detected_genre}'")
-                        
-                        # FALLBACK: Usar MusicBrainz para verificar si hay artistas del género
-                        if self.musicbrainz:
-                            print(f"   🎯 Activando MusicBrainz para verificar género '{detected_genre}'...")
-                            mb_results = await self._search_genre_with_musicbrainz(detected_genre, offset=mb_offset)
-                            if mb_results and mb_results.get("results"):
-                                # Si MusicBrainz encuentra artistas, actualizar los resultados
-                                results_data = mb_results["results"]
-                                data["library"]["search_results"] = results_data
-                                data["library"]["has_content"] = True
-                                data["library"]["musicbrainz_verified"] = True
-                                print(f"   ✅ MusicBrainz encontró {len(results_data.get('albums', []))} álbumes, {len(results_data.get('artists', []))} artistas de '{detected_genre}'")
-                                
-                                # Guardar contexto para "busca más"
-                                session.context["last_mb_search"] = {
-                                    "genre": detected_genre,
-                                    "offset": mb_results["offset"],
-                                    "next_offset": mb_results["next_offset"],
-                                    "has_more": mb_results["has_more"],
-                                    "total_artists": mb_results["total_artists"],
-                                    "checked_total": mb_results["next_offset"]
-                                }
-                                
-                                # Información para el prompt de la IA
-                                if mb_results["has_more"]:
-                                    data["library"]["can_search_more"] = True
-                                    data["library"]["mb_stats"] = {
-                                        "checked": mb_results["next_offset"],
-                                        "total": mb_results["total_artists"],
-                                        "remaining": mb_results["total_artists"] - mb_results["next_offset"]
-                                    }
-                
-                # Si detectó un género pero NO es recomendación (ej: "tengo algo de rap?")
-                elif detected_genre and not search_term:
+                # Si detectó un GÉNERO (rap, rock, jazz, etc.) - SIEMPRE usar filtrado por conocimiento
+                if detected_genre and not search_term:
                     print(f"🎯 Pregunta sobre GÉNERO en biblioteca: '{detected_genre}'")
                     print(f"   → NO buscar texto en Navidrome (ineficiente)")
                     print(f"   → DELEGAR al modelo IA (conoce qué artistas son de {detected_genre})")
@@ -494,16 +446,29 @@ Responde ahora de forma natural y conversacional:"""
                     # En vez de eso, indicar al modelo que use su conocimiento
                     data["library"]["genre_query"] = detected_genre
                     data["library"]["is_genre_query"] = True
+                    # Determinar tipo de petición
+                    if is_recommendation_request:
+                        action = "recomienda algunos álbumes"
+                    else:
+                        action = "lista TODOS los artistas"
+                    
                     data["library"]["instruction"] = (
-                        f"El usuario pregunta por artistas de {detected_genre.upper()} en su biblioteca. "
+                        f"El usuario pregunta sobre {detected_genre.upper()} en su biblioteca. "
                         f"\n\nPROCESO PARA RESPONDER:"
                         f"\n1. Mira la lista de 'ARTISTAS EN BIBLIOTECA' que recibirás arriba (80 artistas)"
-                        f"\n2. USA TU CONOCIMIENTO para identificar cuáles son de {detected_genre}"
+                        f"\n2. USA TU CONOCIMIENTO MUSICAL para identificar cuáles son de {detected_genre}"
+                        f"\n   - Incluye subgéneros: rap = hip-hop, trap, urban, rap español"
+                        f"\n   - Incluye fusiones: rock alternativo, indie rock, etc."
                         f"\n3. Si tienes DUDA sobre algún artista, MusicBrainz está disponible para verificar"
-                        f"\n4. Responde con TODOS los artistas de {detected_genre} que encuentres en la lista"
-                        f"\n\nEjemplo: Si preguntan por RAP y ves 'Kase.O' en la lista → Sabes que es rap español → Inclúyelo"
-                        f"\nEjemplo: Si ves 'Post Malone' → Sabes que hace rap/trap → Inclúyelo"
-                        f"\nEjemplo: Si no estás seguro de un artista → Usa MusicBrainz para verificar su género"
+                        f"\n4. {action.capitalize()} de {detected_genre} que encuentres en la lista"
+                        f"\n\nEjemplos de CONOCIMIENTO a aplicar:"
+                        f"\n  • Kase.O → Rap español ✓"
+                        f"\n  • Post Malone → Rap/Trap/Pop ✓"
+                        f"\n  • Chico Blanco → Rap español ✓"
+                        f"\n  • Rels B → Urban/R&B español ✓"
+                        f"\n  • SFDK → Rap español (hardcore) ✓"
+                        f"\n  • Nach → Rap español (consciente) ✓"
+                        f"\n\nSi no estás 100% seguro de un artista → Verifica con MusicBrainz antes de incluirlo/excluirlo"
                     )
                     
                     # Marcar que hay contenido para procesar (el contexto de biblioteca)
