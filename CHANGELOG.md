@@ -7,6 +7,14 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ## [4.2.0-alpha] - 2025-01-21
 
+### 🐛 Arreglado
+- **CRÍTICO: Comando `/recommend` ahora usa el agente con reglas mejoradas**
+  - **Problema**: El comando `/recommend` usaba lógica antigua que llamaba directamente a ListenBrainz/MusicBrainz, ignorando TODAS las reglas del system prompt
+  - **Resultado**: Recomendaciones con baja similitud (Metallica similar a The Cure??), artistas ya conocidos, y sin respeto por idioma/década
+  - **Solución**: Migrado completamente al agente conversacional - **333 líneas → 39 líneas** (simplificación del 88%)
+  - **Ahora respeta**: Formato álbum por defecto, alta similitud, afinidad de idioma, priorización de discos nuevos y artistas nuevos
+  - **Impacto**: Mejora MASIVA en calidad de recomendaciones, consistencia total con otros comandos, y código 10x más mantenible
+
 ### ✨ Nuevo
 - **🧠 Sistema de Contexto Adaptativo en 3 Niveles con Periodos Progresivos**
   - El agente ahora SIEMPRE tiene contexto de tu música Y biblioteca, adaptándose automáticamente
