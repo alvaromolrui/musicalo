@@ -14,6 +14,9 @@ Un bot de Telegram inteligente que utiliza IA para generar recomendaciones music
 - **🤖 Lenguaje Natural**: Habla directamente con el bot sin necesidad de comandos
 - **🎨 Peticiones Específicas**: Describe exactamente lo que buscas con todos los detalles
 - **🧠 Contexto Adaptativo en 3 Niveles** ⭐ **NUEVO**: El bot SIEMPRE conoce tus gustos y se adapta automáticamente
+- **🎯 5 Reglas Críticas de Recomendación** ⭐ **NUEVO**: Álbumes, similitud, idioma, novedad, anti-duplicados
+- **🔍 Búsqueda Profunda** ⭐ **NUEVO**: Control total con "dame todo" (50/200/1000 resultados)
+- **❌ Filtro Anti-Duplicados** ⭐ **NUEVO**: NUNCA recomienda música que ya tienes
 - **🎯 IA Contextual**: Gemini AI entiende intenciones y responde con tus datos reales
 - **🎵 Integración con Navidrome**: Acceso completo a tu biblioteca musical autoalojada
 - **📊 Scrobbles de ListenBrainz**: Análisis de tus hábitos de escucha y patrones (open-source, sin límites)
@@ -53,7 +56,7 @@ La IA entiende múltiples criterios y genera recomendaciones precisas que cumple
 #### **Nivel 2: Contexto Enriquecido** ⚡⚡ (Recomendaciones)
 - Se activa automáticamente cuando pides recomendaciones
 - Escuchas: **Top 10 artistas del AÑO** + últimas 10 escuchas + top álbumes
-- Biblioteca: **100 artistas + 50 álbumes + todos los géneros**
+- Biblioteca: **300 artistas + 150 álbumes + todos los géneros** (datos completos para filtrado preciso)
 - **Caché de 15 minutos** (se actualiza dinámicamente)
 - Primera consulta: ~800ms, repetidas: ~50ms
 
@@ -87,6 +90,62 @@ Bot: "En todo el tiempo has escuchado 10,523 canciones.
 
 **Todos los comandos aprovechan el contexto:** `/recommend`, `/stats`, `/playlist`, `/library`, `/releases`, `/search`, `/nowplaying`
 
+### 🔍 Búsqueda Profunda Controlada
+
+**¡Nueva característica v4.2.0!** Controla cuántos resultados quieres ver cuando preguntas por tu biblioteca:
+
+| Tipo de Búsqueda | Límite | Cuándo Usar |
+|------------------|--------|-------------|
+| **Primera búsqueda** | 50 resultados | Exploración inicial rápida |
+| **"busca más"** | 200 resultados | Necesitas más detalles |
+| **"dame todo"** | 1000 resultados | Inmersión completa en biblioteca |
+
+**Ejemplo de uso:**
+```
+Tú: "¿Qué tengo de rock?"
+🤖: [Muestra 50 álbumes]
+    💡 Mostrando primeros 50 resultados.
+    Para ver TODO, di "dame todo"
+
+Tú: "dame todo"
+🤖: [Muestra TODOS los álbumes de rock]
+    ✅ INMERSIÓN COMPLETA - 1000 resultados
+```
+
+**Palabras mágicas:**
+- `"dame todo"` / `"muéstrame todo"` → Ver toda la biblioteca
+- `"busca más"` → Ver más resultados (200)
+- `"búsqueda completa"` / `"inmersión completa"` → Sin límites
+
+### 🎯 Reglas Críticas de Recomendación
+
+El bot sigue **5 reglas estrictas** para recomendaciones de alta calidad:
+
+1. **📀 FORMATO ÁLBUM POR DEFECTO**
+   - Siempre recomienda álbumes completos (no canciones sueltas)
+   - Excepción: si pides explícitamente "canciones"
+
+2. **🎵 ALTO GRADO DE SIMILITUD**
+   - Solo artistas/álbumes MUY similares a tus gustos
+   - No mezcla géneros incompatibles (rock ≠ jazz)
+
+3. **🌍 AFINIDAD DE IDIOMA**
+   - Si escuchas español → recomienda español
+   - Si escuchas inglés → recomienda inglés
+   - Mantiene coherencia lingüística automáticamente
+
+4. **🆕 PRIORIDAD A LO NUEVO**
+   - Álbumes recientes (últimos 5 años)
+   - Artistas que aún NO conoces
+   - Descubrimiento continuo
+
+5. **❌ NUNCA RECOMIENDA LO QUE YA TIENES**
+   - Verifica tu biblioteca ANTES de recomendar
+   - Filtra artistas y álbumes duplicados
+   - Solo música nueva para ti
+
+**Resultado:** Recomendaciones precisas, relevantes y SIEMPRE nuevas.
+
 ## 🏗️ Arquitectura
 
 ### Bot de Telegram
@@ -110,7 +169,8 @@ Bot: "En todo el tiempo has escuchado 10,523 canciones.
 - ✅ **MusicBrainz** para metadatos precisos, descubrimiento por relaciones entre artistas y búsquedas avanzadas
 - ✅ Ambos servicios son gratuitos, open-source y sin límites estrictos de API
 - ✅ Cache persistente para minimizar llamadas a las APIs
-- ✅ Sistema de búsqueda incremental con "busca más" para explorar toda tu biblioteca
+- ✅ **Búsqueda profunda controlada** con "dame todo" (50 → 200 → 1000 resultados)
+- ✅ **Filtro anti-duplicados** en recomendaciones (NUNCA recomienda lo que ya tienes)
 
 ## 🚀 Instalación
 
@@ -292,7 +352,8 @@ del bot y proporciona tu ID de usuario.
 "¿qué he escuchado hoy de rock?"
 "busca música de Queen en mi biblioteca"
 "¿qué estoy escuchando?" (reproducción actual en tiempo real)
-"¿qué es el jazz?" (preguntas generales sobre música)
+"¿qué tengo de jazz?" → "dame todo" (búsqueda profunda)
+"recomiéndame álbumes nuevos" (solo discos recientes que NO tienes)
 ```
 
 La IA entiende tu intención y responde usando tus datos reales de ListenBrainz y MusicBrainz.
@@ -303,10 +364,10 @@ Casi todos los comandos pueden usarse con lenguaje natural sin necesidad de reco
 
 | Comando | Ejemplos de Lenguaje Natural |
 |---------|------------------------------|
-| `/recommend` | "Recomiéndame rock progresivo"<br>"Similar a Pink Floyd"<br>"De mi biblioteca que no escucho" |
+| `/recommend` | "Recomiéndame rock progresivo"<br>"Similar a Pink Floyd"<br>"Álbumes nuevos de artistas que NO conozco" |
 | `/playlist` | "Haz playlist de Pink Floyd y Queen"<br>"Crea playlist de jazz suave" |
-| `/search` | "Busca Queen en mi biblioteca"<br>"Buscar bohemian rhapsody" |
-| `/library` | "Muéstrame mi biblioteca"<br>"Qué tengo en mi biblioteca" |
+| `/search` | "Busca Queen en mi biblioteca"<br>"¿Qué tengo de jazz?" → "dame todo" (búsqueda profunda) |
+| `/library` | "Muéstrame mi biblioteca"<br>"Todo lo que tengo de rock" (inmersión completa) |
 | `/stats` | "Mis estadísticas de este mes"<br>"Qué he escuchado esta semana" |
 | `/releases` | "Qué hay nuevo de mis artistas"<br>"Lanzamientos recientes" |
 | `/nowplaying` | "Qué estoy escuchando ahora"<br>"Qué está sonando" |
@@ -344,13 +405,19 @@ help - Mostrar ayuda completa
 ### Ejemplos con Comandos
 
 ```
-/recommend                    # Recomendaciones generales
-/recommend album rock         # Álbumes de rock
-/recommend similar Queen      # Música similar a Queen
+/recommend                    # Recomendaciones generales (5 álbumes nuevos que NO tienes)
+/recommend rock               # Álbumes de rock (alta similitud, mismo idioma)
+/search jazz                  # Buscar jazz (primeros 50 resultados)
+  → "dame todo"               # Ver TODOS los álbumes de jazz (1000 resultados)
 /library                      # Ver biblioteca
 /stats                        # Ver estadísticas
-/search queen                 # Buscar Queen
+/playlist rock 70s            # Playlist DE TU BIBLIOTECA
 ```
+
+**💡 Nuevas capacidades:**
+- `/recommend` ahora **NUNCA** repite artistas que ya tienes
+- `/search` soporta "dame todo" para búsqueda completa
+- `/playlist` siempre usa música de tu biblioteca
 
 ### 🔘 Interacciones
 
@@ -367,12 +434,18 @@ help - Mostrar ayuda completa
 - **`/help`** - Ayuda detallada con ejemplos
 
 ### Comandos de Música (🧠 con contexto adaptativo)
-- **`/recommend`** - Recomendaciones personalizadas con IA (Nivel 2)
+- **`/recommend [descripción]`** - Recomendaciones IA con reglas mejoradas (Nivel 2)
+  - ⭐ **MEJORADO**: Ahora 100% IA - respeta todas las reglas críticas
+  - 📀 Formato álbum por defecto, alta similitud, afinidad de idioma
+  - ❌ NUNCA recomienda música que ya tienes en biblioteca
+  - Ejemplos: `/recommend`, `/recommend rock`, `/recommend canciones` (excepción)
 - **`/stats [periodo]`** - Análisis inteligente de tus estadísticas (Nivel 3)
 - **`/playlist <descripción>`** - Crear playlist personalizada (Nivel 2)
+  - 🎵 Siempre usa canciones de TU biblioteca
 - **`/library`** - Resumen inteligente de tu biblioteca (Nivel 3)
 - **`/releases [periodo]`** - Lanzamientos filtrados por tus gustos (Nivel 2)
 - **`/search <término>`** - Buscar con sugerencias contextuales (Nivel 1)
+  - 🔍 Soporta "dame todo" para búsqueda completa
 - **`/nowplaying`** - Ver reproducción actual con contexto (Nivel 1)
 - **`/share <nombre>`** - Compartir música con enlace público
 
@@ -383,16 +456,29 @@ help - Mostrar ayuda completa
 
 ## 🧠 Algoritmo de Recomendaciones
 
-El sistema utiliza múltiples enfoques con **contexto adaptativo**:
+El sistema utiliza múltiples enfoques con **contexto adaptativo** y **reglas críticas**:
 
 1. **Contexto en 3 Niveles** ⭐ **NUEVO**: Sistema inteligente con periodos progresivos
    - Nivel 1 (Mínimo): Stats **MENSUALES** + resumen biblioteca - caché 1h
-   - Nivel 2 (Enriquecido): Stats **ANUALES** + biblioteca completa - caché 15min
+   - Nivel 2 (Enriquecido): Stats **ANUALES** + biblioteca completa (300 artistas, 150 álbumes) - caché 15min
    - Nivel 3 (Completo): Stats **TODO EL TIEMPO** + análisis detallado - caché 10min
-2. **Análisis de perfil**: Patrones de escucha, géneros favoritos, diversidad
-3. **IA generativa**: Google Gemini para sugerencias contextuales
-4. **Similitud musical**: Artistas y géneros relacionados
-5. **Filtrado colaborativo**: Basado en usuarios con gustos similares (ListenBrainz)
+
+2. **5 Reglas Críticas** ⭐ **NUEVO**: Garantizan recomendaciones de alta calidad
+   - 📀 Formato álbum por defecto
+   - 🎵 Alta similitud musical
+   - 🌍 Afinidad de idioma
+   - 🆕 Prioridad a lo nuevo
+   - ❌ Filtro anti-duplicados
+
+3. **Análisis de perfil**: Patrones de escucha, géneros favoritos, diversidad
+
+4. **IA generativa**: Google Gemini para sugerencias contextuales
+
+5. **Similitud musical**: Artistas y géneros relacionados
+
+6. **Filtrado colaborativo**: Basado en usuarios con gustos similares (ListenBrainz)
+
+**Resultado:** Recomendaciones precisas, relevantes y siempre nuevas que respetan tu perfil musical.
 
 ## 🎨 Tecnologías
 
@@ -413,8 +499,18 @@ El sistema utiliza múltiples enfoques con **contexto adaptativo**:
 
 - **🧠 Contexto Adaptativo** ⭐ **NUEVO**: Sistema de 3 niveles que siempre conoce tus gustos
   - Respuestas **92% más rápidas** en consultas repetidas
-  - Caché inteligente (1h/10min/5min según el tipo de dato)
+  - Caché inteligente (1h/15min/10min según el tipo de dato)
   - Se actualiza automáticamente con tus nuevas escuchas
+- **🎯 Recomendaciones de Alta Calidad** ⭐ **NUEVO**: 5 reglas críticas
+  - ✅ **Formato álbum** por defecto (no canciones sueltas)
+  - ✅ **Alta similitud** (no mezcla géneros incompatibles)
+  - ✅ **Afinidad de idioma** (español → español, inglés → inglés)
+  - ✅ **Prioridad a lo nuevo** (álbumes recientes, artistas desconocidos)
+  - ✅ **Filtro anti-duplicados** (NUNCA recomienda lo que ya tienes)
+- **🔍 Búsqueda Profunda** ⭐ **NUEVO**: Control total con "dame todo"
+  - Primera búsqueda: 50 resultados (rápida)
+  - "busca más": 200 resultados (ampliada)
+  - "dame todo": 1000 resultados (completa)
 - **Análisis de género**: Identificación automática de preferencias
 - **Patrones temporales**: Horarios de escucha preferidos
 - **Diversidad musical**: Medición de amplitud de gustos
