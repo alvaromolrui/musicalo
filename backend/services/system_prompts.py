@@ -71,11 +71,123 @@ class SystemPrompts:
         # Agregar estadísticas del usuario si existen
         if user_stats:
             prompt_parts.extend([
-                "PERFIL MUSICAL DEL USUARIO:",
-                f"- Top artistas: {', '.join(user_stats.get('top_artists', [])[:5]) if user_stats.get('top_artists') else 'Aún no disponible'}",
-                f"- Géneros favoritos: {', '.join(user_stats.get('favorite_genres', [])[:5]) if user_stats.get('favorite_genres') else 'Variados'}",
-                f"- Total de escuchas: {user_stats.get('total_listens', 'N/A')}",
-                f"- Última canción: {user_stats.get('last_track', 'Desconocido')}",
+                "═══════════════════════════════════════════════════════════",
+                "📊 PERFIL MUSICAL DEL USUARIO (CONTEXTO DISPONIBLE)",
+                "═══════════════════════════════════════════════════════════",
+                ""
+            ])
+            
+            # Detectar qué periodo de contexto tenemos
+            period = user_stats.get('period', 'unknown')
+            
+            # ESCUCHAS
+            if period == 'monthly':
+                prompt_parts.append("🎧 ESCUCHAS DE ESTE MES:")
+            elif period == 'yearly':
+                prompt_parts.append("🎧 ESCUCHAS DE ESTE AÑO:")
+            elif period == 'all_time':
+                prompt_parts.append("🎧 ESCUCHAS DE TODO EL TIEMPO:")
+            else:
+                prompt_parts.append("🎧 TUS ESCUCHAS:")
+            
+            # Top artists (puede ser mensual, anual o all-time)
+            if user_stats.get('top_artists'):
+                top_artists_str = ', '.join(user_stats['top_artists'][:5])
+                prompt_parts.append(f"  • Top artistas: {top_artists_str}")
+            elif user_stats.get('top_artists_year'):
+                top_artists_str = ', '.join(user_stats['top_artists_year'][:5])
+                prompt_parts.append(f"  • Top artistas del año: {top_artists_str}")
+            elif user_stats.get('top_artists_alltime'):
+                top_artists_str = ', '.join(user_stats['top_artists_alltime'][:5])
+                prompt_parts.append(f"  • Top artistas históricos: {top_artists_str}")
+            
+            # Detectar idioma predominante
+            if user_stats.get('top_artists') or user_stats.get('top_artists_year') or user_stats.get('top_artists_alltime'):
+                artists = (user_stats.get('top_artists') or 
+                          user_stats.get('top_artists_year') or 
+                          user_stats.get('top_artists_alltime', []))
+                
+                # Detectar idioma de los artistas
+                spanish_artists = ['extremoduro', 'los suaves', 'barricada', 'rosendo', 'platero y tú',
+                                  'los planetas', 'vetusta morla', 'ilegales', 'reincidentes', 'ska-p',
+                                  'la polla records', 'kortatu', 'el mató', 'depresión sonora', 
+                                  'marcelo criminal', 'nach', 'kase', 'sfdk', 'tote king']
+                
+                spanish_count = sum(1 for a in artists[:5] if any(s in a.lower() for s in spanish_artists) 
+                                   or any(word in a.lower() for word in ['los ', 'las ', 'el ', 'la ']))
+                
+                if spanish_count >= 3:
+                    prompt_parts.append(f"  ⚠️ IDIOMA PREDOMINANTE: ESPAÑOL ({spanish_count}/5 artistas)")
+                    prompt_parts.append(f"     → RECOMIENDA PREFERENTEMENTE EN ESPAÑOL")
+                elif spanish_count >= 1:
+                    prompt_parts.append(f"  ⚠️ IDIOMA: MIXTO (español {spanish_count}/5, resto otros idiomas)")
+                    prompt_parts.append(f"     → Respeta la proporción de idiomas")
+            
+            # Última canción
+            if user_stats.get('last_track'):
+                prompt_parts.append(f"  • Última escucha: {user_stats['last_track']}")
+            
+            # Artistas recientes
+            if user_stats.get('recent_artists'):
+                recent_str = ', '.join(user_stats['recent_artists'][:3])
+                prompt_parts.append(f"  • Artistas recientes: {recent_str}")
+            
+            # Tracks recientes
+            if user_stats.get('recent_tracks'):
+                prompt_parts.append(f"  • Últimas {len(user_stats['recent_tracks'])} escuchas disponibles")
+            
+            prompt_parts.append("")
+            
+            # BIBLIOTECA
+            prompt_parts.append("📚 TU BIBLIOTECA MUSICAL:")
+            
+            if user_stats.get('library_total_artists'):
+                prompt_parts.append(f"  • Total de artistas: {user_stats['library_total_artists']}")
+            elif user_stats.get('library_artists_count'):
+                prompt_parts.append(f"  • Artistas en biblioteca: {user_stats['library_artists_count']}")
+            
+            if user_stats.get('library_total_albums'):
+                prompt_parts.append(f"  • Total de álbumes: {user_stats['library_total_albums']}")
+            elif user_stats.get('library_albums_count'):
+                prompt_parts.append(f"  • Álbumes en biblioteca: {user_stats['library_albums_count']}")
+            
+            if user_stats.get('library_total_tracks'):
+                prompt_parts.append(f"  • Total de canciones: {user_stats['library_total_tracks']}")
+            
+            # Géneros de la biblioteca
+            if user_stats.get('library_complete_genres'):
+                top_genres = [g[0] for g in user_stats['library_complete_genres'][:5]]
+                prompt_parts.append(f"  • Géneros principales: {', '.join(top_genres)}")
+            elif user_stats.get('library_all_genres'):
+                top_genres = [g[0] for g in user_stats['library_all_genres'][:5]]
+                prompt_parts.append(f"  • Géneros: {', '.join(top_genres)}")
+            elif user_stats.get('library_top_genres'):
+                prompt_parts.append(f"  • Géneros: {', '.join(user_stats['library_top_genres'])}")
+            
+            # Artistas en biblioteca
+            if user_stats.get('library_complete_artists'):
+                prompt_parts.append(f"  • Muestra de artistas en biblioteca: {', '.join(user_stats['library_complete_artists'][:10])}")
+            elif user_stats.get('library_all_artists'):
+                prompt_parts.append(f"  • Artistas disponibles: {', '.join(user_stats['library_all_artists'][:10])}")
+            elif user_stats.get('library_featured_artists'):
+                prompt_parts.append(f"  • Artistas destacados: {', '.join(user_stats['library_featured_artists'][:10])}")
+            
+            # Décadas en biblioteca
+            if user_stats.get('library_decades'):
+                decades_str = ', '.join([f"{d[0]}s ({d[1]} álbumes)" for d in user_stats['library_decades'][:5]])
+                prompt_parts.append(f"  • Décadas en biblioteca: {decades_str}")
+            
+            prompt_parts.extend([
+                "",
+                "⚠️ IMPORTANTE: TIENES ACCESO COMPLETO A ESTA INFORMACIÓN",
+                "   NO digas 'no tengo acceso' - SÍ TIENES todos estos datos disponibles",
+                "   USA esta información para dar recomendaciones PRECISAS y PERSONALIZADAS",
+                "",
+                "💡 AL RECOMENDAR:",
+                f"   1. Analiza el IDIOMA de los top artists → recomienda en ESE idioma",
+                "   2. Verifica qué artistas ya tiene en biblioteca → NO los recomiendes",
+                "   3. Busca artistas SIMILARES en el MISMO IDIOMA que aún no conoce",
+                "   4. Prioriza ÁLBUMES NUEVOS (últimos 5 años) de artistas que no tiene",
                 ""
             ])
         
