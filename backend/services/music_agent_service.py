@@ -278,7 +278,7 @@ FORMATO DE TEXTO (MUY IMPORTANTE):
 
 Si vas a recomendar música (álbumes/artistas), SIGUE ESTE PROCESO OBLIGATORIO:
 
-PASO 1: Mira arriba en "ARTISTAS EN BIBLIOTECA" - hay una lista de 50 artistas
+PASO 1: Mira arriba en "ARTISTAS EN BIBLIOTECA" - hay una lista completa
 PASO 2: Para CADA artista que vayas a recomendar, verifica que NO esté en esa lista
 PASO 3: Si el artista ESTÁ en la lista → DESCÁRTALO y elige otro artista similar
 PASO 4: Solo recomienda artistas que NO aparezcan en la lista de biblioteca
@@ -455,7 +455,7 @@ Responde ahora de forma natural y conversacional:"""
                     data["library"]["instruction"] = (
                         f"El usuario pregunta sobre {detected_genre.upper()} en su biblioteca. "
                         f"\n\nPROCESO PARA RESPONDER:"
-                        f"\n1. Mira la lista de 'ARTISTAS EN BIBLIOTECA' que recibirás arriba (80 artistas)"
+                        f"\n1. Mira la lista COMPLETA de 'ARTISTAS EN BIBLIOTECA' que recibirás arriba"
                         f"\n2. USA TU CONOCIMIENTO MUSICAL para identificar cuáles son de {detected_genre}"
                         f"\n   - Incluye subgéneros: rap = hip-hop, trap, urban, rap español"
                         f"\n   - Incluye fusiones: rock alternativo, indie rock, etc."
@@ -1519,14 +1519,14 @@ Responde ahora de forma natural y conversacional:"""
             if len(results) > 3 and not isinstance(results[3], Exception) and results[3]:
                 artists = results[3]
                 enriched['library_artists_count'] = len(artists)
-                # AUMENTADO: Enviar más artistas al contexto para filtrado preciso
-                enriched['library_all_artists'] = [a.name for a in artists[:150]]  # 3x más artistas
+                # MAXIMIZADO: Enviar TODOS los artistas obtenidos (300) para filtrado completo
+                enriched['library_all_artists'] = [a.name for a in artists]  # TODOS los artistas
             
             if len(results) > 4 and not isinstance(results[4], Exception) and results[4]:
                 albums = results[4]
                 enriched['library_albums_count'] = len(albums)
-                # NUEVO: Enviar lista de álbumes para filtrado preciso
-                enriched['library_all_albums'] = [f"{a.artist} - {a.name}" for a in albums[:100]]
+                # MAXIMIZADO: Enviar TODOS los álbumes obtenidos (150) para filtrado completo
+                enriched['library_all_albums'] = [f"{a.artist} - {a.name}" for a in albums]
                 # Extraer todos los géneros
                 genres = {}
                 for album in albums:
@@ -1631,7 +1631,8 @@ Responde ahora de forma natural y conversacional:"""
             if len(results) > 5 and not isinstance(results[5], Exception) and results[5]:
                 artists = results[5]
                 full['library_total_artists'] = len(artists)
-                full['library_complete_artists'] = [a.name for a in artists[:100]]
+                # MAXIMIZADO: Enviar TODOS los artistas obtenidos (hasta 500)
+                full['library_complete_artists'] = [a.name for a in artists]  # TODOS
             
             if len(results) > 6 and not isinstance(results[6], Exception) and results[6]:
                 albums = results[6]

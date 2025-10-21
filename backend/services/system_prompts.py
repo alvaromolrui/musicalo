@@ -77,13 +77,13 @@ class SystemPrompts:
         if user_stats:
             artists_to_exclude = []
             
-            # Obtener lista de artistas
+            # Obtener lista de artistas - MOSTRAR TODOS los disponibles en el contexto
             if user_stats.get('library_complete_artists'):
-                artists_to_exclude = user_stats['library_complete_artists'][:80]
+                artists_to_exclude = user_stats['library_complete_artists']  # Nivel 3: ~100 artistas
             elif user_stats.get('library_all_artists'):
-                artists_to_exclude = user_stats['library_all_artists'][:80]
+                artists_to_exclude = user_stats['library_all_artists']  # Nivel 2: ~150 artistas
             elif user_stats.get('library_featured_artists'):
-                artists_to_exclude = user_stats['library_featured_artists'][:30]
+                artists_to_exclude = user_stats['library_featured_artists']  # Nivel 1: ~10 artistas
             
             if artists_to_exclude:
                 prompt_parts.append("========================================================================")
