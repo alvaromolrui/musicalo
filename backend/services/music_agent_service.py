@@ -487,8 +487,24 @@ Responde ahora de forma natural y conversacional:"""
                 # Si detectó un género pero NO es recomendación (ej: "tengo algo de jazz?")
                 elif detected_genre and not search_term:
                     print(f"🔍 Buscando en biblioteca por GÉNERO (no recomendación): '{detected_genre}' (query: '{query}') [límite: {search_limit}]")
-                    # Buscar por género en Navidrome primero
-                    search_results = await self.navidrome.search(detected_genre, limit=search_limit)
+                    
+                    # Generar variaciones del género para búsqueda completa
+                    genre_variations = self._get_genre_variations(detected_genre)
+                    print(f"   Variaciones de género: {genre_variations}")
+                    
+                    # Buscar con TODAS las variaciones y combinar resultados
+                    combined_results = {"tracks": [], "albums": [], "artists": []}
+                    for variation in genre_variations:
+                        variation_results = await self.navidrome.search(variation, limit=search_limit)
+                        # Combinar evitando duplicados
+                        for result_type in ["tracks", "albums", "artists"]:
+                            existing_ids = {item.id for item in combined_results[result_type]}
+                            for item in variation_results.get(result_type, []):
+                                if item.id not in existing_ids:
+                                    combined_results[result_type].append(item)
+                                    existing_ids.add(item.id)
+                    
+                    search_results = combined_results
                     data["library"]["search_term"] = detected_genre
                     data["library"]["is_genre_search"] = True
                     data["library"]["detected_genre"] = detected_genre
@@ -1283,6 +1299,45 @@ Responde ahora de forma natural y conversacional:"""
         
         print(f"🔍 Generadas {len(variations)} variaciones para '{search_term}'")
         return variations
+    
+    def _get_genre_variations(self, genre: str) -> List[str]:
+        """Generar variaciones de un género para búsqueda completa
+        
+        Args:
+            genre: Género base (ej: "rap", "rock")
+            
+        Returns:
+            Lista de variaciones a buscar
+        """
+        variations = [genre]
+        
+        # Variaciones específicas por género
+        genre_lower = genre.lower()
+        
+        if genre_lower in ['rap', 'hip hop', 'hip-hop']:
+            # Rap tiene muchas variaciones
+            variations.extend([
+                'rap', 'Rap', 'RAP',
+                'hip hop', 'Hip Hop', 'Hip-Hop', 'hip-hop',
+                'Hip Hop/Rap', 'Rap/Hip-Hop',
+                'trap', 'Trap',
+                'urban', 'Urban',
+                'rap español', 'Rap español',
+                'spanish rap', 'Spanish Rap'
+            ])
+        elif genre_lower in ['rock']:
+            variations.extend(['Rock', 'ROCK', 'rock alternativo', 'Rock alternativo'])
+        elif genre_lower in ['jazz']:
+            variations.extend(['Jazz', 'JAZZ', 'jazz fusion', 'Jazz Fusion'])
+        elif genre_lower in ['metal']:
+            variations.extend(['Metal', 'METAL', 'Heavy Metal', 'heavy metal'])
+        elif genre_lower in ['pop']:
+            variations.extend(['Pop', 'POP', 'pop rock', 'Pop Rock'])
+        elif genre_lower in ['electronica', 'electrónica']:
+            variations.extend(['Electronica', 'Electrónica', 'Electronic', 'EDM'])
+        
+        # Remover duplicados
+        return list(set(variations))
     
     def _extract_search_term(self, query: str) -> str:
         """Extraer el término de búsqueda real de una consulta en lenguaje natural
