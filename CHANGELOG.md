@@ -27,6 +27,16 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
   - **Impacto**: Mejora MASIVA en calidad de recomendaciones, consistencia total con otros comandos, y código 10x más mantenible
 
 ### ✨ Nuevo
+- **🔍 Búsqueda Profunda con Control de Usuario ("dame todo" / "busca más")**
+  - Ahora puedes controlar el alcance de las búsquedas en tu biblioteca:
+    - **Primera búsqueda**: Paginada (50 resultados) - rápida y eficiente
+    - **"busca más"**: Ampliada (200 resultados) - más resultados
+    - **"dame todo"** / "muéstrame todo" / "inmersión completa": Completa (1000 resultados) - toda tu biblioteca
+  - El agente te sugiere automáticamente usar "dame todo" cuando detecta que hay más resultados disponibles
+  - Palabras mágicas: "dame todo", "muéstrame todo", "búsqueda completa", "toda mi", "todos los", "sin límite"
+  - Ideal para preguntas como: "¿Qué tengo de rock?" → Primero muestra 50, luego "dame todo" muestra los 1000
+  - Responde al feedback de la comunidad sobre paginación excesiva
+
 - **🧠 Sistema de Contexto Adaptativo en 3 Niveles con Periodos Progresivos**
   - El agente ahora SIEMPRE tiene contexto de tu música Y biblioteca, adaptándose automáticamente
   - **Nivel 1 (Mínimo)**: TODAS las consultas - Stats MENSUALES + resumen biblioteca (20 artistas, 10 álbumes, géneros) - caché 1h
