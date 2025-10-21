@@ -1589,33 +1589,16 @@ Este comando muestra lo que se está reproduciendo actualmente en TODOS los repr
                 print("   ➜ Procesando 'more_recommendations'")
                 await query.edit_message_text("🔄 Generando más recomendaciones...")
                 
-                # Obtener datos del usuario y generar nuevas recomendaciones
-                if self.music_service:
-                    recent_tracks = await self.music_service.get_recent_tracks(limit=20)
-                    top_artists = await self.music_service.get_top_artists(limit=10)
+                # 🧠 Usar agente conversacional con contexto adaptativo
+                user_id = query.from_user.id
+                agent_query = "Recomiéndame 5 canciones diferentes basándote en mis gustos"
+                
+                try:
+                    result = await self.agent.query(agent_query, user_id)
                     
-                    from models.schemas import UserProfile
-                    user_profile = UserProfile(
-                        recent_tracks=recent_tracks,
-                        top_artists=top_artists,
-                        favorite_genres=[],
-                        mood_preference="",
-                        activity_context=""
-                    )
-                    
-                    recommendations = await self.ai.generate_recommendations(user_profile, limit=5)
-                    
-                    if recommendations:
-                        text = "🎵 <b>Nuevas recomendaciones para ti:</b>\n\n"
-                        
-                        for i, rec in enumerate(recommendations, 1):
-                            text += f"<b>{i}.</b> {rec.track.artist} - {rec.track.title}\n"
-                            if rec.track.album:
-                                text += f"   📀 {rec.track.album}\n"
-                            text += f"   💡 {rec.reason}\n"
-                            if rec.source:
-                                text += f"   🔗 Fuente: {rec.source}\n"
-                            text += f"   🎯 {int(rec.confidence * 100)}% match\n\n"
+                    if result.get('success') and result.get('answer'):
+                        # El agente devuelve respuesta formateada
+                        text = f"🎵 <b>Nuevas recomendaciones para ti:</b>\n\n{result['answer']}"
                         
                         keyboard = [
                             [InlineKeyboardButton("❤️ Me gusta", callback_data="like_rec"),
@@ -1626,8 +1609,9 @@ Este comando muestra lo que se está reproduciendo actualmente en TODOS los repr
                         await query.edit_message_text(text, reply_markup=reply_markup, parse_mode='HTML')
                     else:
                         await query.edit_message_text("😔 No pude generar más recomendaciones en este momento.")
-                else:
-                    await query.edit_message_text("⚠️ No hay servicio de scrobbling configurado")
+                except Exception as e:
+                    print(f"❌ Error en more_recommendations: {e}")
+                    await query.edit_message_text("😔 Hubo un error al generar recomendaciones.")
                 
                 print("   ✅ More recommendations procesado")
                 
