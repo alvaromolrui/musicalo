@@ -266,6 +266,23 @@ FORMATO DE RESPUESTA:
 - NUNCA inventes álbumes o artistas que no aparecen en los datos
 - Usa emojis: 📀 para álbumes, 🎤 para artistas, 🎵 para canciones
 
+⚠️⚠️⚠️ VERIFICACIÓN FINAL ANTES DE RESPONDER ⚠️⚠️⚠️
+
+Si vas a recomendar música (álbumes/artistas), SIGUE ESTE PROCESO OBLIGATORIO:
+
+PASO 1: Mira arriba en "ARTISTAS EN BIBLIOTECA" - hay una lista de 50 artistas
+PASO 2: Para CADA artista que vayas a recomendar, verifica que NO esté en esa lista
+PASO 3: Si el artista ESTÁ en la lista → DESCÁRTALO y elige otro artista similar
+PASO 4: Solo recomienda artistas que NO aparezcan en la lista de biblioteca
+
+EJEMPLOS REALES DE ARTISTAS QUE DEBES DESCARTAR si están en biblioteca:
+- Triángulo de Amor Bizarro → SI está en lista → NO recomiendes
+- Vera Fauna → SI está en lista → NO recomiendes  
+- Los Punsetes → SI está en lista → NO recomiendes
+- El Último Vecino → SI está en lista → NO recomiendes
+
+¡Mejor recomendar 3 artistas nuevos que 5 con duplicados!
+
 Responde ahora de forma natural y conversacional:"""
         
         # 5. Generar respuesta con IA
@@ -326,8 +343,18 @@ Responde ahora de forma natural y conversacional:"""
         is_deep_search = any(phrase in query_lower for phrase in [
             "dame todo", "muéstrame todo", "búsqueda completa", "inmersión completa",
             "todo lo que tengo", "toda mi", "todos los", "búsqueda profunda",
-            "sin límite", "completo"
+            "sin límite", "completo", "busca todo", "buscar todo"
         ])
+        
+        # Si dice "busca todo" o "dame todo" después de una pregunta de biblioteca,
+        # continuar con la última búsqueda pero sin límites
+        if is_deep_search and not is_search_more:
+            last_search = session.context.get("last_library_query", {})
+            if last_search.get("search_term"):
+                print(f"🔍 'Dame todo' detectado - continuando búsqueda de '{last_search['search_term']}'")
+                # Reutilizar el search_term de la búsqueda anterior
+                query = f"Dame todo lo que tengo de {last_search['search_term']}"
+                query_lower = query.lower()
         
         # Determinar límite de búsqueda según el tipo de consulta
         if is_deep_search:
@@ -517,6 +544,12 @@ Responde ahora de forma natural y conversacional:"""
                     
                     if any(search_results.values()):
                         print(f"✅ Búsqueda local: {local_albums_count} álbumes, {local_artists_count} artistas de '{detected_genre}'")
+                        
+                        # Guardar búsqueda en sesión para "dame todo" contextual
+                        session.context["last_library_query"] = {
+                            "search_term": detected_genre,
+                            "type": "genre"
+                        }
                     else:
                         print(f"⚠️ Búsqueda local: 0 resultados para '{detected_genre}'")
                     
@@ -647,6 +680,12 @@ Responde ahora de forma natural y conversacional:"""
                     if any(filtered_results.values()):
                         data["library"]["has_content"] = True
                         print(f"✅ Encontrado: {len(filtered_results.get('tracks', []))} tracks, {len(filtered_results.get('albums', []))} álbumes, {len(filtered_results.get('artists', []))} artistas")
+                        
+                        # Guardar búsqueda en sesión para "dame todo" contextual
+                        session.context["last_library_query"] = {
+                            "search_term": search_term,
+                            "type": "artist"
+                        }
                     else:
                         data["library"]["has_content"] = False
                         print(f"⚠️ No se encontraron resultados para '{search_term}'")

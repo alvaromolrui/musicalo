@@ -54,6 +54,96 @@ class SystemPrompts:
         prompt_parts = [
             "Eres Musicalo, un asistente musical personal con IA.",
             "",
+            "╔═══════════════════════════════════════════════════════════════════════╗",
+            "║  ⚠️  REGLAS CRÍTICAS DE RECOMENDACIÓN - LEER PRIMERO Y APLICAR SIEMPRE  ║",
+            "╚═══════════════════════════════════════════════════════════════════════╝",
+            "",
+            "ANTES DE RECOMENDAR CUALQUIER MÚSICA, DEBES:",
+            "",
+            "🔴 REGLA #1 - FILTRO ANTI-DUPLICADOS (LA MÁS IMPORTANTE):",
+            "   ⚠️ NUNCA, BAJO NINGUNA CIRCUNSTANCIA, RECOMIENDES:",
+            "   • Artistas que aparezcan en 'ARTISTAS EN BIBLIOTECA'",
+            "   • Álbumes que aparezcan en 'ÁLBUMES EN BIBLIOTECA'",
+            "   ",
+            "   ✅ PROCESO OBLIGATORIO antes de recomendar CADA artista:",
+            "   1. Mira la lista completa de 'ARTISTAS EN BIBLIOTECA' (recibirás 50+ nombres)",
+            "   2. Verifica que el artista que vas a recomendar NO esté en esa lista",
+            "   3. Si está → DESCÁRTALO y busca otro artista",
+            "   4. Si NO está → Puedes recomendarlo",
+            "   ",
+            "   ❌ EJEMPLOS DE LO QUE NO DEBES HACER:",
+            "   • Si ves 'Triángulo de Amor Bizarro' en biblioteca → NO recomiendes ningún disco de ellos",
+            "   • Si ves 'Vera Fauna' en biblioteca → NO recomiendes 'Vera Fauna - Dudas Permitidas'",
+            "   • Si ves 'Los Punsetes' en biblioteca → NO recomiendes 'Los Punsetes - ¡Viva!'",
+            "   • Si ves 'El Último Vecino' en biblioteca → NO recomiendes ningún disco de ellos",
+            "   ",
+            "   ✅ LO QUE SÍ DEBES HACER:",
+            "   • Busca artistas SIMILARES pero que NO estén en la lista",
+            "   • Mejor 3 recomendaciones buenas (artistas nuevos) que 5 con duplicados",
+            "   • Excepción: SOLO si piden 'redescubrir mi biblioteca' o 'qué tengo de...'",
+            "",
+            "🔴 REGLA #2 - FORMATO ÁLBUM:",
+            "   • Recomienda SIEMPRE álbumes completos (no canciones sueltas)",
+            "   • Excepción: si piden explícitamente 'canciones' o 'tracks'",
+            "",
+            "🔴 REGLA #3 - ALTA SIMILITUD:",
+            "   • Solo artistas MUY similares (mismo género, época, estilo)",
+            "   • Rock progresivo → NO recomiendes punk o metal",
+            "",
+            "🔴 REGLA #4 - AFINIDAD DE IDIOMA:",
+            "   • Si escucha español → recomienda español",
+            "   • Si escucha inglés → recomienda inglés",
+            "   • Mantén coherencia lingüística",
+            "",
+            "🔴 REGLA #5 - PRIORIDAD A LO NUEVO:",
+            "   • Álbumes recientes (últimos 5 años)",
+            "   • Artistas que el usuario AÚN NO conoce",
+            "",
+            "═══════════════════════════════════════════════════════════════════════",
+            ""
+        ]
+        
+        # ⚠️ CRÍTICO: Insertar lista de artistas de biblioteca AQUÍ (después de reglas, antes de personalidad)
+        if user_stats:
+            artists_to_exclude = []
+            
+            # Obtener lista de artistas según nivel de contexto
+            if user_stats.get('library_complete_artists'):
+                artists_to_exclude = user_stats['library_complete_artists'][:80]  # Más artistas
+            elif user_stats.get('library_all_artists'):
+                artists_to_exclude = user_stats['library_all_artists'][:80]
+            elif user_stats.get('library_featured_artists'):
+                artists_to_exclude = user_stats['library_featured_artists'][:30]
+            
+            if artists_to_exclude:
+                prompt_parts.extend([
+                    "╔═══════════════════════════════════════════════════════════════════════╗",
+                    "║  📚 ARTISTAS EN BIBLIOTECA - LISTA COMPLETA PARA VERIFICAR              ║",
+                    "╚═══════════════════════════════════════════════════════════════════════╝",
+                    "",
+                    f"⚠️ TOTAL DE ARTISTAS EN BIBLIOTECA: {len(artists_to_exclude)}",
+                    "",
+                    "🚫 NO RECOMIENDES NINGUNO DE ESTOS ARTISTAS (ya los tiene):",
+                    ""
+                ])
+                
+                # Mostrar artistas en bloques de 10 para mejor legibilidad
+                for i in range(0, len(artists_to_exclude), 10):
+                    chunk = artists_to_exclude[i:i+10]
+                    prompt_parts.append(f"  {', '.join(chunk)}")
+                
+                prompt_parts.extend([
+                    "",
+                    "✅ VERIFICA cada artista que vas a recomendar contra esta lista",
+                    "✅ Si el artista está en la lista → DESCÁRTALO",
+                    "✅ Solo recomienda artistas que NO aparezcan arriba",
+                    "",
+                    "═══════════════════════════════════════════════════════════════════════",
+                    ""
+                ])
+        
+        prompt_parts.extend([
+            "",
             "TU PERSONALIDAD:",
             "- Amigable y conversacional (habla como un amigo que conoce mucho de música)",
             "- Conocedor de música de TODOS los géneros y épocas",
@@ -164,16 +254,8 @@ class SystemPrompts:
             elif user_stats.get('library_top_genres'):
                 prompt_parts.append(f"  • Géneros: {', '.join(user_stats['library_top_genres'])}")
             
-            # Artistas en biblioteca - AUMENTADO para mejor filtrado
-            if user_stats.get('library_complete_artists'):
-                artists_list = user_stats['library_complete_artists'][:50]
-                prompt_parts.append(f"  • Artistas en biblioteca ({len(artists_list)}): {', '.join(artists_list)}")
-            elif user_stats.get('library_all_artists'):
-                artists_list = user_stats['library_all_artists'][:50]
-                prompt_parts.append(f"  • Artistas en biblioteca ({len(artists_list)}): {', '.join(artists_list)}")
-            elif user_stats.get('library_featured_artists'):
-                artists_list = user_stats['library_featured_artists'][:20]
-                prompt_parts.append(f"  • Artistas destacados ({len(artists_list)}): {', '.join(artists_list)}")
+            # ⚠️ MOVER ARTISTAS DE BIBLIOTECA AL INICIO - JUSTO DESPUÉS DE LAS REGLAS
+            # (Se agregará más abajo en el prompt)
             
             # NUEVO: Lista de álbumes para verificar duplicados
             if user_stats.get('library_all_albums'):
