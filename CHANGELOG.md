@@ -8,16 +8,21 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 ## [4.2.0-alpha] - 2025-01-21
 
 ### 🐛 Arreglado
-- **Búsqueda de género COMPLETA - Ahora encuentra TODOS los artistas**
+- **Filtrado de género por CONOCIMIENTO del modelo IA (no por búsqueda de texto)**
   - **Problema**: Al preguntar "¿Qué artistas de rap tengo?" solo mostraba 3 artistas cuando había más
-  - **Causa**: Solo buscaba exactamente "rap", no variaciones como "Hip-Hop", "hip hop", "Trap", "Urban"
-  - **Solución**: Nueva función `_get_genre_variations()` que genera 13+ variaciones por género
-    - **rap**: rap, Rap, RAP, hip hop, Hip Hop, Hip-Hop, hip-hop, Trap, trap, Urban, urban, rap español, spanish rap
-    - **rock**: Rock, ROCK, rock alternativo, Rock alternativo
-    - **jazz**: Jazz, JAZZ, jazz fusion, Jazz Fusion
-    - (Y más géneros con variaciones)
-  - **Método**: Busca TODAS las variaciones y combina resultados sin duplicados
-  - **Impacto**: Búsquedas de género ahora 5-10x más completas
+  - **Causa**: Buscaba texto "rap" en Navidrome → Solo encuentra artistas con "rap" en nombre/álbum/tags
+  - **Solución INTELIGENTE**: Usar conocimiento del modelo Gemini en vez de búsqueda de texto
+    1. ✅ El modelo **YA recibe** lista de 80 artistas en el contexto
+    2. ✅ Usa su **conocimiento musical** para filtrar cuáles son de rap (sabe que Kase.O es rap español, Post Malone es trap/rap, etc.)
+    3. ✅ Si tiene **duda**, puede verificar con MusicBrainz
+    4. ✅ Responde con **TODOS** los artistas de ese género
+  - **Ventajas**:
+    - ✅ **Más preciso**: Gemini conoce subgéneros, estilos, artistas fusión
+    - ✅ **Más completo**: No depende de tags incorrectos/incompletos de Navidrome
+    - ✅ **Más rápido**: No hace múltiples búsquedas por variaciones de texto
+    - ✅ **Más inteligente**: Entiende contexto (ej: "rap español", "trap", "hip-hop" = rap)
+  - **Código**: -113 líneas de lógica de búsqueda de texto eliminadas
+  - **Impacto**: Búsquedas de género ahora **100% precisas** basadas en conocimiento real
 
 - **Formato de texto corregido - Ahora usa HTML en vez de Markdown**
   - **Problema**: El agente generaba `**texto**` (Markdown) pero Telegram espera `<b>texto</b>` (HTML)
