@@ -21,8 +21,9 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
     - ✅ **Más completo**: No depende de tags incorrectos/incompletos de Navidrome
     - ✅ **Más rápido**: No hace múltiples búsquedas por variaciones de texto
     - ✅ **Más inteligente**: Entiende contexto (ej: "rap español", "trap", "hip-hop" = rap)
-  - **Código**: -113 líneas de lógica de búsqueda de texto eliminadas
+  - **Código**: -175 líneas de lógica de búsqueda de texto eliminadas (fusionó 2 bloques duplicados)
   - **Impacto**: Búsquedas de género ahora **100% precisas** basadas en conocimiento real
+  - **Unificación**: Ahora "¿Qué tengo de rap?" y "¿Qué artistas de rap tengo?" funcionan EXACTAMENTE IGUAL
 
 - **Formato de texto corregido - Ahora usa HTML en vez de Markdown**
   - **Problema**: El agente generaba `**texto**` (Markdown) pero Telegram espera `<b>texto</b>` (HTML)
