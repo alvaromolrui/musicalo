@@ -385,7 +385,8 @@ Responde ahora de forma natural y conversacional:"""
             "tengo", "teengo", "biblioteca", "colección", "poseo", 
             "álbum", "album", "disco", "álbumes", "albums", "discos",
             "mejor disco de", "mejor álbum de", "disco de", "álbum de",
-            "discografía", "música de", "canciones de", "temas de", "mi biblioteca"
+            "discografía", "música de", "canciones de", "temas de", "mi biblioteca",
+            "playlist", "crea una playlist", "crear playlist"  # Para playlists SIEMPRE de biblioteca
         ])
         print(f"🔍 DEBUG - needs_library_search: {needs_library_search}")
         

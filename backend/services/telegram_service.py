@@ -751,7 +751,7 @@ Sé todo lo detallado que quieras:
         # 🧠 Usar agente conversacional con contexto adaptativo
         user_id = update.effective_user.id
         description = " ".join(context.args)
-        agent_query = f"Crea una playlist de {description}"
+        agent_query = f"Crea una playlist de {description} con canciones de mi biblioteca"
         
         await update.message.reply_text(f"🎵 Creando playlist: <i>{description}</i>...", parse_mode='HTML')
         
