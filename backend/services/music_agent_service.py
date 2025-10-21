@@ -484,113 +484,31 @@ Responde ahora de forma natural y conversacional:"""
                                         "remaining": mb_results["total_artists"] - mb_results["next_offset"]
                                     }
                 
-                # Si detectó un género pero NO es recomendación (ej: "tengo algo de jazz?")
+                # Si detectó un género pero NO es recomendación (ej: "tengo algo de rap?")
                 elif detected_genre and not search_term:
-                    print(f"🔍 Buscando en biblioteca por GÉNERO (no recomendación): '{detected_genre}' (query: '{query}') [límite: {search_limit}]")
+                    print(f"🎯 Pregunta sobre GÉNERO en biblioteca: '{detected_genre}'")
+                    print(f"   → NO buscar texto en Navidrome (ineficiente)")
+                    print(f"   → DELEGAR al modelo IA (conoce qué artistas son de {detected_genre})")
                     
-                    # Generar variaciones del género para búsqueda completa
-                    genre_variations = self._get_genre_variations(detected_genre)
-                    print(f"   Variaciones de género: {genre_variations}")
+                    # NO buscar en Navidrome - el modelo Gemini ya conoce géneros de artistas
+                    # En vez de eso, indicar al modelo que use su conocimiento
+                    data["library"]["genre_query"] = detected_genre
+                    data["library"]["is_genre_query"] = True
+                    data["library"]["instruction"] = (
+                        f"El usuario pregunta por artistas de {detected_genre.upper()} en su biblioteca. "
+                        f"\n\nPROCESO PARA RESPONDER:"
+                        f"\n1. Mira la lista de 'ARTISTAS EN BIBLIOTECA' que recibirás arriba (80 artistas)"
+                        f"\n2. USA TU CONOCIMIENTO para identificar cuáles son de {detected_genre}"
+                        f"\n3. Si tienes DUDA sobre algún artista, MusicBrainz está disponible para verificar"
+                        f"\n4. Responde con TODOS los artistas de {detected_genre} que encuentres en la lista"
+                        f"\n\nEjemplo: Si preguntan por RAP y ves 'Kase.O' en la lista → Sabes que es rap español → Inclúyelo"
+                        f"\nEjemplo: Si ves 'Post Malone' → Sabes que hace rap/trap → Inclúyelo"
+                        f"\nEjemplo: Si no estás seguro de un artista → Usa MusicBrainz para verificar su género"
+                    )
                     
-                    # Buscar con TODAS las variaciones y combinar resultados
-                    combined_results = {"tracks": [], "albums": [], "artists": []}
-                    for variation in genre_variations:
-                        variation_results = await self.navidrome.search(variation, limit=search_limit)
-                        # Combinar evitando duplicados
-                        for result_type in ["tracks", "albums", "artists"]:
-                            existing_ids = {item.id for item in combined_results[result_type]}
-                            for item in variation_results.get(result_type, []):
-                                if item.id not in existing_ids:
-                                    combined_results[result_type].append(item)
-                                    existing_ids.add(item.id)
-                    
-                    search_results = combined_results
-                    data["library"]["search_term"] = detected_genre
-                    data["library"]["is_genre_search"] = True
-                    data["library"]["detected_genre"] = detected_genre
-                    
-                    local_albums_count = len(search_results.get('albums', []))
-                    local_artists_count = len(search_results.get('artists', []))
-                    
-                    if any(search_results.values()):
-                        print(f"✅ Búsqueda local: {local_albums_count} álbumes, {local_artists_count} artistas de '{detected_genre}'")
-                        
-                    else:
-                        print(f"⚠️ Búsqueda local: 0 resultados para '{detected_genre}'")
-                    
-                    # SIEMPRE usar MusicBrainz para géneros (para complementar y permitir "busca más")
-                    if self.musicbrainz:
-                        print(f"   🎯 Usando MusicBrainz para verificar más artistas de '{detected_genre}'...")
-                        mb_results = await self._search_genre_with_musicbrainz(detected_genre, offset=mb_offset)
-                        
-                        if mb_results and mb_results.get("results"):
-                            # Combinar resultados locales + MusicBrainz (evitando duplicados)
-                            results_data = mb_results["results"]
-                            
-                            # Combinar albums
-                            combined_albums = list(search_results.get('albums', []))
-                            existing_album_ids = {a.id for a in combined_albums}
-                            for album in results_data.get('albums', []):
-                                if album.id not in existing_album_ids:
-                                    combined_albums.append(album)
-                                    existing_album_ids.add(album.id)
-                            
-                            # Combinar artists
-                            combined_artists = list(search_results.get('artists', []))
-                            existing_artist_ids = {a.id for a in combined_artists}
-                            for artist in results_data.get('artists', []):
-                                if artist.id not in existing_artist_ids:
-                                    combined_artists.append(artist)
-                                    existing_artist_ids.add(artist.id)
-                            
-                            # Combinar tracks
-                            combined_tracks = list(search_results.get('tracks', []))
-                            existing_track_ids = {t.id for t in combined_tracks}
-                            for track in results_data.get('tracks', []):
-                                if track.id not in existing_track_ids:
-                                    combined_tracks.append(track)
-                                    existing_track_ids.add(track.id)
-                            
-                            # Usar resultados combinados
-                            data["library"]["search_results"] = {
-                                "albums": combined_albums,
-                                "artists": combined_artists,
-                                "tracks": combined_tracks
-                            }
-                            data["library"]["has_content"] = True
-                            data["library"]["musicbrainz_verified"] = True
-                            
-                            mb_albums = len(results_data.get('albums', []))
-                            mb_artists = len(results_data.get('artists', []))
-                            print(f"   ✅ MusicBrainz agregó: {mb_albums} álbumes, {mb_artists} artistas")
-                            print(f"   📊 Total combinado: {len(combined_albums)} álbumes, {len(combined_artists)} artistas")
-                            
-                            # Guardar contexto para "busca más" SIEMPRE
-                            session.context["last_mb_search"] = {
-                                "genre": detected_genre,
-                                "offset": mb_results["offset"],
-                                "next_offset": mb_results["next_offset"],
-                                "has_more": mb_results["has_more"],
-                                "total_artists": mb_results["total_artists"],
-                                "checked_total": mb_results["next_offset"]
-                            }
-                            
-                            # Información para el prompt de la IA
-                            if mb_results["has_more"]:
-                                data["library"]["can_search_more"] = True
-                                data["library"]["mb_stats"] = {
-                                    "checked": mb_results["next_offset"],
-                                    "total": mb_results["total_artists"],
-                                    "remaining": mb_results["total_artists"] - mb_results["next_offset"]
-                                }
-                        else:
-                            # MusicBrainz no encontró nada adicional, usar solo resultados locales
-                            data["library"]["search_results"] = search_results
-                            data["library"]["has_content"] = any(search_results.values())
-                    else:
-                        # MusicBrainz no disponible, usar solo resultados locales
-                        data["library"]["search_results"] = search_results
-                        data["library"]["has_content"] = any(search_results.values())
+                    # Marcar que hay contenido para procesar (el contexto de biblioteca)
+                    data["library"]["has_content"] = True
+                    print(f"✅ Instrucción de filtrado por género agregada al contexto")
                 
                 # Si hay un artista específico, buscar por artista
                 elif search_term:
@@ -857,6 +775,14 @@ Responde ahora de forma natural y conversacional:"""
             search_term = lib.get("search_term", "")
             is_genre_search = lib.get("is_genre_search", False)
             detected_genre = lib.get("detected_genre", "")
+            is_genre_query = lib.get("is_genre_query", False)
+            
+            # Si es pregunta sobre género, mostrar instrucción especial
+            if is_genre_query and lib.get("instruction"):
+                formatted += f"\n\n{'='*70}\n"
+                formatted += f"INSTRUCCION ESPECIAL:\n"
+                formatted += f"{lib['instruction']}\n"
+                formatted += f"{'='*70}\n\n"
             
             if lib.get("search_results"):
                 results = lib["search_results"]
@@ -1299,45 +1225,6 @@ Responde ahora de forma natural y conversacional:"""
         
         print(f"🔍 Generadas {len(variations)} variaciones para '{search_term}'")
         return variations
-    
-    def _get_genre_variations(self, genre: str) -> List[str]:
-        """Generar variaciones de un género para búsqueda completa
-        
-        Args:
-            genre: Género base (ej: "rap", "rock")
-            
-        Returns:
-            Lista de variaciones a buscar
-        """
-        variations = [genre]
-        
-        # Variaciones específicas por género
-        genre_lower = genre.lower()
-        
-        if genre_lower in ['rap', 'hip hop', 'hip-hop']:
-            # Rap tiene muchas variaciones
-            variations.extend([
-                'rap', 'Rap', 'RAP',
-                'hip hop', 'Hip Hop', 'Hip-Hop', 'hip-hop',
-                'Hip Hop/Rap', 'Rap/Hip-Hop',
-                'trap', 'Trap',
-                'urban', 'Urban',
-                'rap español', 'Rap español',
-                'spanish rap', 'Spanish Rap'
-            ])
-        elif genre_lower in ['rock']:
-            variations.extend(['Rock', 'ROCK', 'rock alternativo', 'Rock alternativo'])
-        elif genre_lower in ['jazz']:
-            variations.extend(['Jazz', 'JAZZ', 'jazz fusion', 'Jazz Fusion'])
-        elif genre_lower in ['metal']:
-            variations.extend(['Metal', 'METAL', 'Heavy Metal', 'heavy metal'])
-        elif genre_lower in ['pop']:
-            variations.extend(['Pop', 'POP', 'pop rock', 'Pop Rock'])
-        elif genre_lower in ['electronica', 'electrónica']:
-            variations.extend(['Electronica', 'Electrónica', 'Electronic', 'EDM'])
-        
-        # Remover duplicados
-        return list(set(variations))
     
     def _extract_search_term(self, query: str) -> str:
         """Extraer el término de búsqueda real de una consulta en lenguaje natural
