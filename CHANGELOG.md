@@ -8,6 +8,17 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 ## [4.2.0-alpha] - 2025-01-21
 
 ### 🐛 Arreglado
+- **CRÍTICO: Reforzado filtro anti-duplicados - Ya NO recomienda música que tienes**
+  - **Problema**: Agente recomendaba artistas/álbumes que ya están en tu biblioteca (Vera Fauna, Triángulo de Amor Bizarro)
+  - **Causa**: Regla débil + contexto insuficiente (solo 10 artistas visibles de 100)
+  - **Solución implementada**:
+    1. ✅ Nueva **Regla Crítica #5 EXPLÍCITA**: "NUNCA recomiendes música que ya está en la biblioteca" con ejemplos concretos
+    2. ✅ Contexto biblioteca **5x mayor**: Nivel 2 ahora obtiene **300 artistas** (vs 100) y **150 álbumes** (vs 50)
+    3. ✅ Prompt incluye **50 artistas** (vs 10) y **30 álbumes** para filtrado preciso
+    4. ✅ Agregada lista completa de álbumes al contexto (antes solo géneros)
+  - **Resultado**: El agente ahora tiene datos suficientes para verificar y filtrar correctamente todas las recomendaciones
+  - **Impacto**: ¡Fin de las recomendaciones duplicadas! 🎯
+
 - **CRÍTICO: Comando `/recommend` ahora usa el agente con reglas mejoradas**
   - **Problema**: El comando `/recommend` usaba lógica antigua que llamaba directamente a ListenBrainz/MusicBrainz, ignorando TODAS las reglas del system prompt
   - **Resultado**: Recomendaciones con baja similitud (Metallica similar a The Cure??), artistas ya conocidos, y sin respeto por idioma/década
@@ -19,7 +30,7 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 - **🧠 Sistema de Contexto Adaptativo en 3 Niveles con Periodos Progresivos**
   - El agente ahora SIEMPRE tiene contexto de tu música Y biblioteca, adaptándose automáticamente
   - **Nivel 1 (Mínimo)**: TODAS las consultas - Stats MENSUALES + resumen biblioteca (20 artistas, 10 álbumes, géneros) - caché 1h
-  - **Nivel 2 (Enriquecido)**: Recomendaciones - Stats ANUALES + biblioteca completa (100 artistas, 50 álbumes, todos géneros) - caché 15min
+  - **Nivel 2 (Enriquecido)**: Recomendaciones - Stats ANUALES + biblioteca completa (**300 artistas**, **150 álbumes**, todos géneros) - caché 15min
   - **Nivel 3 (Completo)**: Estadísticas - Stats TODO EL TIEMPO + análisis detallado (500 artistas, 200 álbumes, géneros, décadas) - caché 10min
   - **Biblioteca incluida en TODOS los niveles** - el agente siempre sabe qué música tienes disponible
   - Nuevos métodos: `_get_minimal_context()`, `_get_enriched_context()`, `_get_full_context()`
