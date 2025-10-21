@@ -1581,8 +1581,9 @@ Responde ahora de forma natural y conversacional:"""
                 tasks.extend([asyncio.sleep(0)] * 3)
             
             # CONTEXTO COMPLETO DE BIBLIOTECA (Navidrome)
-            tasks.append(self.navidrome.get_artists(limit=100))  # Más artistas
-            tasks.append(self.navidrome.get_albums(limit=50))  # Más álbumes
+            # AUMENTADO: Más datos para filtrar mejor las recomendaciones
+            tasks.append(self.navidrome.get_artists(limit=300))  # Casi todos los artistas
+            tasks.append(self.navidrome.get_albums(limit=150))  # Muchos más álbumes
             
             # Ejecutar en paralelo
             results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -1614,11 +1615,14 @@ Responde ahora de forma natural y conversacional:"""
             if len(results) > 3 and not isinstance(results[3], Exception) and results[3]:
                 artists = results[3]
                 enriched['library_artists_count'] = len(artists)
-                enriched['library_all_artists'] = [a.name for a in artists[:50]]
+                # AUMENTADO: Enviar más artistas al contexto para filtrado preciso
+                enriched['library_all_artists'] = [a.name for a in artists[:150]]  # 3x más artistas
             
             if len(results) > 4 and not isinstance(results[4], Exception) and results[4]:
                 albums = results[4]
                 enriched['library_albums_count'] = len(albums)
+                # NUEVO: Enviar lista de álbumes para filtrado preciso
+                enriched['library_all_albums'] = [f"{a.artist} - {a.name}" for a in albums[:100]]
                 # Extraer todos los géneros
                 genres = {}
                 for album in albums:

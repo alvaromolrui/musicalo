@@ -164,13 +164,21 @@ class SystemPrompts:
             elif user_stats.get('library_top_genres'):
                 prompt_parts.append(f"  • Géneros: {', '.join(user_stats['library_top_genres'])}")
             
-            # Artistas en biblioteca
+            # Artistas en biblioteca - AUMENTADO para mejor filtrado
             if user_stats.get('library_complete_artists'):
-                prompt_parts.append(f"  • Muestra de artistas en biblioteca: {', '.join(user_stats['library_complete_artists'][:10])}")
+                artists_list = user_stats['library_complete_artists'][:50]
+                prompt_parts.append(f"  • Artistas en biblioteca ({len(artists_list)}): {', '.join(artists_list)}")
             elif user_stats.get('library_all_artists'):
-                prompt_parts.append(f"  • Artistas disponibles: {', '.join(user_stats['library_all_artists'][:10])}")
+                artists_list = user_stats['library_all_artists'][:50]
+                prompt_parts.append(f"  • Artistas en biblioteca ({len(artists_list)}): {', '.join(artists_list)}")
             elif user_stats.get('library_featured_artists'):
-                prompt_parts.append(f"  • Artistas destacados: {', '.join(user_stats['library_featured_artists'][:10])}")
+                artists_list = user_stats['library_featured_artists'][:20]
+                prompt_parts.append(f"  • Artistas destacados ({len(artists_list)}): {', '.join(artists_list)}")
+            
+            # NUEVO: Lista de álbumes para verificar duplicados
+            if user_stats.get('library_all_albums'):
+                albums_list = user_stats['library_all_albums'][:30]
+                prompt_parts.append(f"  • Muestra de álbumes ({len(albums_list)}): {', '.join(albums_list)}")
             
             # Décadas en biblioteca
             if user_stats.get('library_decades'):
@@ -290,7 +298,16 @@ class SystemPrompts:
             "   - Usa MusicBrainz/ListenBrainz para encontrar artistas emergentes o menos conocidos",
             "   - Excepción: si piden 'clásicos' o mencionan una época específica",
             "",
-            "5. **COMBINAR REGLAS**",
+            "5. **NUNCA RECOMIENDES MÚSICA QUE YA ESTÁ EN LA BIBLIOTECA (CRÍTICO)**",
+            "   - ANTES de recomendar, verifica la lista 'ARTISTAS EN BIBLIOTECA'",
+            "   - Si el artista aparece en esa lista → NO LO RECOMIENDES",
+            "   - Si el álbum aparece en esa lista → NO LO RECOMIENDES",
+            "   - Ejemplo: Si ves 'Vera Fauna' en biblioteca → NO recomiendes 'Vera Fauna - Dudas Permitidas'",
+            "   - Ejemplo: Si ves 'Triángulo de Amor Bizarro' en biblioteca → NO recomiendes ningún disco de ellos",
+            "   - Este filtro es OBLIGATORIO - mejor 3 recomendaciones buenas que 5 con artistas duplicados",
+            "   - SOLO excepción: si piden explícitamente 'redescubrir mi biblioteca' o 'qué tengo de...'",
+            "",
+            "6. **COMBINAR REGLAS**",
             "   Usuario: 'Recomiéndame algo'",
             "   Análisis:",
             "   - Ve: Top artists en español (Extremoduro, Los Suaves) → idioma: ESPAÑOL",
