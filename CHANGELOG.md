@@ -33,10 +33,22 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
   - Incluso en consultas simples como "Hola", tiene contexto de tus gustos
   - Balance perfecto entre personalización y rendimiento
 
-- **🔄 Callback "more_recommendations" mejorado**
-  - Ahora usa el agente conversacional con contexto adaptativo
-  - Aprovecha el sistema de caché para respuestas más rápidas
-  - Respuestas más personalizadas y coherentes
+- **🤖 TODOS los Comandos Ahora Usan el Agente con Contexto**
+  - ✅ `/stats` → Análisis inteligentes con contexto nivel 3 (-63% código)
+  - ✅ `/playlist` → Playlists personalizadas con contexto nivel 2 (-63% código)
+  - ✅ `/releases` → Lanzamientos filtrados con contexto nivel 2 (-89% código)
+  - ✅ `/library` → Resumen inteligente con contexto nivel 3 (-39% código)
+  - ✅ `/nowplaying` → Info contextualizada con nivel 1 (-60% código)
+  - ✅ `/search` → Búsqueda con sugerencias con nivel 1 (-58% código)
+  - ✅ `/recommend` → Ya usaba el agente
+  - ✅ Callback `more_recommendations` → Ahora usa el agente
+  - ✅ Conversación natural → Ya usaba el agente
+
+- **🧹 Simplificación Masiva del Código**
+  - **-497 líneas** de código complejo eliminadas de `telegram_service.py`
+  - Reducción total del **70%** en código de comandos
+  - Toda la lógica centralizada en el agente conversacional
+  - Código más mantenible y fácil de entender
 
 ### 🎨 Experiencia de Usuario
 - **Conversaciones más naturales**: El agente conoce tus gustos desde el primer mensaje

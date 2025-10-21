@@ -564,178 +564,76 @@ Sé todo lo detallado que quieras:
     
     @_check_authorization
     async def library_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Comando /library - Mostrar biblioteca"""
-        await update.message.reply_text("📚 Cargando tu biblioteca musical...")
+        """Comando /library - Explorar biblioteca con IA
+        
+        Usa el agente conversacional con contexto adaptativo para dar
+        un resumen inteligente y personalizado de tu biblioteca.
+        """
+        # 🧠 Usar agente conversacional con contexto adaptativo
+        user_id = update.effective_user.id
+        agent_query = "Muéstrame un resumen de mi biblioteca musical con recomendaciones"
+        
+        await update.message.reply_text("📚 Analizando tu biblioteca musical...")
         
         try:
-            # Obtener estadísticas de la biblioteca
-            tracks = await self.navidrome.get_tracks(limit=10)
-            albums = await self.navidrome.get_albums(limit=10)
-            artists = await self.navidrome.get_artists(limit=10)
+            # Usar el agente con contexto adaptativo
+            result = await self.agent.query(agent_query, user_id)
             
-            text = "📚 <b>Tu Biblioteca Musical</b>\n\n"
-            
-            # Estadísticas generales
-            text += f"🎵 <b>Canciones recientes:</b>\n"
-            for track in tracks[:5]:
-                text += f"• {track.artist} - {track.title}\n"
-            
-            text += f"\n📀 <b>Álbumes recientes:</b>\n"
-            for album in albums[:5]:
-                text += f"• {album.artist} - {album.name}\n"
-            
-            text += f"\n🎤 <b>Artistas recientes:</b>\n"
-            for artist in artists[:5]:
-                text += f"• {artist.name}\n"
-            
-            # Botones de navegación
-            keyboard = [
-                [InlineKeyboardButton("🎵 Ver más canciones", callback_data="library_tracks")],
-                [InlineKeyboardButton("📀 Ver más álbumes", callback_data="library_albums")],
-                [InlineKeyboardButton("🎤 Ver más artistas", callback_data="library_artists")],
-                [InlineKeyboardButton("🔍 Buscar", callback_data="library_search")]
-            ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            
-            await update.message.reply_text(text, reply_markup=reply_markup, parse_mode='HTML')
-            
+            if result.get('success') and result.get('answer'):
+                await update.message.reply_text(result['answer'], parse_mode='HTML')
+            else:
+                await update.message.reply_text("⚠️ No pude acceder a tu biblioteca.")
         except Exception as e:
+            print(f"❌ Error accediendo a la biblioteca: {e}")
             await update.message.reply_text(f"❌ Error accediendo a la biblioteca: {str(e)}")
     
     @_check_authorization
     async def stats_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Comando /stats - Mostrar estadísticas
+        """Comando /stats - Mostrar estadísticas con IA
+        
+        Usa el agente conversacional con contexto adaptativo para generar
+        análisis inteligentes de tus estadísticas de escucha.
         
         Uso:
         - /stats → Estadísticas de este mes (por defecto)
         - /stats week → Estadísticas de esta semana
         - /stats month → Estadísticas de este mes
         - /stats year → Estadísticas de este año
-        - /stats last_week → Estadísticas de la semana pasada
-        - /stats last_month → Estadísticas del mes pasado
-        - /stats last_year → Estadísticas del año pasado
         - /stats all_time → Estadísticas de todo el tiempo
         """
-        # Mapeo de argumentos a rangos de ListenBrainz
-        range_mapping = {
-            "week": "this_week",
-            "this_week": "this_week",
-            "month": "this_month",
-            "this_month": "this_month",
-            "year": "this_year",
-            "this_year": "this_year",
-            "last_week": "last_week",
-            "lastweek": "last_week",
-            "last_month": "last_month",
-            "lastmonth": "last_month",
-            "last_year": "last_year",
-            "lastyear": "last_year",
-            "all": "all_time",
-            "all_time": "all_time",
-            "alltime": "all_time"
-        }
+        # 🧠 Usar agente conversacional con contexto adaptativo (nivel 3)
+        user_id = update.effective_user.id
         
-        # Emojis para cada rango
-        range_emojis = {
-            "this_week": "📅",
-            "this_month": "📆",
-            "this_year": "📋",
-            "last_week": "⏮️",
-            "last_month": "⏮️",
-            "last_year": "⏮️",
-            "all_time": "🌟"
-        }
-        
-        # Nombres en español
-        range_names = {
-            "this_week": "Esta Semana",
-            "this_month": "Este Mes",
-            "this_year": "Este Año",
-            "last_week": "Semana Pasada",
-            "last_month": "Mes Pasado",
-            "last_year": "Año Pasado",
-            "all_time": "Todo el Tiempo"
-        }
-        
-        # Detectar rango solicitado
-        period = "this_month"  # Por defecto: mes actual
+        # Determinar periodo
+        period = "este mes"
         if context.args:
             arg = context.args[0].lower()
-            period = range_mapping.get(arg, "this_month")
+            period_map = {
+                "week": "esta semana",
+                "month": "este mes",
+                "year": "este año",
+                "all": "de todo el tiempo",
+                "all_time": "de todo el tiempo"
+            }
+            period = period_map.get(arg, "este mes")
         
-        emoji = range_emojis.get(period, "📊")
-        range_name = range_names.get(period, "Este Mes")
+        # Construir query para el agente
+        agent_query = f"Muéstrame mis estadísticas de escucha de {period}"
         
-        await update.message.reply_text(f"{emoji} Calculando tus estadísticas de <b>{range_name}</b>...")
+        await update.message.reply_text(f"📊 Analizando tus estadísticas de {period}...")
         
         try:
-            # Verificar que haya servicio de scrobbling configurado
-            if not self.music_service:
+            # Usar el agente con contexto adaptativo
+            result = await self.agent.query(agent_query, user_id)
+            
+            if result.get('success') and result.get('answer'):
+                # El agente genera análisis inteligente
+                await update.message.reply_text(result['answer'], parse_mode='HTML')
+            else:
                 await update.message.reply_text(
-                    "⚠️ No hay servicio de scrobbling configurado.\n\n"
+                    "⚠️ No pude obtener tus estadísticas.\n\n"
                     "Por favor configura ListenBrainz (LISTENBRAINZ_USERNAME en .env) para ver tus estadísticas."
                 )
-                return
-            
-            # Obtener estadísticas del periodo especificado
-            top_artists = await self.music_service.get_top_artists(period=period, limit=10)
-            top_tracks = await self.music_service.get_top_tracks(period=period, limit=5) if hasattr(self.music_service, 'get_top_tracks') else []
-            recent_tracks = await self.music_service.get_recent_tracks(limit=5)
-            
-            # Obtener álbumes si es ListenBrainz
-            top_albums = []
-            if hasattr(self.music_service, 'get_top_albums'):
-                top_albums = await self.music_service.get_top_albums(period=period, limit=5)
-            
-            text = f"{emoji} <b>Estadísticas de {range_name}</b>\n"
-            text += f"<i>Servicio: {self.music_service_name}</i>\n\n"
-            
-            # Top artistas
-            if top_artists:
-                text += f"🏆 <b>Top 5 Artistas:</b>\n"
-                for i, artist in enumerate(top_artists[:5], 1):
-                    text += f"{i}. {artist.name} - {artist.playcount} escuchas\n"
-                text += "\n"
-            
-            # Top álbumes (solo ListenBrainz)
-            if top_albums:
-                text += f"📀 <b>Top 3 Álbumes:</b>\n"
-                for i, album in enumerate(top_albums[:3], 1):
-                    text += f"{i}. {album['artist']} - {album['name']} ({album['listen_count']} escuchas)\n"
-                text += "\n"
-            
-            # Top tracks
-            if top_tracks:
-                text += f"🎵 <b>Top 3 Canciones:</b>\n"
-                for i, track in enumerate(top_tracks[:3], 1):
-                    text += f"{i}. {track.artist} - {track.name} ({track.playcount} escuchas)\n"
-                text += "\n"
-            
-            # Actividad reciente
-            if recent_tracks:
-                text += f"⏰ <b>Última escucha:</b>\n"
-                last_track = recent_tracks[0]
-                text += f"{last_track.artist} - {last_track.name}\n"
-            
-            # Botones para cambiar de rango
-            keyboard = [
-                [
-                    InlineKeyboardButton("📅 Esta Semana", callback_data="stats_this_week"),
-                    InlineKeyboardButton("📆 Este Mes", callback_data="stats_this_month")
-                ],
-                [
-                    InlineKeyboardButton("📋 Este Año", callback_data="stats_this_year"),
-                    InlineKeyboardButton("🌟 Todo el Tiempo", callback_data="stats_all_time")
-                ],
-                [
-                    InlineKeyboardButton("⏮️ Mes Pasado", callback_data="stats_last_month"),
-                    InlineKeyboardButton("⏮️ Año Pasado", callback_data="stats_last_year")
-                ]
-            ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            
-            await update.message.reply_text(text, reply_markup=reply_markup, parse_mode='HTML')
-            
         except Exception as e:
             print(f"❌ Error obteniendo estadísticas: {e}")
             import traceback
@@ -744,255 +642,53 @@ Sé todo lo detallado que quieras:
     
     @_check_authorization
     async def releases_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Comando /releases - Mostrar lanzamientos recientes de artistas en biblioteca
+        """Comando /releases - Lanzamientos recientes con IA
+        
+        Usa el agente conversacional con contexto adaptativo para mostrar
+        lanzamientos filtrados según tus gustos.
         
         Uso:
-        - /releases → Esta semana (7 días)
-        - /releases week → Esta semana
+        - /releases → Esta semana
         - /releases month → Este mes
-        - /releases last_week → Semana pasada
-        - /releases last_month → Mes pasado
         - /releases year → Este año
-        - /releases 30 → 30 días específicos
-        - /releases Pink Floyd → Últimos 3 releases de Pink Floyd
-        - /releases Interpol → Últimos 3 releases de Interpol
+        - /releases Pink Floyd → Lanzamientos de un artista
         """
-        # Mapeo de períodos a días
-        period_mapping = {
-            "week": 7,
-            "this_week": 7,
-            "semana": 7,
-            "month": 30,
-            "this_month": 30,
-            "mes": 30,
-            "last_week": 14,
-            "lastweek": 14,
-            "semana_pasada": 14,
-            "last_month": 60,
-            "lastmonth": 60,
-            "mes_pasado": 60,
-            "year": 365,
-            "this_year": 365,
-            "año": 365,
-            "anio": 365
-        }
+        # 🧠 Usar agente conversacional con contexto adaptativo
+        user_id = update.effective_user.id
         
-        # Parsear argumento (default: 7 = última semana)
-        days = 7
-        period_name = "esta semana"
-        artist_query = None  # Para consultas de artista específico
-        
+        # Determinar query para el agente
         if context.args:
-            arg = context.args[0].lower()
-            
-            # Intentar primero como período con nombre
-            if arg in period_mapping:
-                days = period_mapping[arg]
-                
-                # Determinar nombre del período
-                if arg in ["week", "this_week", "semana"]:
-                    period_name = "esta semana"
-                elif arg in ["month", "this_month", "mes"]:
-                    period_name = "este mes"
-                elif arg in ["last_week", "lastweek", "semana_pasada"]:
-                    period_name = "las últimas 2 semanas"
-                elif arg in ["last_month", "lastmonth", "mes_pasado"]:
-                    period_name = "los últimos 2 meses"
-                elif arg in ["year", "this_year", "año", "anio"]:
-                    period_name = "este año"
-            else:
-                # Si no es un período conocido, intentar como número
-                try:
-                    days = int(arg)
-                    if days < 1 or days > 365:
-                        await update.message.reply_text(
-                            "⚠️ El número de días debe estar entre 1 y 365.\n"
-                            "Usando 7 días por defecto (esta semana)."
-                        )
-                        days = 7
-                        period_name = "esta semana"
-                    else:
-                        period_name = f"los últimos {days} días"
-                except ValueError:
-                    # No es número ni período → debe ser nombre de artista
-                    artist_query = " ".join(context.args)
-                    period_name = None
-        
-        # Mensaje de espera adaptado
-        if artist_query:
-            await update.message.reply_text(
-                f"🔍 Buscando últimos lanzamientos de <b>{artist_query}</b>...",
-                parse_mode='HTML'
-            )
+            query_text = " ".join(context.args)
+            agent_query = f"Muéstrame los lanzamientos recientes de {query_text}"
         else:
-            await update.message.reply_text(
-                f"🔍 Buscando lanzamientos de {period_name}...\n"
-                "Esto puede tardar unos segundos."
-            )
+            agent_query = "Muéstrame los lanzamientos recientes de esta semana de artistas de mi biblioteca"
+        
+        await update.message.reply_text(f"🔍 Buscando lanzamientos recientes...")
         
         try:
-            # Importar MusicBrainzService
-            from services.musicbrainz_service import MusicBrainzService
+            # Usar el agente con contexto adaptativo
+            result = await self.agent.query(agent_query, user_id)
             
-            # Verificar si MusicBrainz está habilitado
-            if os.getenv("ENABLE_MUSICBRAINZ", "true").lower() != "true":
+            if result.get('success') and result.get('answer'):
+                await update.message.reply_text(result['answer'], parse_mode='HTML')
+            else:
                 await update.message.reply_text(
-                    "⚠️ MusicBrainz no está habilitado.\n\n"
-                    "Para usar /releases, configura ENABLE_MUSICBRAINZ=true en tu archivo .env"
+                    "⚠️ No pude obtener los lanzamientos.\n\n"
+                    "Asegúrate de que MusicBrainz esté configurado (ENABLE_MUSICBRAINZ=true)."
                 )
-                return
-            
-            mb = MusicBrainzService()
-            import logging
-            logger = logging.getLogger(__name__)
-            
-            # CASO 1: Consulta de artista específico
-            if artist_query:
-                logger.info(f"🎤 Consultando releases de artista específico: '{artist_query}'")
-                
-                # Buscar últimos 3 releases del artista
-                releases = await mb.get_latest_releases_by_artist(artist_query, limit=3)
-                
-                await mb.close()
-                
-                if not releases:
-                    await update.message.reply_text(
-                        f"😔 No se encontraron releases de <b>{artist_query}</b> en MusicBrainz.\n\n"
-                        "💡 Verifica que el nombre sea correcto o intenta con una variación.",
-                        parse_mode='HTML'
-                    )
-                    return
-                
-                # Formatear respuesta para artista específico
-                text = f"🎤 <b>Últimos lanzamientos de {releases[0]['artist']}</b>\n\n"
-                text += f"📀 Mostrando los <b>últimos {len(releases)} álbumes/EPs</b>:\n\n"
-                
-                for i, release in enumerate(releases, 1):
-                    release_type = release.get("type", "Album")
-                    release_title = release.get("title", "Sin título")
-                    release_date = release.get("date", "Fecha desconocida")
-                    release_url = release.get("url", "")
-                    
-                    # Emoji según el tipo
-                    type_emoji = "📀" if release_type == "Album" else "💿"
-                    
-                    text += f"<b>{i}.</b> {type_emoji} <b>{release_title}</b> ({release_type})\n"
-                    text += f"   📅 {release_date}\n"
-                    if release_url:
-                        text += f"   🔗 <a href=\"{release_url}\">Ver en MusicBrainz</a>\n"
-                    text += "\n"
-                
-                text += "💡 Usa <code>/releases &lt;artista&gt;</code> para ver otros artistas"
-                
-                await update.message.reply_text(text, parse_mode='HTML')
-                return
-            
-            # CASO 2: Consulta por período (flujo normal)
-            # 1. Obtener artistas de la biblioteca
-            logger.info(f"📚 Obteniendo artistas de tu biblioteca...")
-            library_artists = await self.navidrome.get_artists(limit=9999)
-            
-            if not library_artists:
-                await update.message.reply_text(
-                    "⚠️ No se pudieron obtener los artistas de tu biblioteca.\n"
-                    "Verifica tu configuración de Navidrome."
-                )
-                await mb.close()
-                return
-            
-            logger.info(f"✅ Encontrados {len(library_artists)} artistas en tu biblioteca")
-            
-            # DEBUG: Mostrar algunos artistas de ejemplo
-            if len(library_artists) > 0:
-                logger.info(f"   📝 DEBUG - Primeros 10 artistas en biblioteca:")
-                for artist in library_artists[:10]:
-                    logger.info(f"      {artist.name}")
-            
-            # 2. Buscar releases SOLO de esos artistas específicos (MUCHO más eficiente)
-            artist_names = [artist.name for artist in library_artists]
-            logger.info(f"🔍 Buscando releases de {len(artist_names)} artistas de los últimos {days} días...")
-            
-            matching_releases = await mb.get_recent_releases_for_artists(artist_names, days=days)
-            
-            await mb.close()
-            
-            if not matching_releases:
-                # Mensaje cuando no hay releases
-                debug_msg = (
-                    f"😔 No hay lanzamientos nuevos de tus {len(library_artists)} artistas en {period_name}.\n\n"
-                    "💡 Tus artistas no han sacado álbumes o EPs recientemente.\n\n"
-                    "Intenta con un período mayor:\n"
-                    "• <code>/releases month</code> - Este mes completo\n"
-                    "• <code>/releases last_month</code> - Últimos 2 meses\n"
-                    "• <code>/releases year</code> - Todo el año\n\n"
-                    "O consulta un artista específico:\n"
-                    "• <code>/releases Pink Floyd</code>\n"
-                    "• <code>/releases Interpol</code>"
-                )
-                await update.message.reply_text(debug_msg, parse_mode='HTML')
-                return
-            
-            # 3. Formatear respuesta
-            # Ordenar por fecha (más reciente primero)
-            matching_releases.sort(key=lambda x: x.get("date", ""), reverse=True)
-            
-            # Limitar a 20 releases para no sobrecargar el mensaje
-            releases_to_show = matching_releases[:20]
-            
-            text = f"🎵 <b>Lanzamientos de {period_name}</b>\n\n"
-            text += f"✅ Encontrados <b>{len(matching_releases)}</b> lanzamientos\n"
-            text += f"📚 De <b>{len(library_artists)}</b> artistas verificados en tu biblioteca\n\n"
-            
-            # Agrupar por artista
-            releases_by_artist = {}
-            for release in releases_to_show:
-                artist = release.get("artist")
-                if artist not in releases_by_artist:
-                    releases_by_artist[artist] = []
-                releases_by_artist[artist].append(release)
-            
-            # Mostrar releases agrupados por artista
-            for artist, releases in releases_by_artist.items():
-                text += f"🎤 <b>{artist}</b>\n"
-                for release in releases:
-                    release_type = release.get("type", "Album")
-                    release_title = release.get("title", "Sin título")
-                    release_date = release.get("date", "Fecha desconocida")
-                    release_url = release.get("url", "")
-                    
-                    # Emoji según el tipo
-                    type_emoji = "📀" if release_type == "Album" else "💿"
-                    
-                    text += f"   {type_emoji} {release_title} ({release_type})\n"
-                    text += f"      📅 {release_date}\n"
-                    if release_url:
-                        text += f"      🔗 <a href=\"{release_url}\">Ver en MusicBrainz</a>\n"
-                text += "\n"
-            
-            if len(matching_releases) > 20:
-                text += f"...y {len(matching_releases) - 20} lanzamientos más\n\n"
-            
-            text += (
-                "💡 <b>Otras opciones:</b>\n"
-                "• Períodos: <code>/releases month</code>, <code>/releases year</code>\n"
-                "• Días: <code>/releases 90</code>\n"
-                "• Artista: <code>/releases Pink Floyd</code>"
-            )
-            
-            await update.message.reply_text(text, parse_mode='HTML')
-            
         except Exception as e:
-            print(f"❌ Error en releases_command: {e}")
+            print(f"❌ Error obteniendo lanzamientos: {e}")
             import traceback
             traceback.print_exc()
-            await update.message.reply_text(
-                f"❌ Error obteniendo lanzamientos: {str(e)}\n\n"
-                "Verifica que MusicBrainz esté configurado correctamente."
-            )
+            await update.message.reply_text(f"❌ Error obteniendo lanzamientos: {str(e)}")
     
     @_check_authorization
     async def search_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Comando /search - Buscar música"""
+        """Comando /search - Buscar música con IA
+        
+        Usa el agente conversacional para buscar y dar contexto sobre
+        los resultados encontrados.
+        """
         if not context.args:
             await update.message.reply_text(
                 "🔍 <b>Uso:</b> <code>/search &lt;término&gt;</code>\n\n"
@@ -1004,82 +700,26 @@ Sé todo lo detallado que quieras:
             )
             return
         
+        # 🧠 Usar agente conversacional con contexto adaptativo
+        user_id = update.effective_user.id
         search_term = " ".join(context.args)
-        # Normalizar el término de búsqueda
-        search_term_normalized = " ".join(search_term.split())
+        agent_query = f"Busca '{search_term}' en mi biblioteca y dime qué tengo"
         
-        await update.message.reply_text(f"🔍 Buscando '{search_term_normalized}' en tu biblioteca...")
+        await update.message.reply_text(f"🔍 Buscando '{search_term}' en tu biblioteca...")
         
         try:
-            # Generar variaciones del término de búsqueda para mayor flexibilidad
-            search_variations = self._generate_search_variations(search_term_normalized.lower())
-            print(f"🔍 Variaciones de búsqueda: {search_variations}")
+            # Usar el agente con contexto adaptativo
+            result = await self.agent.query(agent_query, user_id)
             
-            # Intentar búsquedas con cada variación hasta encontrar resultados
-            results = None
-            successful_search_term = None
-            
-            for variation in search_variations:
-                temp_results = await self.navidrome.search(variation, limit=20)
-                if temp_results.get('tracks') or temp_results.get('albums') or temp_results.get('artists'):
-                    results = temp_results
-                    successful_search_term = variation
-                    if variation != search_term_normalized.lower():
-                        print(f"✅ Encontrado con variación: '{variation}'")
-                    break
-            
-            # Si no se encontró nada con variaciones, intentar búsqueda normal
-            if not results:
-                results = await self.navidrome.search(search_term_normalized, limit=20)
-            
-            if not results['tracks'] and not results['albums'] and not results['artists']:
+            if result.get('success') and result.get('answer'):
+                await update.message.reply_text(result['answer'], parse_mode='HTML')
+            else:
                 await update.message.reply_text(
-                    f"😔 No se encontraron resultados para '{search_term_normalized}'.\n\n"
-                    "💡 Intenta con diferentes palabras clave o verifica la ortografía."
+                    f"😔 No se encontraron resultados para '{search_term}'.\n\n"
+                    "💡 Intenta con diferentes palabras clave."
                 )
-                return
-            
-            # Indicar si se usó una variación diferente
-            search_info = ""
-            if successful_search_term and successful_search_term != search_term_normalized.lower():
-                search_info = f" <i>(búsqueda flexible activada)</i>"
-            
-            text = f"🔍 <b>Resultados para '{search_term_normalized}':</b>{search_info}\n\n"
-            
-            # Mostrar canciones
-            if results['tracks']:
-                text += "🎵 <b>Canciones:</b>\n"
-                for track in results['tracks'][:5]:
-                    text += f"• {track.artist} - {track.title}\n"
-                text += "\n"
-            
-            # Mostrar álbumes
-            if results['albums']:
-                text += "📀 <b>Álbumes:</b>\n"
-                for album in results['albums'][:5]:
-                    text += f"• {album.artist} - {album.name}\n"
-                text += "\n"
-            
-            # Mostrar artistas
-            if results['artists']:
-                text += "🎤 <b>Artistas:</b>\n"
-                for artist in results['artists'][:5]:
-                    text += f"• {artist.name}\n"
-            
-            # Botones de acción
-            keyboard = []
-            if results['tracks']:
-                keyboard.append([InlineKeyboardButton("🎵 Ver más canciones", callback_data=f"search_tracks_{search_term_normalized}")])
-            if results['albums']:
-                keyboard.append([InlineKeyboardButton("📀 Ver más álbumes", callback_data=f"search_albums_{search_term_normalized}")])
-            if results['artists']:
-                keyboard.append([InlineKeyboardButton("🎤 Ver más artistas", callback_data=f"search_artists_{search_term_normalized}")])
-            
-            reply_markup = InlineKeyboardMarkup(keyboard) if keyboard else None
-            
-            await update.message.reply_text(text, reply_markup=reply_markup, parse_mode='HTML')
-            
         except Exception as e:
+            print(f"❌ Error en la búsqueda: {e}")
             await update.message.reply_text(f"❌ Error en la búsqueda: {str(e)}")
     
     @_check_authorization
@@ -1108,105 +748,24 @@ Sé todo lo detallado que quieras:
             )
             return
         
+        # 🧠 Usar agente conversacional con contexto adaptativo
+        user_id = update.effective_user.id
         description = " ".join(context.args)
+        agent_query = f"Crea una playlist de {description}"
+        
         await update.message.reply_text(f"🎵 Creando playlist: <i>{description}</i>...", parse_mode='HTML')
         
         try:
-            # 1. Intentar generar playlist PRIMERO desde la biblioteca local
-            print(f"🎵 Generando playlist con: {description}")
-            print(f"📚 PASO 1: Intentando generar desde biblioteca local...")
+            # Usar el agente con contexto adaptativo
+            result = await self.agent.query(agent_query, user_id)
             
-            # El límite será ajustado automáticamente por generate_library_playlist
-            # si detecta una cantidad en la descripción
-            library_recommendations = await self.ai.generate_library_playlist(
-                description,
-                limit=20  # Límite por defecto aumentado de 15 a 20
-            )
-            
-            recommendations = library_recommendations
-            library_count = len(library_recommendations)
-            
-            print(f"✅ Obtenidas {library_count} recomendaciones de biblioteca")
-            
-            # Las playlists SIEMPRE son 100% de tu biblioteca local
-            # No se agregan canciones externas, solo de Navidrome
-            
-            if not recommendations:
-                # Obtener información de debug para ayudar al usuario
-                try:
-                    # Obtener algunos géneros disponibles para mostrar
-                    sample_tracks = await self.ai.navidrome.get_tracks(limit=50)
-                    available_genres = set()
-                    for track in sample_tracks:
-                        if track.genre:
-                            available_genres.add(track.genre)
-                    
-                    genres_list = list(available_genres)[:10]  # Primeros 10 géneros
-                    genres_text = ", ".join(genres_list) if genres_list else "No detectados"
-                    
-                    await update.message.reply_text(
-                        f"😔 No encontré suficiente música en tu biblioteca que coincida con esos criterios.\n\n"
-                        f"🔍 <b>Debug info:</b>\n"
-                        f"• Géneros detectados en tu biblioteca: {genres_text}\n"
-                        f"• Total de canciones en muestra: {len(sample_tracks)}\n\n"
-                        f"💡 <b>Intenta:</b>\n"
-                        f"• Hacer la descripción más general\n"
-                        f"• Mencionar artistas que tengas en tu biblioteca\n"
-                        f"• Usar géneros que tengas disponibles\n"
-                        f"• Probar: <code>/playlist rock</code> o <code>/playlist pop</code>",
-                        parse_mode='HTML'
-                    )
-                except Exception as e:
-                    await update.message.reply_text(
-                        "😔 No encontré suficiente música en tu biblioteca que coincida con esos criterios.\n\n"
-                        "💡 Intenta:\n"
-                        "• Hacer la descripción más general\n"
-                        "• Mencionar artistas que tengas en tu biblioteca\n"
-                        "• Usar géneros que tengas disponibles"
-                    )
-                return
-            
-            print(f"🎵 TOTAL: {len(recommendations)} canciones de tu biblioteca local")
-            
-            # 3. Crear playlist directamente en Navidrome
-            playlist_name = f"Musicalo - {description[:50]}"
-            tracks = [rec.track for rec in recommendations]
-            song_ids = [track.id for track in tracks if track.id]
-            
-            if not song_ids:
+            if result.get('success') and result.get('answer'):
+                await update.message.reply_text(result['answer'], parse_mode='HTML')
+            else:
                 await update.message.reply_text(
-                    "❌ No se pudieron obtener los IDs de las canciones para crear la playlist."
+                    "😔 No pude crear la playlist.\n\n"
+                    "Intenta con una descripción más específica o general."
                 )
-                return
-            
-            # Crear playlist en Navidrome
-            playlist_id = await self.ai.navidrome.create_playlist(playlist_name, song_ids)
-            
-            if not playlist_id:
-                await update.message.reply_text(
-                    "❌ Error al crear la playlist en Navidrome."
-                )
-                return
-            
-            # 4. Mostrar preview
-            text = f"🎵 <b>Playlist creada en Navidrome:</b> {playlist_name}\n\n"
-            text += f"📝 {description}\n\n"
-            text += f"📚 <b>{library_count} canciones de tu biblioteca local</b>\n\n"
-            text += f"🎼 <b>Canciones ({len(tracks)}):</b>\n"
-            
-            for i, track in enumerate(tracks[:10], 1):
-                text += f"{i}. {track.artist} - {track.title}\n"
-            
-            if len(tracks) > 10:
-                text += f"\n...y {len(tracks) - 10} más\n"
-            
-            text += f"\n✅ <b>La playlist está disponible en Navidrome</b>"
-            text += f"\n🆔 Playlist ID: <code>{playlist_id}</code>"
-            
-            # Enviar mensaje con resultado
-            await update.message.reply_text(text, parse_mode='HTML')
-            print(f"✅ Playlist creada en Navidrome con ID: {playlist_id}")
-        
         except Exception as e:
             print(f"❌ Error creando playlist: {e}")
             import traceback
@@ -1444,75 +1003,33 @@ Sé todo lo detallado que quieras:
     
     @_check_authorization
     async def nowplaying_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Comando /nowplaying - Mostrar qué se está reproduciendo actualmente
+        """Comando /nowplaying - Ver reproducción actual con IA
         
-        Muestra información de lo que se está reproduciendo en todos los reproductores
-        conectados al servidor de Navidrome.
+        Usa el agente conversacional para mostrar qué se está reproduciendo
+        y dar contexto o sugerencias basadas en lo que escuchas.
         """
+        # 🧠 Usar agente conversacional con contexto adaptativo
+        user_id = update.effective_user.id
+        agent_query = "¿Qué estoy escuchando ahora?"
+        
         await update.message.reply_text("🎵 Consultando reproducción actual...")
         
         try:
-            # Obtener información de reproducción actual
-            now_playing = await self.navidrome.get_now_playing()
+            # Usar el agente con contexto adaptativo
+            result = await self.agent.query(agent_query, user_id)
             
-            if not now_playing:
-                text = """🎵 <b>Reproducción Actual</b>
-
-⚠️ No hay nada reproduciéndose en este momento.
-
-💡 <b>Posibles razones:</b>
-• No hay reproductores conectados al servidor
-• Los reproductores no están reproduciendo música
-• Los reproductores no reportan su estado
-
-<b>Cómo usar este comando:</b>
-Este comando muestra lo que se está reproduciendo actualmente en TODOS los reproductores conectados a tu servidor de Navidrome (aplicaciones móviles, web, etc.)"""
-                
-                await update.message.reply_text(text, parse_mode='HTML')
-                return
-            
-            # Formatear respuesta
-            text = f"🎵 <b>Reproducción Actual</b>\n\n"
-            text += f"✅ Hay <b>{len(now_playing)}</b> reproducción(es) activa(s):\n\n"
-            
-            for i, entry in enumerate(now_playing, 1):
-                text += f"<b>{i}.</b> 🎧 <b>{entry['artist']} - {entry['track']}</b>\n"
-                
-                if entry.get('album'):
-                    text += f"   📀 Álbum: {entry['album']}\n"
-                
-                if entry.get('year'):
-                    text += f"   📅 Año: {entry['year']}\n"
-                
-                text += f"   👤 Usuario: <code>{entry['username']}</code>\n"
-                text += f"   🎧 Reproductor: <i>{entry['player_name']}</i>\n"
-                
-                # Estado de reproducción
-                if entry.get('minutes_ago') == 0:
-                    text += f"   ▶️ <b>Reproduciendo ahora mismo</b>\n"
-                elif entry.get('minutes_ago'):
-                    text += f"   ⏱️ Comenzó hace {entry['minutes_ago']} minuto(s)\n"
-                
-                # Duración
-                if entry.get('duration'):
-                    mins = entry['duration'] // 60
-                    secs = entry['duration'] % 60
-                    text += f"   ⏳ Duración: {mins}:{secs:02d}\n"
-                
-                text += "\n"
-            
-            text += "💡 Este comando muestra lo que se está reproduciendo en <b>todos los reproductores</b> conectados al servidor."
-            
-            await update.message.reply_text(text, parse_mode='HTML')
-            
+            if result.get('success') and result.get('answer'):
+                await update.message.reply_text(result['answer'], parse_mode='HTML')
+            else:
+                await update.message.reply_text(
+                    "⚠️ No hay nada reproduciéndose en este momento.\n\n"
+                    "Asegúrate de que haya reproductores conectados a Navidrome."
+                )
         except Exception as e:
             print(f"❌ Error en nowplaying_command: {e}")
             import traceback
             traceback.print_exc()
-            await update.message.reply_text(
-                "❌ Error obteniendo información de reproducción.\n\n"
-                "Verifica que tu servidor de Navidrome esté accesible y funcionando correctamente."
-            )
+            await update.message.reply_text(f"❌ Error obteniendo información de reproducción: {str(e)}")
     
     @_check_authorization
     async def _handle_conversational_query(self, update: Update, user_message: str):
