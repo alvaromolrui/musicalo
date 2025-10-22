@@ -266,7 +266,7 @@ class SyncLog(Base):
     duration_seconds = Column(Float)
     
     # Additional data
-    metadata = Column(JSONB)
+    sync_metadata = Column(JSONB)
     
     # Indexes
     __table_args__ = (
