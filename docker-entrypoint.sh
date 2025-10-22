@@ -1,82 +1,110 @@
 #!/bin/bash
+
+# Music Assistant - Docker Entrypoint
+# This script handles initialization and startup of the music assistant
+
 set -e
 
-echo "🎵 Iniciando Musicalo..."
+echo "🎵 Starting Music Assistant..."
 
-# Función para logging
-log() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a /app/logs/bot.log
-}
+# Wait for PostgreSQL to be ready
+echo "⏳ Waiting for PostgreSQL..."
+while ! nc -z postgres 5432; do
+  sleep 1
+done
+echo "✅ PostgreSQL is ready"
 
-# Crear directorio de logs si no existe
-mkdir -p /app/logs
+# Wait for Ollama to be ready
+echo "⏳ Waiting for Ollama..."
+while ! nc -z ollama 11434; do
+  sleep 1
+done
+echo "✅ Ollama is ready"
 
-# Verificar variables de entorno críticas
-log "Verificando configuración..."
+# Download Ollama model if not present
+echo "⏳ Ensuring Ollama model is available..."
+python -c "
+import requests
+import time
+import os
+import sys
 
-if [ -z "$TELEGRAM_BOT_TOKEN" ]; then
-    log "❌ ERROR: TELEGRAM_BOT_TOKEN no está configurado"
-    exit 1
-fi
+model = os.getenv('OLLAMA_MODEL', 'qwen2.5:3b')
+ollama_url = os.getenv('OLLAMA_BASE_URL', 'http://ollama:11434')
 
-if [ -z "$GEMINI_API_KEY" ]; then
-    log "❌ ERROR: GEMINI_API_KEY no está configurado"
-    exit 1
-fi
+def wait_for_ollama():
+    '''Wait for Ollama to be ready'''
+    max_attempts = 30
+    for attempt in range(max_attempts):
+        try:
+            response = requests.get(f'{ollama_url}/api/tags', timeout=5)
+            if response.status_code == 200:
+                return True
+        except:
+            pass
+        print(f'Waiting for Ollama... (attempt {attempt + 1}/{max_attempts})')
+        time.sleep(2)
+    return False
 
-if [ -z "$LISTENBRAINZ_USERNAME" ]; then
-    log "⚠️  WARNING: LISTENBRAINZ_USERNAME no está configurado"
-fi
-
-log "✅ Configuración verificada"
-
-# Mostrar configuración (sin tokens)
-log "📋 Configuración:"
-log "   - Navidrome URL: ${NAVIDROME_URL:-http://host.docker.internal:4533}"
-log "   - ListenBrainz User: ${LISTENBRAINZ_USERNAME:-No configurado}"
-log "   - MusicBrainz: ${ENABLE_MUSICBRAINZ:-false} (Batch: ${MUSICBRAINZ_BATCH_SIZE:-20}, Max: ${MUSICBRAINZ_MAX_TOTAL:-100})"
-log "   - Debug Mode: ${DEBUG:-False}"
-log "   - Host: ${HOST:-0.0.0.0}"
-log "   - Port: ${PORT:-8000}"
-
-# Esperar a que Navidrome esté disponible (si está configurado)
-if [ ! -z "$NAVIDROME_URL" ]; then
-    log "🔍 Verificando conectividad con Navidrome..."
-    max_attempts=30
-    attempt=1
+try:
+    if not wait_for_ollama():
+        print('❌ Ollama is not responding after 60 seconds')
+        sys.exit(1)
     
-    while [ $attempt -le $max_attempts ]; do
-        if curl -s -f "$NAVIDROME_URL/app/" > /dev/null 2>&1; then
-            log "✅ Navidrome está disponible"
-            break
-        else
-            log "⏳ Esperando Navidrome... (intento $attempt/$max_attempts)"
-            sleep 2
-            attempt=$((attempt + 1))
-        fi
-    done
-    
-    if [ $attempt -gt $max_attempts ]; then
-        log "⚠️  WARNING: No se pudo conectar con Navidrome, continuando..."
-    fi
-fi
+    # Check if model exists
+    response = requests.get(f'{ollama_url}/api/tags', timeout=10)
+    if response.status_code == 200:
+        models = response.json().get('models', [])
+        model_names = [m['name'] for m in models]
+        
+        if model not in model_names:
+            print(f'📥 Downloading model {model}...')
+            print('This may take several minutes for the first time...')
+            
+            # Pull the model with streaming
+            pull_response = requests.post(f'{ollama_url}/api/pull', 
+                                        json={'name': model, 'stream': True},
+                                        stream=True, timeout=300)
+            
+            if pull_response.status_code == 200:
+                for line in pull_response.iter_lines():
+                    if line:
+                        try:
+                            data = line.decode('utf-8')
+                            if 'status' in data:
+                                print(f'Download progress: {data}')
+                        except:
+                            pass
+                print(f'✅ Model {model} downloaded successfully')
+            else:
+                print(f'❌ Failed to download model {model}')
+                sys.exit(1)
+        else:
+            print(f'✅ Model {model} already available')
+    else:
+        print('❌ Could not connect to Ollama API')
+        sys.exit(1)
+except Exception as e:
+    print(f'❌ Error checking Ollama model: {e}')
+    sys.exit(1)
+"
 
-# Bot usa modo polling (no necesita webhooks)
-log "📡 Usando modo polling para comunicación con Telegram"
+# Run database migrations
+echo "⏳ Running database migrations..."
+python -c "
+from src.database.models import Base
+from src.config import get_database_url
+from sqlalchemy import create_engine
 
-# Función para manejo de señales
-cleanup() {
-    log "🛑 Deteniendo bot..."
-    log "✅ Bot detenido correctamente"
-    exit 0
-}
+try:
+    engine = create_engine(get_database_url())
+    Base.metadata.create_all(engine)
+    print('✅ Database migrations completed')
+except Exception as e:
+    print(f'❌ Database migration failed: {e}')
+    exit(1)
+"
 
-# Capturar señales para limpieza
-trap cleanup SIGTERM SIGINT
-
-# Iniciar el bot
-log "🚀 Iniciando Musicalo..."
-log "📱 Busca tu bot en Telegram y escribe /start para comenzar"
-
-# Ejecutar el bot con logging
-exec python start-bot.py 2>&1 | tee -a /app/logs/bot.log
+# Start the application
+echo "🚀 Starting Music Assistant application..."
+exec python src/startup.py

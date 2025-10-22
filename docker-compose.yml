@@ -1,57 +1,112 @@
 services:
-  musicalo:
-    build: .
-    # image: alvaromolrui/musicalo:latest  # Comentado para usar build local
-    container_name: musicalo
+  postgres:
+    image: postgres:15-alpine
+    container_name: music-assistant-postgres
     restart: unless-stopped
     environment:
-      # Navidrome Configuration
-      - NAVIDROME_URL=${NAVIDROME_URL}
-      - NAVIDROME_USERNAME=${NAVIDROME_USERNAME}
-      - NAVIDROME_PASSWORD=${NAVIDROME_PASSWORD}
-      
-      # ListenBrainz Configuration
-      - LISTENBRAINZ_USERNAME=${LISTENBRAINZ_USERNAME}
-      - LISTENBRAINZ_TOKEN=${LISTENBRAINZ_TOKEN}
-      
-      # MusicBrainz Configuration
-      - ENABLE_MUSICBRAINZ=${ENABLE_MUSICBRAINZ}
-      - APP_NAME=${APP_NAME}
-      - CONTACT_EMAIL=${CONTACT_EMAIL}
-      - MUSICBRAINZ_BATCH_SIZE=${MUSICBRAINZ_BATCH_SIZE}
-      - MUSICBRAINZ_MAX_TOTAL=${MUSICBRAINZ_MAX_TOTAL}
-      - MUSICBRAINZ_MAX_RELEASES=${MUSICBRAINZ_MAX_RELEASES}
-      
-      # Gemini Configuration
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
-      
-      # Telegram Bot Configuration
-      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
-      - TELEGRAM_ALLOWED_USER_IDS=${TELEGRAM_ALLOWED_USER_IDS}
-    
+      POSTGRES_DB: music_assistant
+      POSTGRES_USER: music_user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
-      # Volumen para logs persistentes
-      - logs:/app/logs
-      # Volumen para configuración (opcional)
-      - config:/app/config
-    
+      - postgres_data:/var/lib/postgresql/data
     networks:
-      - musicalo-network
-    
-    # Límites de recursos
+      - music-assistant-network
     deploy:
       resources:
         limits:
           memory: 512M
         reservations:
           memory: 256M
+    command: >
+      postgres
+      -c max_connections=20
+      -c shared_buffers=128MB
+      -c effective_cache_size=256MB
+      -c maintenance_work_mem=64MB
+      -c checkpoint_completion_target=0.9
+      -c wal_buffers=4MB
+      -c default_statistics_target=100
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: music-assistant-ollama
+    restart: unless-stopped
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - music-assistant-network
+    deploy:
+      resources:
+        limits:
+          memory: 3G
+        reservations:
+          memory: 2G
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    ports:
+      - "11434:11434"
+
+  music_assistant:
+    image: alvaromolrui/musicalo
+    container_name: music-assistant
+    restart: unless-stopped
+    depends_on:
+      - postgres
+      - ollama
+    environment:
+      # Telegram Configuration
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_ALLOWED_USERS=${TELEGRAM_ALLOWED_USERS}
+      
+      # Navidrome Configuration
+      - NAVIDROME_URL=${NAVIDROME_URL}
+      - NAVIDROME_USERNAME=${NAVIDROME_USERNAME}
+      - NAVIDROME_PASSWORD=${NAVIDROME_PASSWORD}
+      
+      # ListenBrainz Configuration
+      - LISTENBRAINZ_TOKEN=${LISTENBRAINZ_TOKEN}
+      - LISTENBRAINZ_USERNAME=${LISTENBRAINZ_USERNAME}
+      
+      # PostgreSQL Configuration
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=music_assistant
+      - POSTGRES_USER=music_user
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      
+      # Ollama Configuration
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5:3b}
+      
+      # Application Configuration
+      - SYNC_INTERVAL=${SYNC_INTERVAL:-3600}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-all-MiniLM-L6-v2}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    
+    volumes:
+      - chroma_data:/app/data/chroma
+      - logs:/app/logs
+    
+    networks:
+      - music-assistant-network
+    
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 1G
 
 networks:
-  musicalo-network:
+  music-assistant-network:
     driver: bridge
 
 volumes:
-  logs:
+  postgres_data:
     driver: local
-  config:
+  ollama_data:
+    driver: local
+  chroma_data:
+    driver: local
+  logs:
     driver: local
