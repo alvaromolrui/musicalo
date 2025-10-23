@@ -389,10 +389,14 @@ class MusicAssistantBot:
             logger.info("Starting Music Assistant bot...")
             
             # Start the bot
-            await self.application.run_polling(
+            await self.application.start()
+            await self.application.updater.start_polling(
                 allowed_updates=Update.ALL_TYPES,
                 drop_pending_updates=True
             )
+            
+            # Keep the bot running
+            await self.application.updater.idle()
             
         except Exception as e:
             logger.error(f"Bot failed to start: {e}")
@@ -401,6 +405,9 @@ class MusicAssistantBot:
             # Cleanup
             if self.agent:
                 await self.agent.cleanup()
+            if self.application:
+                await self.application.stop()
+                await self.application.shutdown()
 
 
 async def main():
