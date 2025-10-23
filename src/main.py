@@ -398,9 +398,13 @@ class MusicAssistantBot:
                 drop_pending_updates=True
             )
             
-            # Keep the bot running
-            await self.application.updater.idle()
+            # Keep the bot running with a simple loop
+            import asyncio
+            while True:
+                await asyncio.sleep(1)
             
+        except KeyboardInterrupt:
+            logger.info("Bot stopped by user")
         except Exception as e:
             logger.error(f"Bot failed to start: {e}")
             raise
