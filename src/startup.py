@@ -1,40 +1,14 @@
 """
 Startup script for Music Assistant.
-Runs both the health check API and the main bot.
+Runs the main Telegram bot.
 """
 
 import asyncio
 import signal
 import sys
-from multiprocessing import Process
 
-import uvicorn
 from loguru import logger
-
-from health import app as health_app
 from main import main as bot_main
-
-
-def run_health_api():
-    """Run the health check API server."""
-    try:
-        uvicorn.run(
-            health_app,
-            host="0.0.0.0",
-            port=8000,
-            log_level="info",
-            access_log=False
-        )
-    except Exception as e:
-        logger.error(f"Health API failed: {e}")
-
-
-def run_bot():
-    """Run the main bot."""
-    try:
-        asyncio.run(bot_main())
-    except Exception as e:
-        logger.error(f"Bot failed: {e}")
 
 
 def signal_handler(signum, frame):
@@ -66,13 +40,6 @@ async def main():
     
     logger.info("🎵 Starting Music Assistant...")
     
-    # Start health API in a separate process
-    health_process = Process(target=run_health_api)
-    health_process.start()
-    
-    # Wait a moment for the health API to start
-    await asyncio.sleep(2)
-    
     try:
         # Run the main bot
         await bot_main()
@@ -81,13 +48,6 @@ async def main():
     except Exception as e:
         logger.error(f"Bot crashed: {e}")
     finally:
-        # Clean up
-        if health_process.is_alive():
-            health_process.terminate()
-            health_process.join(timeout=5)
-            if health_process.is_alive():
-                health_process.kill()
-        
         logger.info("Music Assistant stopped")
 
 
