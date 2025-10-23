@@ -388,6 +388,9 @@ class MusicAssistantBot:
             
             logger.info("Starting Music Assistant bot...")
             
+            # Initialize the application
+            await self.application.initialize()
+            
             # Start the bot
             await self.application.start()
             await self.application.updater.start_polling(
