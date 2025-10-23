@@ -93,11 +93,11 @@ except Exception as e:
 echo "⏳ Running database migrations..."
 python -c "
 from src.database.models import Base
-from src.config import get_database_url
+from src.config import get_database_url_sync
 from sqlalchemy import create_engine
 
 try:
-    engine = create_engine(get_database_url())
+    engine = create_engine(get_database_url_sync())
     Base.metadata.create_all(engine)
     print('✅ Database migrations completed')
 except Exception as e:
