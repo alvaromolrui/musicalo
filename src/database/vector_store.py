@@ -12,7 +12,7 @@ from chromadb.config import Settings
 from sentence_transformers import SentenceTransformer
 from loguru import logger
 
-from src.config import settings
+from config import settings
 
 
 class VectorStore:

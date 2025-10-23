@@ -12,9 +12,9 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy import select
 from loguru import logger
 
-from src.config import settings
-from src.database.models import Artist, Album, Song, Embedding
-from src.database.vector_store import get_vector_store
+from config import settings
+from database.models import Artist, Album, Song, Embedding
+from database.vector_store import get_vector_store
 
 
 class EmbeddingGenerator:

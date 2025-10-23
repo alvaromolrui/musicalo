@@ -6,7 +6,7 @@ Provides semantic search capabilities for music content.
 from typing import Dict, List, Any, Optional
 from loguru import logger
 
-from src.database.vector_store import get_vector_store
+from database.vector_store import get_vector_store
 
 
 class VectorSearchTool:

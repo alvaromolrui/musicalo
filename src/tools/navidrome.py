@@ -13,7 +13,7 @@ from urllib.parse import urlencode
 import httpx
 from loguru import logger
 
-from src.config import settings
+from config import settings
 
 
 class NavidromeClient:

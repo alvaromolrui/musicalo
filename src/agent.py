@@ -13,11 +13,11 @@ from langchain.agents import Tool, AgentExecutor, create_react_agent
 from langchain.prompts import PromptTemplate
 from langchain.schema import BaseMessage, HumanMessage, AIMessage
 
-from src.config import settings
-from src.tools.navidrome import get_navidrome_client
-from src.tools.listenbrainz import get_listenbrainz_client
-from src.tools.musicbrainz import get_musicbrainz_client
-from src.database.vector_store import get_vector_store
+from config import settings
+from tools.navidrome import get_navidrome_client
+from tools.listenbrainz import get_listenbrainz_client
+from tools.musicbrainz import get_musicbrainz_client
+from database.vector_store import get_vector_store
 
 
 class MusicAgent:
@@ -155,8 +155,8 @@ Thought: {agent_scratchpad}
             start_time = datetime.now()
             
             # Import sync modules
-            from src.ingestion.sync_library import get_library_sync
-            from src.ingestion.embeddings import get_embedding_generator
+            from ingestion.sync_library import get_library_sync
+            from ingestion.embeddings import get_embedding_generator
             
             # Perform library sync
             library_sync = await get_library_sync()
@@ -381,10 +381,10 @@ Thought: {agent_scratchpad}
         """Cleanup resources."""
         try:
             # Close API clients
-            from src.tools.navidrome import close_navidrome_client
-            from src.tools.listenbrainz import close_listenbrainz_client
-            from src.tools.musicbrainz import close_musicbrainz_client
-            from src.database.vector_store import close_vector_store
+            from tools.navidrome import close_navidrome_client
+            from tools.listenbrainz import close_listenbrainz_client
+            from tools.musicbrainz import close_musicbrainz_client
+            from database.vector_store import close_vector_store
             
             await close_navidrome_client()
             await close_listenbrainz_client()

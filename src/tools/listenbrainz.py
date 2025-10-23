@@ -10,7 +10,7 @@ from typing import Dict, List, Optional, Any
 import httpx
 from loguru import logger
 
-from src.config import settings
+from config import settings
 
 
 class ListenBrainzClient:

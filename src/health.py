@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 import asyncio
 from datetime import datetime
 
-from src.config import settings
+from config import settings
 
 app = FastAPI(title="Music Assistant Health Check", version="2.0.0")
 

@@ -11,10 +11,10 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 from loguru import logger
 
-from src.config import settings
-from src.database.models import Base, Artist, Album, Song, SyncLog
-from src.tools.navidrome import get_navidrome_client
-from src.tools.musicbrainz import get_musicbrainz_client
+from config import settings
+from database.models import Base, Artist, Album, Song, SyncLog
+from tools.navidrome import get_navidrome_client
+from tools.musicbrainz import get_musicbrainz_client
 
 
 class LibrarySync:

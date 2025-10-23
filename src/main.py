@@ -14,8 +14,8 @@ from telegram.ext import (
 )
 from loguru import logger
 
-from src.config import settings, is_user_allowed
-from src.agent import MusicAgent
+from config import settings, is_user_allowed
+from agent import MusicAgent
 
 
 class MusicAssistantBot:
