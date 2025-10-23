@@ -60,27 +60,27 @@ class MusicAgent:
             Tool(
                 name="search_library",
                 description="Search the user's music library for songs, albums, or artists. Use this for finding specific music.",
-                func=self._search_library
+                func=self._search_library_sync
             ),
             Tool(
                 name="get_listening_stats",
                 description="Get listening statistics and top artists/songs from ListenBrainz. Use this for analytics queries.",
-                func=self._get_listening_stats
+                func=self._get_listening_stats_sync
             ),
             Tool(
                 name="get_library_stats",
                 description="Get basic library statistics (total artists, albums, songs). Use this for general library info.",
-                func=self._get_library_stats
+                func=self._get_library_stats_sync
             ),
             Tool(
                 name="search_similar_music",
                 description="Find similar artists or music based on a given artist or song. Use this for recommendations.",
-                func=self._search_similar_music
+                func=self._search_similar_music_sync
             ),
             Tool(
                 name="get_recent_listens",
                 description="Get recently played songs from ListenBrainz. Use this for recent activity queries.",
-                func=self._get_recent_listens
+                func=self._get_recent_listens_sync
             )
         ]
     
@@ -124,7 +124,8 @@ Thought: {agent_scratchpad}
                 tools=self.tools,
                 verbose=True,
                 max_iterations=5,
-                early_stopping_method="generate"
+                early_stopping_method="generate",
+                handle_parsing_errors=True
             )
             
         except Exception as e:
@@ -395,3 +396,49 @@ Thought: {agent_scratchpad}
             
         except Exception as e:
             logger.error(f"Cleanup failed: {e}")
+    
+    # Synchronous wrapper functions for LangChain tools
+    def _search_library_sync(self, query: str) -> str:
+        """Synchronous wrapper for search_library."""
+        import asyncio
+        try:
+            loop = asyncio.get_event_loop()
+            return loop.run_until_complete(self._search_library(query))
+        except Exception as e:
+            return f"Error searching library: {str(e)}"
+    
+    def _get_library_stats_sync(self, query: str = "") -> str:
+        """Synchronous wrapper for get_library_stats."""
+        import asyncio
+        try:
+            loop = asyncio.get_event_loop()
+            return loop.run_until_complete(self._get_library_stats(query))
+        except Exception as e:
+            return f"Error getting library stats: {str(e)}"
+    
+    def _get_listening_stats_sync(self, query: str) -> str:
+        """Synchronous wrapper for get_listening_stats."""
+        import asyncio
+        try:
+            loop = asyncio.get_event_loop()
+            return loop.run_until_complete(self._get_listening_stats(query))
+        except Exception as e:
+            return f"Error getting listening stats: {str(e)}"
+    
+    def _get_recent_listens_sync(self, query: str = "") -> str:
+        """Synchronous wrapper for get_recent_listens."""
+        import asyncio
+        try:
+            loop = asyncio.get_event_loop()
+            return loop.run_until_complete(self._get_recent_listens(query))
+        except Exception as e:
+            return f"Error getting recent listens: {str(e)}"
+    
+    def _search_similar_music_sync(self, query: str) -> str:
+        """Synchronous wrapper for search_similar_music."""
+        import asyncio
+        try:
+            loop = asyncio.get_event_loop()
+            return loop.run_until_complete(self._search_similar_music(query))
+        except Exception as e:
+            return f"Error searching similar music: {str(e)}"
