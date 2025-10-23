@@ -8,7 +8,7 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime, timedelta
 
 from loguru import logger
-from langchain.llms import Ollama
+from langchain_community.llms import Ollama
 from langchain.agents import Tool, AgentExecutor, create_react_agent
 from langchain.prompts import PromptTemplate
 from langchain.schema import BaseMessage, HumanMessage, AIMessage

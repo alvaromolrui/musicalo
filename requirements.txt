@@ -12,7 +12,8 @@ asyncpg==0.29.0
 
 # Vector Database
 chromadb==0.4.18
-sentence-transformers==2.2.2
+sentence-transformers==2.7.0
+huggingface-hub==0.19.4
 
 # AI/LLM
 langchain==0.1.0
