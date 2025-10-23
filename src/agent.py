@@ -402,8 +402,20 @@ Thought: {agent_scratchpad}
         """Synchronous wrapper for search_library."""
         import asyncio
         try:
-            loop = asyncio.get_event_loop()
-            return loop.run_until_complete(self._search_library(query))
+            # Try to get existing loop, create new one if none exists
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    # If loop is running, we need to run in a new thread
+                    import concurrent.futures
+                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                        future = executor.submit(asyncio.run, self._search_library(query))
+                        return future.result()
+                else:
+                    return loop.run_until_complete(self._search_library(query))
+            except RuntimeError:
+                # No event loop, create new one
+                return asyncio.run(self._search_library(query))
         except Exception as e:
             return f"Error searching library: {str(e)}"
     
@@ -411,8 +423,17 @@ Thought: {agent_scratchpad}
         """Synchronous wrapper for get_library_stats."""
         import asyncio
         try:
-            loop = asyncio.get_event_loop()
-            return loop.run_until_complete(self._get_library_stats(query))
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    import concurrent.futures
+                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                        future = executor.submit(asyncio.run, self._get_library_stats(query))
+                        return future.result()
+                else:
+                    return loop.run_until_complete(self._get_library_stats(query))
+            except RuntimeError:
+                return asyncio.run(self._get_library_stats(query))
         except Exception as e:
             return f"Error getting library stats: {str(e)}"
     
@@ -420,8 +441,17 @@ Thought: {agent_scratchpad}
         """Synchronous wrapper for get_listening_stats."""
         import asyncio
         try:
-            loop = asyncio.get_event_loop()
-            return loop.run_until_complete(self._get_listening_stats(query))
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    import concurrent.futures
+                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                        future = executor.submit(asyncio.run, self._get_listening_stats(query))
+                        return future.result()
+                else:
+                    return loop.run_until_complete(self._get_listening_stats(query))
+            except RuntimeError:
+                return asyncio.run(self._get_listening_stats(query))
         except Exception as e:
             return f"Error getting listening stats: {str(e)}"
     
@@ -429,8 +459,17 @@ Thought: {agent_scratchpad}
         """Synchronous wrapper for get_recent_listens."""
         import asyncio
         try:
-            loop = asyncio.get_event_loop()
-            return loop.run_until_complete(self._get_recent_listens(query))
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    import concurrent.futures
+                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                        future = executor.submit(asyncio.run, self._get_recent_listens(query))
+                        return future.result()
+                else:
+                    return loop.run_until_complete(self._get_recent_listens(query))
+            except RuntimeError:
+                return asyncio.run(self._get_recent_listens(query))
         except Exception as e:
             return f"Error getting recent listens: {str(e)}"
     
@@ -438,7 +477,16 @@ Thought: {agent_scratchpad}
         """Synchronous wrapper for search_similar_music."""
         import asyncio
         try:
-            loop = asyncio.get_event_loop()
-            return loop.run_until_complete(self._search_similar_music(query))
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    import concurrent.futures
+                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                        future = executor.submit(asyncio.run, self._search_similar_music(query))
+                        return future.result()
+                else:
+                    return loop.run_until_complete(self._search_similar_music(query))
+            except RuntimeError:
+                return asyncio.run(self._search_similar_music(query))
         except Exception as e:
             return f"Error searching similar music: {str(e)}"
