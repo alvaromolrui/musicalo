@@ -11,8 +11,8 @@ from multiprocessing import Process
 import uvicorn
 from loguru import logger
 
-from src.health import app as health_app
-from src.main import main as bot_main
+from health import app as health_app
+from main import main as bot_main
 
 
 def run_health_api():
