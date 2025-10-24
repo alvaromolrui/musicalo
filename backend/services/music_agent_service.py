@@ -399,6 +399,13 @@ Responde ahora de forma natural y conversacional:"""
             "nuevo", "nueva", "nuevos", "nuevas", "no tenga", "no tengo", "descubrir"
         ]) and not any(word in query_lower for word in ["mi biblioteca", "tengo", "teengo"])
         
+        # Detectar cuando el usuario pregunta por lanzamientos recientes
+        needs_recent_releases = any(word in query_lower for word in [
+            "lanzamientos", "releases", "últimos", "recientes", "sacado", "han sacado"
+        ]) or any(phrase in query_lower for phrase in [
+            "qué hay nuevo", "música nueva", "últimos álbumes", "nuevos lanzamientos"
+        ])
+        
         # Detectar cuando preguntan por reproducción actual
         needs_now_playing = any(word in query_lower for word in [
             "estoy escuchando", "está sonando", "suena ahora", "está reproduciendo",
@@ -715,6 +722,40 @@ Responde ahora de forma natural y conversacional:"""
             except Exception as e:
                 print(f"⚠️ Error obteniendo info de MusicBrainz para '{search_term}': {e}")
         
+        # Buscar lanzamientos recientes cuando lo pidan
+        if needs_recent_releases:
+            try:
+                print(f"🆕 Buscando lanzamientos recientes...")
+                
+                # Obtener artistas de la biblioteca
+                library_artists = []
+                if self.navidrome:
+                    artists = await self.navidrome.get_artists(limit=50)
+                    library_artists = [artist.name for artist in artists if artist.name]
+                
+                if library_artists and self.musicbrainz:
+                    print(f"   📚 Artistas en biblioteca: {len(library_artists)}")
+                    
+                    # Buscar lanzamientos recientes de artistas de la biblioteca
+                    recent_releases = await self.musicbrainz.get_recent_releases_for_artists(
+                        library_artists, 
+                        days=30  # Últimos 30 días
+                    )
+                    
+                    if recent_releases:
+                        data["recent_releases"] = recent_releases[:10]  # Máximo 10
+                        print(f"✅ Encontrados {len(recent_releases)} lanzamientos recientes")
+                    else:
+                        print("⚠️ No se encontraron lanzamientos recientes")
+                        data["recent_releases"] = []
+                else:
+                    print("⚠️ No hay artistas en biblioteca o MusicBrainz no disponible")
+                    data["recent_releases"] = []
+                
+            except Exception as e:
+                print(f"⚠️ Error buscando lanzamientos recientes: {e}")
+                data["recent_releases"] = []
+        
         # Buscar música nueva activamente cuando lo pidan
         if needs_new_music:
             try:
@@ -982,6 +1023,29 @@ Responde ahora de forma natural y conversacional:"""
             for i, artist in enumerate(data["similar_content"][:5], 1):
                 url_info = f" - {artist.url}" if hasattr(artist, 'url') and artist.url else ""
                 formatted += f"  {i}. {artist.name}{url_info}\n"
+        
+        # LANZAMIENTOS RECIENTES (música nueva de artistas de la biblioteca)
+        if data.get("recent_releases"):
+            formatted += f"\n🆕 === LANZAMIENTOS RECIENTES DE TUS ARTISTAS ===\n"
+            formatted += f"📅 Últimos 30 días - Música nueva de artistas en tu biblioteca\n\n"
+            
+            for i, release in enumerate(data["recent_releases"][:10], 1):
+                title = release.get('title', 'Unknown')
+                artist = release.get('artist', 'Unknown')
+                date = release.get('date', '')
+                release_type = release.get('type', 'album')
+                url = release.get('url', '')
+                
+                formatted += f"  {i}. **{title}** - {artist}"
+                if date:
+                    formatted += f" ({date})"
+                if release_type:
+                    formatted += f" [{release_type}]"
+                if url:
+                    formatted += f" - {url}"
+                formatted += "\n"
+            
+            formatted += "\n💡 Estos son lanzamientos recientes de artistas que ya tienes en tu biblioteca\n"
         
         # NUEVO: Descubrimientos (música que NO está en biblioteca pero puede recomendar)
         if data.get("new_discoveries"):
