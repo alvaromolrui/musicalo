@@ -1476,7 +1476,7 @@ Sé todo lo detallado que quieras:
             session.set_last_action(intent, params)
             
             # Ejecutar acción según la intención detectada
-            # SOLO 5 intenciones posibles: playlist, buscar, recomendar, referencia, conversacion
+            # SOLO 6 intenciones posibles: playlist, buscar, recomendar, referencia, releases, conversacion
             
             if intent == "playlist":
                 # Crear playlist M3U
@@ -1541,6 +1541,37 @@ Sé todo lo detallado que quieras:
                         "🤔 No tengo referencia de qué música te gustó antes.\n"
                         "¿Puedes ser más específico?"
                     )
+            
+            elif intent == "releases":
+                # Lanzamientos recientes y música nueva
+                print(f"🆕 Intent: releases detectado")
+                
+                # Extraer parámetros
+                artist = params.get("artist", "")
+                time_period = params.get("time_period", "week")  # week, month, year
+                
+                # Construir query para el agente
+                if artist:
+                    agent_query = f"Muéstrame los lanzamientos recientes de {artist}"
+                else:
+                    agent_query = "Muéstrame los lanzamientos recientes de esta semana de artistas de mi biblioteca"
+                
+                await update.message.reply_text("🔍 Buscando lanzamientos recientes...")
+                
+                try:
+                    # Usar el agente con contexto adaptativo
+                    result = await self.agent.query(agent_query, user_id)
+                    
+                    if result.get('success') and result.get('answer'):
+                        await update.message.reply_text(result['answer'], parse_mode='HTML')
+                    else:
+                        await update.message.reply_text(
+                            "⚠️ No pude obtener los lanzamientos.\n\n"
+                            "Asegúrate de que MusicBrainz esté configurado (ENABLE_MUSICBRAINZ=true)."
+                        )
+                except Exception as e:
+                    print(f"❌ Error obteniendo lanzamientos: {e}")
+                    await update.message.reply_text(f"❌ Error obteniendo lanzamientos: {str(e)}")
             
             else:
                 # TODO LO DEMÁS va a conversación (DEFAULT)

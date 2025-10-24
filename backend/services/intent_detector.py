@@ -129,7 +129,7 @@ class IntentDetector:
             "Tu trabajo es detectar SOLO las intenciones MUY OBVIAS que requieren acciones específicas.",
             "Cuando tengas duda, usa 'conversacion' y deja que el agente lo maneje.",
             "",
-            "INTENCIONES DISPONIBLES (solo 6):",
+            "INTENCIONES DISPONIBLES (solo 7):",
             "",
             "1. 'playlist' - SOLO cuando pide EXPLÍCITAMENTE crear una playlist M3U",
             "   Palabras clave: 'haz playlist', 'crea playlist', 'genera playlist'",
@@ -154,7 +154,12 @@ class IntentDetector:
             "   Palabras clave: 'más de eso', 'otro así', 'ponme otro'",
             "   Ejemplo: 'ponme más de eso'",
             "",
-            "6. 'conversacion' - TODO LO DEMÁS (usar por defecto, 90% de los casos)",
+            "6. 'releases' - SOLO cuando pregunta por LANZAMIENTOS RECIENTES o música NUEVA",
+            "   Palabras clave: 'lanzamientos', 'releases', 'nuevo', 'nueva', 'nuevos', 'nuevas', 'últimos', 'recientes'",
+            "   Ejemplos: '¿qué hay nuevo?', 'lanzamientos recientes', 'música nueva', 'últimos álbumes'",
+            "   NOTA: Debe estar en contexto de música nueva/lanzamientos, no solo la palabra 'nuevo'",
+            "",
+            "7. 'conversacion' - TODO LO DEMÁS (usar por defecto, 90% de los casos)",
             "   Incluye:",
             "   - Preguntas: 'mis stats', 'últimos artistas', 'qué escuché', 'qué tengo de X'",
             "   - Solicitudes: 'recomiéndame rock', 'ponme un disco', 'música tranquila'",
@@ -223,6 +228,24 @@ class IntentDetector:
             "Usuario: 'un disco de Oasis'",
             '{"intent": "conversacion", "params": {}, "confidence": 0.9}',
             "",
+            "Usuario: '¿qué hay nuevo de música?'",
+            '{"intent": "releases", "params": {}, "confidence": 0.9}',
+            "",
+            "Usuario: 'lanzamientos recientes'",
+            '{"intent": "releases", "params": {}, "confidence": 0.95}',
+            "",
+            "Usuario: 'música nueva'",
+            '{"intent": "releases", "params": {}, "confidence": 0.85}',
+            "",
+            "Usuario: 'últimos álbumes'",
+            '{"intent": "releases", "params": {}, "confidence": 0.9}',
+            "",
+            "Usuario: '¿qué han sacado mis artistas?'",
+            '{"intent": "releases", "params": {}, "confidence": 0.9}',
+            "",
+            "Usuario: 'nuevos lanzamientos de Pink Floyd'",
+            '{"intent": "releases", "params": {"artist": "Pink Floyd"}, "confidence": 0.95}',
+            "",
             "RESPONDE SOLO CON JSON (sin markdown, sin explicaciones):",
             '{"intent": "...", "params": {...}, "confidence": 0.0-1.0}'
         ])
@@ -243,9 +266,9 @@ class IntentDetector:
         params = intent_data.get("params", {})
         confidence = float(intent_data.get("confidence", 0.5))
         
-        # Normalizar intención - SOLO 6 intenciones válidas
+        # Normalizar intención - SOLO 7 intenciones válidas
         valid_intents = [
-            "playlist", "buscar", "recomendar", "recomendar_biblioteca", "referencia", "conversacion"
+            "playlist", "buscar", "recomendar", "recomendar_biblioteca", "referencia", "releases", "conversacion"
         ]
         
         if intent not in valid_intents:
@@ -335,6 +358,7 @@ class IntentDetector:
             "recomendar": "Música similar a artista",
             "recomendar_biblioteca": "Recomendaciones de biblioteca (redescubrimiento)",
             "referencia": "Referencia a algo anterior",
+            "releases": "Lanzamientos recientes y música nueva",
             "conversacion": "Conversación general (maneja TODO lo demás)"
         }
         
