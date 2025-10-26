@@ -495,33 +495,20 @@ Responde ahora de forma natural y conversacional:"""
                 data["library"]["complete_data"]["unique_artists"] = sorted(list(unique_artists))
                 data["library"]["complete_data"]["unique_artists_count"] = len(unique_artists)
                 
-                # Si hay un género detectado en la consulta, filtrar por ese género
+                # Si hay un género detectado en la consulta, marcar para análisis inteligente
                 if detected_genre:
-                    print(f"🎸 Filtrando biblioteca completa por género: '{detected_genre}'")
+                    print(f"🎸 Género detectado: '{detected_genre}' - Usando análisis inteligente de IA")
                     
-                    # Filtrar tracks por género
-                    genre_tracks = [track for track in all_tracks if track.genre and detected_genre.lower() in track.genre.lower()]
-                    
-                    # Filtrar álbumes por género
-                    genre_albums = [album for album in all_albums if album.genre and detected_genre.lower() in album.genre.lower()]
-                    
-                    # Extraer artistas únicos del género
-                    genre_artists = set()
-                    for track in genre_tracks:
-                        if track.artist:
-                            genre_artists.add(track.artist)
-                    
-                    data["library"]["complete_data"]["filtered_by_genre"] = {
-                        "genre": detected_genre,
-                        "tracks": genre_tracks,
-                        "albums": genre_albums,
-                        "artists": sorted(list(genre_artists)),
-                        "total_tracks": len(genre_tracks),
-                        "total_albums": len(genre_albums),
-                        "total_artists": len(genre_artists)
+                    # En lugar de filtrar estrictamente, marcar el género para que la IA lo analice
+                    data["library"]["complete_data"]["genre_query"] = {
+                        "requested_genre": detected_genre,
+                        "analysis_mode": "intelligent",  # La IA analizará toda la biblioteca
+                        "total_artists": len(all_artists),
+                        "total_albums": len(all_albums),
+                        "total_tracks": len(all_tracks)
                     }
                     
-                    print(f"✅ Filtrado por '{detected_genre}': {len(genre_tracks)} canciones, {len(genre_albums)} álbumes, {len(genre_artists)} artistas")
+                    print(f"✅ Marcado para análisis inteligente de '{detected_genre}' en {len(all_artists)} artistas, {len(all_albums)} álbumes, {len(all_tracks)} canciones")
                 
                 # Si hay un artista específico mencionado en la consulta, filtrar por ese artista
                 artist_mentioned = self._extract_artist_from_query(query)
@@ -1027,34 +1014,35 @@ Responde ahora de forma natural y conversacional:"""
                         formatted += f"  ... y {complete_data['unique_artists_count'] - 30} artistas más\n"
                     formatted += "\n"
                 
-                # Si hay datos filtrados por género, mostrarlos
-                if complete_data.get("filtered_by_genre"):
-                    filtered = complete_data["filtered_by_genre"]
-                    formatted += f"\n🎸 <b>FILTRADO POR GÉNERO: {filtered['genre'].upper()}</b>\n"
-                    formatted += f"📊 <b>ESTADÍSTICAS DE {filtered['genre'].upper()}:</b>\n"
-                    formatted += f"• <b>Artistas:</b> {filtered['total_artists']}\n"
-                    formatted += f"• <b>Álbumes:</b> {filtered['total_albums']}\n"
-                    formatted += f"• <b>Canciones:</b> {filtered['total_tracks']}\n\n"
+                # Si hay una consulta de género, proporcionar información para análisis inteligente
+                if complete_data.get("genre_query"):
+                    genre_query = complete_data["genre_query"]
+                    requested_genre = genre_query["requested_genre"]
                     
-                    # Mostrar artistas del género
-                    if filtered.get("artists"):
-                        formatted += f"🎤 <b>ARTISTAS DE {filtered['genre'].upper()}:</b>\n"
-                        for i, artist in enumerate(filtered["artists"][:20], 1):  # Mostrar primeros 20
+                    formatted += f"\n🎸 <b>CONSULTA DE GÉNERO: {requested_genre.upper()}</b>\n"
+                    formatted += f"💡 <b>INSTRUCCIONES PARA LA IA:</b>\n"
+                    formatted += f"• El usuario pregunta por música de género '{requested_genre}'\n"
+                    formatted += f"• Analiza TODA la biblioteca ({genre_query['total_artists']} artistas, {genre_query['total_albums']} álbumes, {genre_query['total_tracks']} canciones)\n"
+                    formatted += f"• Busca artistas que puedan estar relacionados con '{requested_genre}' aunque no estén etiquetados exactamente así\n"
+                    formatted += f"• Considera variaciones, subgéneros, estilos relacionados y artistas similares\n"
+                    formatted += f"• Usa tu conocimiento musical para identificar conexiones\n\n"
+                    
+                    # Proporcionar muestra de artistas para que la IA analice
+                    if complete_data.get("unique_artists"):
+                        formatted += f"🎤 <b>MUESTRA DE ARTISTAS PARA ANÁLISIS (primeros 50):</b>\n"
+                        for i, artist in enumerate(complete_data["unique_artists"][:50], 1):
                             formatted += f"  {i}. {artist}\n"
-                        if filtered['total_artists'] > 20:
-                            formatted += f"  ... y {filtered['total_artists'] - 20} artistas más\n"
+                        if complete_data['unique_artists_count'] > 50:
+                            formatted += f"  ... y {complete_data['unique_artists_count'] - 50} artistas más para analizar\n"
                         formatted += "\n"
                     
-                    # Mostrar álbumes del género
-                    if filtered.get("albums"):
-                        formatted += f"📀 <b>ÁLBUMES DE {filtered['genre'].upper()}:</b>\n"
-                        for i, album in enumerate(filtered["albums"][:15], 1):  # Mostrar primeros 15
-                            formatted += f"  {i}. {album.artist} - {album.name}"
-                            if album.year:
-                                formatted += f" ({album.year})"
-                            formatted += "\n"
-                        if filtered['total_albums'] > 15:
-                            formatted += f"  ... y {filtered['total_albums'] - 15} álbumes más\n"
+                    # Proporcionar muestra de géneros para contexto
+                    if complete_data.get("genres"):
+                        formatted += f"🎵 <b>GÉNEROS DISPONIBLES EN LA BIBLIOTECA:</b>\n"
+                        for i, genre in enumerate(complete_data["genres"][:30], 1):
+                            formatted += f"  {i}. {genre}\n"
+                        if complete_data['total_genres'] > 30:
+                            formatted += f"  ... y {complete_data['total_genres'] - 30} géneros más\n"
                         formatted += "\n"
                 
                 # Si hay datos filtrados por artista, mostrarlos
