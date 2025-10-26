@@ -28,6 +28,14 @@ services:
       # Telegram Bot Configuration
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - TELEGRAM_ALLOWED_USER_IDS=${TELEGRAM_ALLOWED_USER_IDS}
+      
+      # Redis Configuration
+      - REDIS_URL=redis://redis:6379/0
+      - REDIS_CACHE_TTL=3600
+      
+      # Analytics Configuration
+      - ENABLE_ANALYTICS=true
+      - ANALYTICS_RETENTION_DAYS=30
     
     volumes:
       # Volumen para logs persistentes
@@ -38,6 +46,9 @@ services:
     networks:
       - musicalo-network
     
+    depends_on:
+      - redis
+    
     # Límites de recursos
     deploy:
       resources:
@@ -45,6 +56,23 @@ services:
           memory: 512M
         reservations:
           memory: 256M
+
+  redis:
+    image: redis:7-alpine
+    container_name: musicalo-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    networks:
+      - musicalo-network
+    # Límites de recursos
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 128M
 
 networks:
   musicalo-network:
@@ -54,4 +82,6 @@ volumes:
   logs:
     driver: local
   config:
+    driver: local
+  redis_data:
     driver: local

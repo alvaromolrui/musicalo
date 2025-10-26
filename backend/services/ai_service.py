@@ -9,6 +9,8 @@ from models.schemas import UserProfile, Recommendation, Track, ScrobbleTrack, Sc
 from services.navidrome_service import NavidromeService
 from services.listenbrainz_service import ListenBrainzService
 from services.musicbrainz_service import MusicBrainzService
+from services.cache_manager import cache_manager, cached
+from services.analytics_system import analytics_system
 
 class MusicRecommendationService:
     def __init__(self):
@@ -35,30 +37,28 @@ class MusicRecommendationService:
         print("✅ Servicio de recomendaciones usando ListenBrainz + MusicBrainz")
     
     async def _get_library_artists_cached(self) -> set:
-        """Obtener lista de artistas de biblioteca con caché de 5 minutos
+        """Obtener lista de artistas de biblioteca con caché mejorado
         
         Returns:
             Set de nombres de artistas en minúsculas
         """
-        import time
-        current_time = time.time()
+        async def fetch_artists():
+            """Función para obtener artistas de la biblioteca"""
+            try:
+                library_data = await self.navidrome.get_artists(limit=500)
+                artists_set = {artist.name.lower() for artist in library_data}
+                print(f"📚 Biblioteca cargada: {len(artists_set)} artistas")
+                return artists_set
+            except Exception as e:
+                print(f"⚠️ Error obteniendo artistas de biblioteca: {e}")
+                return set()
         
-        # Si el cache es válido, usarlo
-        if (self._library_artists_cache is not None and 
-            current_time - self._library_artists_cache_time < self._cache_ttl):
-            print(f"💾 Usando cache de artistas de biblioteca ({len(self._library_artists_cache)} artistas)")
-            return self._library_artists_cache
-        
-        # Cache expirado o no existe, obtener de nuevo
-        try:
-            library_data = await self.navidrome.get_artists(limit=500)
-            self._library_artists_cache = {artist.name.lower() for artist in library_data}
-            self._library_artists_cache_time = current_time
-            print(f"📚 Biblioteca cargada: {len(self._library_artists_cache)} artistas (cache por {self._cache_ttl}s)")
-            return self._library_artists_cache
-        except Exception as e:
-            print(f"⚠️ Error obteniendo artistas de biblioteca: {e}")
-            return set()
+        # Usar el nuevo sistema de caché
+        return await cache_manager.get_with_fallback(
+            "library_artists",
+            fetch_artists,
+            cache_type="library_data"
+        )
     
     async def analyze_user_profile(self, user_profile: UserProfile) -> MusicAnalysis:
         """Analizar el perfil musical del usuario"""

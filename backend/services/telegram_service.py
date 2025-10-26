@@ -14,8 +14,10 @@ from services.music_agent_service import MusicAgentService
 from services.conversation_manager import ConversationManager
 from services.intent_detector import IntentDetector
 from services.system_prompts import SystemPrompts
+from services.analytics_system import analytics_system
 from functools import wraps
 from datetime import datetime
+import time
 
 class TelegramService:
     def __init__(self):
@@ -53,6 +55,40 @@ class TelegramService:
             self.music_service = None
             self.music_service_name = None
             print("⚠️ No hay servicio de scrobbling configurado. Por favor configura LISTENBRAINZ_USERNAME en .env")
+
+
+def track_analytics(interaction_type: str):
+    """Decorador para tracking automático de analytics"""
+    def decorator(func):
+        @wraps(func)
+        async def wrapper(self, update, context, *args, **kwargs):
+            user_id = update.effective_user.id
+            start_time = time.time()
+            success = True
+            error_message = None
+            
+            try:
+                result = await func(self, update, context, *args, **kwargs)
+                return result
+            except Exception as e:
+                success = False
+                error_message = str(e)
+                raise
+            finally:
+                # Calcular duración
+                duration_ms = (time.time() - start_time) * 1000
+                
+                # Tracking de analytics
+                await analytics_system.track_interaction(
+                    user_id=user_id,
+                    interaction_type=interaction_type,
+                    duration_ms=duration_ms,
+                    success=success,
+                    error_message=error_message
+                )
+        
+        return wrapper
+    return decorator
     
     def _is_user_allowed(self, user_id: int) -> bool:
         """Verifica si un usuario está autorizado para usar el bot"""
@@ -85,6 +121,7 @@ class TelegramService:
         return wrapper
     
     @_check_authorization
+    @track_analytics("command")
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Comando /start - Bienvenida del bot"""
         welcome_text = """🎵 <b>¡Bienvenido a Musicalo!</b>
@@ -229,6 +266,7 @@ Sé todo lo detallado que quieras:
         await update.message.reply_text(help_text, parse_mode='HTML')
     
     @_check_authorization
+    @track_analytics("recommendation")
     async def recommend_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Comando /recommend - Generar recomendaciones
         
@@ -683,6 +721,7 @@ Sé todo lo detallado que quieras:
             await update.message.reply_text(f"❌ Error obteniendo lanzamientos: {str(e)}")
     
     @_check_authorization
+    @track_analytics("search")
     async def search_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Comando /search - Buscar música con IA
         
@@ -1030,6 +1069,83 @@ Sé todo lo detallado que quieras:
             import traceback
             traceback.print_exc()
             await update.message.reply_text(f"❌ Error obteniendo información de reproducción: {str(e)}")
+    
+    @_check_authorization
+    @track_analytics("analytics")
+    async def analytics_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Comando /analytics - Mostrar métricas del sistema (solo administradores)"""
+        user_id = update.effective_user.id
+        
+        # Verificar si es administrador (puedes personalizar esta lógica)
+        admin_user_ids = os.getenv("TELEGRAM_ADMIN_USER_IDS", "").split(",")
+        admin_user_ids = [int(uid.strip()) for uid in admin_user_ids if uid.strip()]
+        
+        if admin_user_ids and user_id not in admin_user_ids:
+            await update.message.reply_text(
+                "🚫 <b>Acceso Denegado</b>\n\n"
+                "Este comando solo está disponible para administradores.",
+                parse_mode='HTML'
+            )
+            return
+        
+        await update.message.reply_text("📊 Generando reporte de analytics...")
+        
+        try:
+            # Obtener insights del sistema
+            insights = await analytics_system.get_system_insights()
+            
+            if "error" in insights:
+                await update.message.reply_text(f"❌ Error obteniendo analytics: {insights['error']}")
+                return
+            
+            # Formatear respuesta
+            metrics = insights.get("metrics", {})
+            performance = insights.get("performance", {})
+            
+            text = "📊 <b>Analytics del Sistema</b>\n\n"
+            
+            # Métricas generales
+            text += f"🕐 <b>Período:</b> Últimas {metrics.get('period_hours', 24)} horas\n"
+            text += f"👥 <b>Usuarios únicos:</b> {metrics.get('unique_users', 0)}\n"
+            text += f"🔄 <b>Total interacciones:</b> {metrics.get('total_interactions', 0)}\n"
+            text += f"✅ <b>Tasa de éxito:</b> {metrics.get('success_rate', 0):.1f}%\n"
+            text += f"⚡ <b>Tiempo promedio:</b> {metrics.get('average_duration_ms', 0):.0f}ms\n"
+            text += f"💾 <b>Cache hit rate:</b> {metrics.get('cache_hit_rate', 0):.1f}%\n"
+            text += f"🎯 <b>Sesiones activas:</b> {metrics.get('active_sessions', 0)}\n\n"
+            
+            # Interacciones por tipo
+            interactions = metrics.get('interactions_by_type', {})
+            if interactions:
+                text += "📈 <b>Interacciones por tipo:</b>\n"
+                for interaction_type, count in sorted(interactions.items(), key=lambda x: x[1], reverse=True):
+                    text += f"• {interaction_type}: {count}\n"
+                text += "\n"
+            
+            # Rendimiento
+            response_times = performance.get('response_times', {})
+            if response_times:
+                text += "⚡ <b>Rendimiento (ms):</b>\n"
+                for operation, stats in response_times.items():
+                    text += f"• {operation}: avg {stats.get('avg_ms', 0):.0f}ms (p95: {stats.get('p95_ms', 0):.0f}ms)\n"
+                text += "\n"
+            
+            # Cache stats
+            cache_stats = performance.get('cache_stats', {})
+            if cache_stats:
+                text += "💾 <b>Estadísticas de caché:</b>\n"
+                text += f"• Hits: {cache_stats.get('hits', 0)}\n"
+                text += f"• Misses: {cache_stats.get('misses', 0)}\n"
+                text += f"• Errores: {cache_stats.get('errors', 0)}\n\n"
+            
+            text += f"🕐 <i>Actualizado: {insights.get('timestamp', 'N/A')}</i>"
+            
+            await update.message.reply_text(text, parse_mode='HTML')
+            
+        except Exception as e:
+            print(f"❌ Error en analytics_command: {e}")
+            import traceback
+            traceback.print_exc()
+            await update.message.reply_text(f"❌ Error obteniendo analytics: {str(e)}")
     
     @_check_authorization
     async def _handle_conversational_query(self, update: Update, user_message: str):
