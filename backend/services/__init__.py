@@ -10,6 +10,9 @@ from .enhanced_intent_detector import EnhancedIntentDetector
 from .adaptive_learning_system import AdaptiveLearningSystem, adaptive_learning_system
 from .hybrid_recommendation_engine import HybridRecommendationEngine, RecommendationStrategy
 from .advanced_personalization_system import AdvancedPersonalizationSystem, advanced_personalization_system
+from .error_recovery_system import ErrorRecoverySystem, error_recovery_system
+from .advanced_monitoring_system import AdvancedMonitoringSystem, advanced_monitoring_system
+from .user_features_system import UserFeaturesSystem, user_features_system
 
 __all__ = [
     'NavidromeService',
@@ -28,5 +31,11 @@ __all__ = [
     'HybridRecommendationEngine',
     'RecommendationStrategy',
     'AdvancedPersonalizationSystem',
-    'advanced_personalization_system'
+    'advanced_personalization_system',
+    'ErrorRecoverySystem',
+    'error_recovery_system',
+    'AdvancedMonitoringSystem',
+    'advanced_monitoring_system',
+    'UserFeaturesSystem',
+    'user_features_system'
 ]

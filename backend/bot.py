@@ -48,6 +48,9 @@ class MusicAgentBot:
         self.application.add_handler(CommandHandler("insights", self.telegram_service.insights_command))
         self.application.add_handler(CommandHandler("hybrid", self.telegram_service.hybrid_command))
         self.application.add_handler(CommandHandler("profile", self.telegram_service.profile_command))
+        self.application.add_handler(CommandHandler("discover", self.telegram_service.discover_command))
+        self.application.add_handler(CommandHandler("leaderboard", self.telegram_service.leaderboard_command))
+        self.application.add_handler(CommandHandler("health", self.telegram_service.health_command))
         
         # Callbacks de botones
         self.application.add_handler(CallbackQueryHandler(self.telegram_service.button_callback))

@@ -14,6 +14,9 @@ from services.analytics_system import analytics_system
 from services.adaptive_learning_system import adaptive_learning_system
 from services.hybrid_recommendation_engine import HybridRecommendationEngine, RecommendationStrategy
 from services.advanced_personalization_system import advanced_personalization_system
+from services.error_recovery_system import error_recovery_system
+from services.advanced_monitoring_system import advanced_monitoring_system
+from services.user_features_system import user_features_system
 
 class MusicRecommendationService:
     def __init__(self):
@@ -37,7 +40,7 @@ class MusicRecommendationService:
         self._library_artists_cache_time = 0
         self._cache_ttl = 300  # 5 minutos
         
-        print("✅ Servicio de recomendaciones usando ListenBrainz + MusicBrainz + Aprendizaje Adaptativo + Motor Híbrido")
+        print("✅ Servicio de recomendaciones usando ListenBrainz + MusicBrainz + Aprendizaje Adaptativo + Motor Híbrido + Características Avanzadas")
         
         # Inicializar motor híbrido
         self.hybrid_engine = HybridRecommendationEngine(self)
@@ -2849,4 +2852,68 @@ Números de artistas en {language_name}:"""
             return advanced_personalization_system.get_system_stats()
         except Exception as e:
             logger.error(f"❌ Error obteniendo estadísticas de personalización: {e}")
+            return {"error": str(e)}
+    
+    async def discover_new_music(self, user_profile: UserProfile, user_id: int, 
+                               discovery_type: str = 'mixed') -> List[Recommendation]:
+        """Descubrir nueva música usando el sistema de características"""
+        try:
+            return await user_features_system.discover_music(user_profile, user_id, discovery_type)
+        except Exception as e:
+            logger.error(f"❌ Error descubriendo música: {e}")
+            return []
+    
+    def track_user_activity(self, user_id: int, activity_type: str, metadata: Dict[str, Any] = None):
+        """Rastrear actividad del usuario para gamificación"""
+        try:
+            user_features_system.track_user_activity(user_id, activity_type, metadata)
+        except Exception as e:
+            logger.error(f"❌ Error rastreando actividad: {e}")
+    
+    def get_user_profile_enhanced(self, user_id: int) -> Dict[str, Any]:
+        """Obtener perfil mejorado del usuario con gamificación"""
+        try:
+            return user_features_system.get_user_profile_enhanced(user_id)
+        except Exception as e:
+            logger.error(f"❌ Error obteniendo perfil mejorado: {e}")
+            return {"error": str(e)}
+    
+    def get_leaderboard(self, limit: int = 10) -> List[Dict[str, Any]]:
+        """Obtener tabla de clasificación de usuarios"""
+        try:
+            return user_features_system.get_leaderboard(limit)
+        except Exception as e:
+            logger.error(f"❌ Error obteniendo leaderboard: {e}")
+            return []
+    
+    def get_system_health(self) -> Dict[str, Any]:
+        """Obtener estado de salud del sistema"""
+        try:
+            return advanced_monitoring_system.get_system_health()
+        except Exception as e:
+            logger.error(f"❌ Error obteniendo salud del sistema: {e}")
+            return {"error": str(e)}
+    
+    def get_detailed_metrics(self, hours: int = 24) -> Dict[str, Any]:
+        """Obtener métricas detalladas del sistema"""
+        try:
+            return advanced_monitoring_system.get_detailed_metrics(hours)
+        except Exception as e:
+            logger.error(f"❌ Error obteniendo métricas detalladas: {e}")
+            return {"error": str(e)}
+    
+    def get_error_stats(self, hours: int = 24) -> Dict[str, Any]:
+        """Obtener estadísticas de errores"""
+        try:
+            return error_recovery_system.get_error_stats(hours)
+        except Exception as e:
+            logger.error(f"❌ Error obteniendo estadísticas de errores: {e}")
+            return {"error": str(e)}
+    
+    def get_health_status(self) -> Dict[str, Any]:
+        """Obtener estado de salud completo"""
+        try:
+            return error_recovery_system.get_health_status()
+        except Exception as e:
+            logger.error(f"❌ Error obteniendo estado de salud: {e}")
             return {"error": str(e)}

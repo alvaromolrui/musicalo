@@ -1347,6 +1347,184 @@ Sé todo lo detallado que quieras:
             await update.message.reply_text(f"❌ Error analizando perfil: {str(e)}")
     
     @_check_authorization
+    @track_analytics("discover")
+    async def discover_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Comando /discover - Descubrir nueva música"""
+        user_id = update.effective_user.id
+        
+        await update.message.reply_text("🔍 Descubriendo nueva música para ti...")
+        
+        try:
+            # Obtener perfil del usuario
+            user_profile = await self._get_user_profile(user_id)
+            if not user_profile:
+                await update.message.reply_text("❌ No se pudo obtener tu perfil. Usa /start primero.")
+                return
+            
+            # Descubrir nueva música
+            recommendations = await self.ai.discover_new_music(user_profile, user_id, 'mixed')
+            
+            if not recommendations:
+                await update.message.reply_text("❌ No se pudieron generar descubrimientos.")
+                return
+            
+            # Rastrear actividad
+            self.ai.track_user_activity(user_id, "recommendation_given")
+            
+            # Formatear respuesta
+            text = "🔍 <b>Descubrimientos Musicales</b>\n\n"
+            
+            for i, rec in enumerate(recommendations[:5], 1):
+                track = rec.track
+                text += f"{i}. <b>{track.title}</b> - {track.artist}\n"
+                text += f"   🎵 {rec.reasoning}\n"
+                text += f"   📊 Confianza: {rec.confidence:.1%}\n"
+                
+                # Mostrar tags de descubrimiento
+                discovery_tags = [tag for tag in rec.tags if tag in ['discovery', 'serendipity', 'similar_artists', 'genre_exploration']]
+                if discovery_tags:
+                    text += f"   🔍 Tipo: {', '.join(discovery_tags)}\n"
+                
+                text += "\n"
+            
+            if len(recommendations) > 5:
+                text += f"... y {len(recommendations) - 5} más descubrimientos\n"
+            
+            text += "\n💡 <i>Estos son descubrimientos basados en tus gustos y patrones de escucha</i>"
+            
+            await update.message.reply_text(text, parse_mode='HTML')
+            
+        except Exception as e:
+            print(f"❌ Error en discover_command: {e}")
+            import traceback
+            traceback.print_exc()
+            await update.message.reply_text(f"❌ Error descubriendo música: {str(e)}")
+    
+    @_check_authorization
+    @track_analytics("leaderboard")
+    async def leaderboard_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Comando /leaderboard - Mostrar tabla de clasificación"""
+        user_id = update.effective_user.id
+        
+        await update.message.reply_text("🏆 Obteniendo tabla de clasificación...")
+        
+        try:
+            # Obtener leaderboard
+            leaderboard = self.ai.get_leaderboard(10)
+            
+            if not leaderboard:
+                await update.message.reply_text("❌ No hay datos de clasificación disponibles.")
+                return
+            
+            # Formatear respuesta
+            text = "🏆 <b>Tabla de Clasificación Musicalo</b>\n\n"
+            
+            for entry in leaderboard:
+                rank = entry["rank"]
+                user_level = entry["level"]
+                points = entry["experience_points"]
+                
+                # Emojis según posición
+                if rank == 1:
+                    medal = "🥇"
+                elif rank == 2:
+                    medal = "🥈"
+                elif rank == 3:
+                    medal = "🥉"
+                else:
+                    medal = "🏅"
+                
+                text += f"{medal} <b>#{rank}</b> - Nivel {user_level} ({points} pts)\n"
+            
+            text += f"\n💡 <i>Tu posición: #{user_id % 100 + 1} (simulado)</i>"
+            text += f"\n🎯 <i>Usa el bot más para subir en la clasificación</i>"
+            
+            await update.message.reply_text(text, parse_mode='HTML')
+            
+        except Exception as e:
+            print(f"❌ Error en leaderboard_command: {e}")
+            import traceback
+            traceback.print_exc()
+            await update.message.reply_text(f"❌ Error obteniendo clasificación: {str(e)}")
+    
+    @_check_authorization
+    @track_analytics("health")
+    async def health_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Comando /health - Mostrar estado de salud del sistema"""
+        user_id = update.effective_user.id
+        
+        await update.message.reply_text("🏥 Verificando estado de salud del sistema...")
+        
+        try:
+            # Obtener estado de salud
+            health_status = self.ai.get_health_status()
+            system_health = self.ai.get_system_health()
+            
+            if "error" in health_status:
+                await update.message.reply_text(f"❌ Error obteniendo estado de salud: {health_status['error']}")
+                return
+            
+            # Formatear respuesta
+            text = "🏥 <b>Estado de Salud del Sistema</b>\n\n"
+            
+            # Estado general
+            status = health_status.get("status", "unknown")
+            health_score = health_status.get("health_score", 0)
+            
+            if status == "healthy":
+                status_emoji = "✅"
+            elif status == "degraded":
+                status_emoji = "⚠️"
+            else:
+                status_emoji = "❌"
+            
+            text += f"{status_emoji} <b>Estado:</b> {status.title()}\n"
+            text += f"📊 <b>Puntuación:</b> {health_score}/100\n\n"
+            
+            # Circuit breakers
+            circuit_breakers = health_status.get("circuit_breakers", {})
+            if circuit_breakers:
+                text += "🔌 <b>Circuit Breakers:</b>\n"
+                for service, info in circuit_breakers.items():
+                    state = info.get("state", "unknown")
+                    if state == "OPEN":
+                        text += f"• {service}: 🔴 Abierto\n"
+                    elif state == "HALF_OPEN":
+                        text += f"• {service}: 🟡 Semi-abierto\n"
+                    else:
+                        text += f"• {service}: 🟢 Cerrado\n"
+                text += "\n"
+            
+            # Errores recientes
+            recent_errors = health_status.get("recent_errors", {})
+            if recent_errors:
+                text += "📈 <b>Errores Recientes (24h):</b>\n"
+                text += f"• Total: {recent_errors.get('total_errors', 0)}\n"
+                
+                by_severity = recent_errors.get("by_severity", {})
+                for severity, count in by_severity.items():
+                    text += f"• {severity.title()}: {count}\n"
+                text += "\n"
+            
+            # Sistema de monitoreo
+            if "monitoring_enabled" in system_health:
+                monitoring_status = "✅ Habilitado" if system_health.get("monitoring_enabled") else "❌ Deshabilitado"
+                text += f"📊 <b>Monitoreo:</b> {monitoring_status}\n"
+            
+            if "health_score" in system_health:
+                text += f"🎯 <b>Score del Sistema:</b> {system_health.get('health_score', 0)}/100\n"
+            
+            text += f"\n🕐 <i>Actualizado: {datetime.now().strftime('%H:%M:%S')}</i>"
+            
+            await update.message.reply_text(text, parse_mode='HTML')
+            
+        except Exception as e:
+            print(f"❌ Error en health_command: {e}")
+            import traceback
+            traceback.print_exc()
+            await update.message.reply_text(f"❌ Error obteniendo estado de salud: {str(e)}")
+    
+    @_check_authorization
     async def _handle_conversational_query(self, update: Update, user_message: str):
         """Manejar consultas conversacionales usando el agente musical"""
         try:
