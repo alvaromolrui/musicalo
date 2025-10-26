@@ -205,10 +205,18 @@ class MusicAgentService:
         
         # 3. Construir prompt inteligente usando SystemPrompts
         conversation_context = session.get_context_for_ai()
-        system_prompt = SystemPrompts.get_music_assistant_prompt(
-            user_stats=user_stats,
-            conversation_context=conversation_context
-        )
+        
+        # Usar prompt específico para consultas informativas
+        if context and context.get("type") == "informational":
+            system_prompt = SystemPrompts.get_informational_prompt(
+                user_stats=user_stats,
+                conversation_context=conversation_context
+            )
+        else:
+            system_prompt = SystemPrompts.get_music_assistant_prompt(
+                user_stats=user_stats,
+                conversation_context=conversation_context
+            )
         
         # 4. Agregar datos específicos de la query
         ai_prompt = f"""{system_prompt}

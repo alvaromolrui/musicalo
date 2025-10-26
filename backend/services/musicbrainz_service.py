@@ -708,6 +708,7 @@ class MusicBrainzService:
                 chunk_num = (chunk_idx // chunk_size) + 1
                 
                 # Construcción de query con OR para múltiples artistas
+                # Usar búsqueda exacta para evitar coincidencias parciales
                 # Ejemplo: (artist:"Pink Floyd" OR artist:"Queen" OR ...)
                 artist_queries = ' OR '.join([f'artist:"{name}"' for name in chunk])
                 
@@ -719,6 +720,7 @@ class MusicBrainzService:
                 )
                 
                 logger.info(f"   🔍 Chunk {chunk_num}/{total_chunks}: Buscando releases de {len(chunk)} artistas...")
+                logger.info(f"   📝 Artistas en este chunk: {chunk}")
                 
                 # Hacer request a MusicBrainz
                 await self._rate_limit()
@@ -745,8 +747,9 @@ class MusicBrainzService:
                         artist_name = artist_info.get("name")
                         artist_mbid = artist_info.get("id")
                     
-                    # Solo agregar si tiene artista
-                    if artist_name:
+                    # Solo agregar si tiene artista Y coincide exactamente con uno de la biblioteca
+                    if artist_name and artist_name in chunk:
+                        logger.info(f"      ✅ Release válido: {artist_name} - {rg.get('title')}")
                         all_releases.append({
                             "title": rg.get("title"),
                             "artist": artist_name,
@@ -756,6 +759,8 @@ class MusicBrainzService:
                             "mbid": rg.get("id"),
                             "url": f"https://musicbrainz.org/release-group/{rg.get('id')}"
                         })
+                    elif artist_name:
+                        logger.info(f"      ❌ Release filtrado (artista no en biblioteca): {artist_name} - {rg.get('title')}")
                 
                 logger.info(f"      ✅ {len(release_groups)} releases encontrados en este chunk")
             

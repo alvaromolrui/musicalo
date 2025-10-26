@@ -1525,6 +1525,51 @@ Sé todo lo detallado que quieras:
             await update.message.reply_text(f"❌ Error obteniendo estado de salud: {str(e)}")
     
     @_check_authorization
+    async def _handle_informational_query(self, update: Update, user_message: str):
+        """Manejar consultas informativas directas sobre la biblioteca"""
+        try:
+            print(f"📋 Consulta informativa: {user_message}")
+            
+            user_id = update.effective_user.id
+            
+            # Usar el agente con contexto específico para consultas informativas
+            result = await self.agent.query(
+                user_message,
+                user_id=user_id,
+                context={"type": "informational"}
+            )
+            
+            if result.get("success"):
+                answer = result["answer"]
+                
+                # Agregar enlaces si hay
+                links = result.get("links", [])
+                if links:
+                    answer += "\n\n🔗 <b>Enlaces relevantes:</b>\n"
+                    for link in links[:5]:  # Máximo 5 enlaces
+                        answer += f"• {link}\n"
+                
+                await update.message.reply_text(answer, parse_mode='HTML')
+                print(f"✅ Respuesta informativa enviada")
+            else:
+                await update.message.reply_text(
+                    "😔 No pude obtener la información de tu biblioteca en este momento.\n\n"
+                    "Intenta reformular tu pregunta o usa el comando /search para buscar específicamente."
+                )
+            
+        except Exception as e:
+            print(f"❌ Error en consulta informativa: {type(e).__name__}: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            await update.message.reply_text(
+                f"🤔 No pude procesar tu consulta informativa.\n\n"
+                f"💡 Puedes usar:\n"
+                f"• /search <término> - Para buscar específicamente\n"
+                f"• /library - Para explorar tu biblioteca\n"
+                f"• /stats - Para ver estadísticas generales"
+            )
+    
+    @_check_authorization
     async def _handle_conversational_query(self, update: Update, user_message: str):
         """Manejar consultas conversacionales usando el agente musical"""
         try:
@@ -2015,6 +2060,13 @@ Sé todo lo detallado que quieras:
                 else:
                     # Fallback a conversación si no hay artista específico
                     await self._handle_conversational_query(update, user_message)
+            
+            elif intent == "consulta_informativa":
+                # Consultas directas sobre contenido de biblioteca
+                print(f"📋 Intent: consulta_informativa detectado")
+                
+                # Usar el agente para consultas informativas directas
+                await self._handle_informational_query(update, user_message)
             
             elif intent == "recomendar_biblioteca":
                 # Recomendaciones DE la biblioteca (redescubrimiento)

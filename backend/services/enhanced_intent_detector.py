@@ -392,15 +392,19 @@ class EnhancedIntentDetector:
             "   Palabras clave: 'de mi biblioteca', 'de la biblioteca', 'que tengo', 'redescubrir'",
             "   Ejemplo: 'recomiéndame algo de mi biblioteca'",
             "",
-            "5. 'referencia' - SOLO cuando dice 'más de eso', 'otro así' SIN mencionar artista",
+            "5. 'consulta_informativa' - Preguntas directas sobre QUÉ TIENE en su biblioteca",
+            "   Palabras clave: 'qué tengo', 'qué géneros', 'qué artistas', 'cuántos álbumes', 'lista de'",
+            "   Ejemplo: '¿qué géneros tengo?', '¿qué artistas tengo?', '¿cuántos álbumes de rock?'",
+            "",
+            "6. 'referencia' - SOLO cuando dice 'más de eso', 'otro así' SIN mencionar artista",
             "   Palabras clave: 'más de eso', 'otro así', 'ponme otro'",
             "   Ejemplo: 'ponme más de eso'",
             "",
-            "6. 'releases' - SOLO cuando pregunta por LANZAMIENTOS RECIENTES o música NUEVA",
+            "7. 'releases' - SOLO cuando pregunta por LANZAMIENTOS RECIENTES o música NUEVA",
             "   Palabras clave: 'lanzamientos', 'releases', 'nuevo', 'nueva', 'nuevos', 'nuevas'",
             "   Ejemplos: '¿qué hay nuevo?', 'lanzamientos recientes', 'música nueva'",
             "",
-            "7. 'conversacion' - TODO LO DEMÁS (usar por defecto, 90% de los casos)",
+            "8. 'conversacion' - TODO LO DEMÁS (usar por defecto, 90% de los casos)",
             "   Incluye: preguntas, solicitudes generales, info, CUALQUIER conversación natural",
             "",
             "FACTORES DE CONTEXTO A CONSIDERAR:",
@@ -500,6 +504,12 @@ class EnhancedIntentDetector:
         elif any(word in text_lower for word in ['similar', 'parecido']):
             intent = "recomendar"
             confidence = 0.6
+        elif any(phrase in text_lower for phrase in ['qué géneros', 'qué artistas', 'cuántos álbumes', 'lista de', 'qué tengo de']):
+            intent = "consulta_informativa"
+            confidence = 0.8
+        elif any(word in text_lower for word in ['biblioteca', 'tengo']) and not any(phrase in text_lower for phrase in ['recomiéndame', 'recomienda', 'sugiere']):
+            intent = "consulta_informativa"
+            confidence = 0.7
         elif any(word in text_lower for word in ['biblioteca', 'tengo']):
             intent = "recomendar_biblioteca"
             confidence = 0.6
@@ -536,6 +546,7 @@ class EnhancedIntentDetector:
             "buscar": "Buscar en biblioteca",
             "recomendar": "Música similar a artista",
             "recomendar_biblioteca": "Recomendaciones de biblioteca (redescubrimiento)",
+            "consulta_informativa": "Consultas directas sobre contenido de biblioteca",
             "referencia": "Referencia a algo anterior",
             "releases": "Lanzamientos recientes y música nueva",
             "conversacion": "Conversación general (maneja TODO lo demás)"
