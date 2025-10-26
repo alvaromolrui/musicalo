@@ -58,7 +58,6 @@ class TelegramService:
             self.music_service_name = None
             print("⚠️ No hay servicio de scrobbling configurado. Por favor configura LISTENBRAINZ_USERNAME en .env")
     
-    @staticmethod
     def track_analytics(interaction_type: str):
         """Decorador para tracking automático de analytics"""
         def decorator(func):
@@ -123,7 +122,7 @@ class TelegramService:
         return wrapper
     
     @_check_authorization
-    @TelegramService.track_analytics("command")
+    @track_analytics("command")
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Comando /start - Bienvenida del bot"""
         welcome_text = """🎵 <b>¡Bienvenido a Musicalo!</b>
@@ -268,7 +267,7 @@ Sé todo lo detallado que quieras:
         await update.message.reply_text(help_text, parse_mode='HTML')
     
     @_check_authorization
-    @TelegramService.track_analytics("recommendation")
+    @track_analytics("recommendation")
     async def recommend_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Comando /recommend - Generar recomendaciones
         
@@ -723,7 +722,7 @@ Sé todo lo detallado que quieras:
             await update.message.reply_text(f"❌ Error obteniendo lanzamientos: {str(e)}")
     
     @_check_authorization
-    @TelegramService.track_analytics("search")
+    @track_analytics("search")
     async def search_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Comando /search - Buscar música con IA
         
@@ -1073,7 +1072,7 @@ Sé todo lo detallado que quieras:
             await update.message.reply_text(f"❌ Error obteniendo información de reproducción: {str(e)}")
     
     @_check_authorization
-    @TelegramService.track_analytics("analytics")
+    @track_analytics("analytics")
     async def analytics_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Comando /analytics - Mostrar métricas del sistema (solo administradores)"""
         user_id = update.effective_user.id
@@ -1150,7 +1149,7 @@ Sé todo lo detallado que quieras:
             await update.message.reply_text(f"❌ Error obteniendo analytics: {str(e)}")
     
     @_check_authorization
-    @TelegramService.track_analytics("insights")
+    @track_analytics("insights")
     async def insights_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Comando /insights - Mostrar insights de aprendizaje personalizado"""
         user_id = update.effective_user.id
@@ -1215,7 +1214,7 @@ Sé todo lo detallado que quieras:
             await update.message.reply_text(f"❌ Error obteniendo insights: {str(e)}")
     
     @_check_authorization
-    @TelegramService.track_analytics("hybrid")
+    @track_analytics("hybrid")
     async def hybrid_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Comando /hybrid - Generar recomendaciones híbridas avanzadas"""
         user_id = update.effective_user.id
@@ -1269,7 +1268,7 @@ Sé todo lo detallado que quieras:
             await update.message.reply_text(f"❌ Error generando recomendaciones híbridas: {str(e)}")
     
     @_check_authorization
-    @TelegramService.track_analytics("profile")
+    @track_analytics("profile")
     async def profile_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Comando /profile - Mostrar perfil avanzado del usuario"""
         user_id = update.effective_user.id
