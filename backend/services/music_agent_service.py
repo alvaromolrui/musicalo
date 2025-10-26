@@ -402,7 +402,8 @@ Responde ahora de forma natural y conversacional:"""
         is_informational_query = any(phrase in query_lower for phrase in [
             "qué géneros", "qué artistas", "cuántos álbumes", "lista de", "qué tengo de",
             "cuántos artistas", "cuántas canciones", "estadísticas de mi biblioteca",
-            "resumen de mi biblioteca", "análisis de mi biblioteca"
+            "resumen de mi biblioteca", "análisis de mi biblioteca", "que hay de",
+            "qué hay de", "tengo de", "tienes de", "en mi biblioteca", "de mi biblioteca"
         ])
         print(f"🔍 DEBUG - is_informational_query: {is_informational_query}")
         
@@ -454,7 +455,7 @@ Responde ahora de forma natural y conversacional:"""
                 print(f"⚠️ Error obteniendo now playing: {e}")
                 data["now_playing"] = []
         
-        # Datos de biblioteca completa para consultas informativas
+        # Datos de biblioteca completa para consultas informativas (PRIORIDAD ALTA)
         if is_informational_query:
             try:
                 print(f"📊 Obteniendo biblioteca completa para consulta informativa...")
@@ -492,14 +493,42 @@ Responde ahora de forma natural y conversacional:"""
                 data["library"]["complete_data"]["unique_artists"] = sorted(list(unique_artists))
                 data["library"]["complete_data"]["unique_artists_count"] = len(unique_artists)
                 
+                # Si hay un género detectado en la consulta, filtrar por ese género
+                if detected_genre:
+                    print(f"🎸 Filtrando biblioteca completa por género: '{detected_genre}'")
+                    
+                    # Filtrar tracks por género
+                    genre_tracks = [track for track in all_tracks if track.genre and detected_genre.lower() in track.genre.lower()]
+                    
+                    # Filtrar álbumes por género
+                    genre_albums = [album for album in all_albums if album.genre and detected_genre.lower() in album.genre.lower()]
+                    
+                    # Extraer artistas únicos del género
+                    genre_artists = set()
+                    for track in genre_tracks:
+                        if track.artist:
+                            genre_artists.add(track.artist)
+                    
+                    data["library"]["complete_data"]["filtered_by_genre"] = {
+                        "genre": detected_genre,
+                        "tracks": genre_tracks,
+                        "albums": genre_albums,
+                        "artists": sorted(list(genre_artists)),
+                        "total_tracks": len(genre_tracks),
+                        "total_albums": len(genre_albums),
+                        "total_artists": len(genre_artists)
+                    }
+                    
+                    print(f"✅ Filtrado por '{detected_genre}': {len(genre_tracks)} canciones, {len(genre_albums)} álbumes, {len(genre_artists)} artistas")
+                
                 print(f"✅ Biblioteca completa obtenida: {len(all_artists)} artistas, {len(all_albums)} álbumes, {len(all_tracks)} canciones, {len(genres)} géneros")
                 
             except Exception as e:
                 print(f"❌ Error obteniendo biblioteca completa: {e}")
                 data["library"]["complete_data"] = None
         
-        # Datos de biblioteca (Navidrome) - búsquedas específicas
-        elif needs_library_search:
+        # Datos de biblioteca (Navidrome) - búsquedas específicas (solo si NO es consulta informativa)
+        elif needs_library_search and not is_informational_query:
             try:
                 # Si es recomendación por género, buscar el género
                 if is_recommendation_request and detected_genre and not search_term:
@@ -966,6 +995,36 @@ Responde ahora de forma natural y conversacional:"""
                     if complete_data['unique_artists_count'] > 30:
                         formatted += f"  ... y {complete_data['unique_artists_count'] - 30} artistas más\n"
                     formatted += "\n"
+                
+                # Si hay datos filtrados por género, mostrarlos
+                if complete_data.get("filtered_by_genre"):
+                    filtered = complete_data["filtered_by_genre"]
+                    formatted += f"\n🎸 <b>FILTRADO POR GÉNERO: {filtered['genre'].upper()}</b>\n"
+                    formatted += f"📊 <b>ESTADÍSTICAS DE {filtered['genre'].upper()}:</b>\n"
+                    formatted += f"• <b>Artistas:</b> {filtered['total_artists']}\n"
+                    formatted += f"• <b>Álbumes:</b> {filtered['total_albums']}\n"
+                    formatted += f"• <b>Canciones:</b> {filtered['total_tracks']}\n\n"
+                    
+                    # Mostrar artistas del género
+                    if filtered.get("artists"):
+                        formatted += f"🎤 <b>ARTISTAS DE {filtered['genre'].upper()}:</b>\n"
+                        for i, artist in enumerate(filtered["artists"][:20], 1):  # Mostrar primeros 20
+                            formatted += f"  {i}. {artist}\n"
+                        if filtered['total_artists'] > 20:
+                            formatted += f"  ... y {filtered['total_artists'] - 20} artistas más\n"
+                        formatted += "\n"
+                    
+                    # Mostrar álbumes del género
+                    if filtered.get("albums"):
+                        formatted += f"📀 <b>ÁLBUMES DE {filtered['genre'].upper()}:</b>\n"
+                        for i, album in enumerate(filtered["albums"][:15], 1):  # Mostrar primeros 15
+                            formatted += f"  {i}. {album.artist} - {album.name}"
+                            if album.year:
+                                formatted += f" ({album.year})"
+                            formatted += "\n"
+                        if filtered['total_albums'] > 15:
+                            formatted += f"  ... y {filtered['total_albums'] - 15} álbumes más\n"
+                        formatted += "\n"
                 
                 formatted += f"💡 <b>NOTA:</b> Esta es información completa de toda tu biblioteca musical\n\n"
             
