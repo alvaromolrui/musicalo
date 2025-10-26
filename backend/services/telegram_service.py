@@ -2107,6 +2107,13 @@ Sé todo lo detallado que quieras:
                         "¿Puedes ser más específico?"
                     )
             
+            elif intent == "buscar_mas":
+                # Continuar búsqueda anterior
+                print(f"🔍 Intent: buscar_mas detectado")
+                
+                # Usar el agente para continuar la búsqueda
+                await self._handle_conversational_query(update, user_message)
+            
             elif intent == "releases":
                 # Lanzamientos recientes y música nueva
                 print(f"🆕 Intent: releases detectado")

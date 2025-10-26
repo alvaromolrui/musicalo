@@ -275,6 +275,13 @@ class EnhancedIntentDetector:
                     # Parsear JSON
                     intent_data = json.loads(response_text)
                     
+                    # Validar que sea un diccionario
+                    if not isinstance(intent_data, dict):
+                        logger.warning(f"⚠️ Respuesta no es diccionario: {type(intent_data)}")
+                        if attempt == 2:
+                            return self._create_fallback_intent(user_message, sentiment, context, music_context)
+                        continue
+                    
                     # Validar y enriquecer con análisis local
                     enriched_intent = self._enrich_intent_data(
                         intent_data, 
@@ -400,11 +407,15 @@ class EnhancedIntentDetector:
             "   Palabras clave: 'más de eso', 'otro así', 'ponme otro'",
             "   Ejemplo: 'ponme más de eso'",
             "",
-            "7. 'releases' - SOLO cuando pregunta por LANZAMIENTOS RECIENTES o música NUEVA",
+            "7. 'buscar_mas' - SOLO cuando dice 'busca más', 'buscar más', 'continuar búsqueda'",
+            "   Palabras clave: 'busca más', 'buscar más', 'busca mas', 'buscar mas', 'continuar', 'sigue buscando'",
+            "   Ejemplo: 'busca más', 'continuar búsqueda'",
+            "",
+            "8. 'releases' - SOLO cuando pregunta por LANZAMIENTOS RECIENTES o música NUEVA",
             "   Palabras clave: 'lanzamientos', 'releases', 'nuevo', 'nueva', 'nuevos', 'nuevas'",
             "   Ejemplos: '¿qué hay nuevo?', 'lanzamientos recientes', 'música nueva'",
             "",
-            "8. 'conversacion' - TODO LO DEMÁS (usar por defecto, 90% de los casos)",
+            "9. 'conversacion' - TODO LO DEMÁS (usar por defecto, 90% de los casos)",
             "   Incluye: preguntas, solicitudes generales, info, CUALQUIER conversación natural",
             "",
             "FACTORES DE CONTEXTO A CONSIDERAR:",
@@ -516,6 +527,9 @@ class EnhancedIntentDetector:
         elif any(word in text_lower for word in ['más de eso', 'otro así']):
             intent = "referencia"
             confidence = 0.6
+        elif any(phrase in text_lower for phrase in ['busca más', 'buscar más', 'busca mas', 'buscar mas', 'continuar', 'sigue buscando']):
+            intent = "buscar_mas"
+            confidence = 0.9
         elif any(word in text_lower for word in ['nuevo', 'lanzamientos']):
             intent = "releases"
             confidence = 0.6
@@ -548,6 +562,7 @@ class EnhancedIntentDetector:
             "recomendar_biblioteca": "Recomendaciones de biblioteca (redescubrimiento)",
             "consulta_informativa": "Consultas directas sobre contenido de biblioteca",
             "referencia": "Referencia a algo anterior",
+            "buscar_mas": "Continuar búsqueda anterior",
             "releases": "Lanzamientos recientes y música nueva",
             "conversacion": "Conversación general (maneja TODO lo demás)"
         }
