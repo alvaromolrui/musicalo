@@ -458,6 +458,13 @@ Selecciona {count} canciones ahora:"""
             "5. Si encuentras artistas relacionados, explícalo claramente",
             "6. Si no encuentras nada relacionado, sé honesto pero sugiere géneros similares que sí tenga",
             "",
+            "EJEMPLOS DE CONEXIONES MUSICALES:",
+            "- 'rap' → busca: hip-hop, trap, reggaeton, urban, alternative rap, conscious rap",
+            "- 'rock' → busca: alternative, indie, punk, metal, grunge, britpop",
+            "- 'jazz' → busca: fusion, smooth jazz, bebop, swing, blues",
+            "- 'electrónica' → busca: electronic, EDM, house, techno, ambient, synth-pop",
+            "- 'pop' → busca: mainstream, contemporary, dance-pop, indie pop",
+            "",
             "FORMATO DE RESPUESTA:",
             "- Usa <b>texto</b> para destacar números y categorías importantes",
             "- Usa listas con • para organizar información",
@@ -488,10 +495,12 @@ Selecciona {count} canciones ahora:"""
             "Usuario: '¿Qué hay de rap en mi biblioteca?'",
             "Tú: 'Aunque no tienes artistas etiquetados exactamente como \"rap\", encontré algunos que podrían estar relacionados:",
             "• <b>Kendrick Lamar</b> - Artista de hip-hop/rap",
-            "• <b>Eminem</b> - Rapper conocido",
+            "• <b>Eminem</b> - Rapper conocido", 
             "• <b>J. Cole</b> - Rapper y productor",
             "• <b>Drake</b> - Rapper y cantante",
-            "También tienes géneros relacionados como <b>Hip-Hop</b> y <b>Urban</b> que pueden contener elementos de rap.'",
+            "• <b>Post Malone</b> - Artista que fusiona rap con otros géneros",
+            "• <b>Childish Gambino</b> - Rapper y actor",
+            "También tienes géneros relacionados como <b>Hip-Hop</b>, <b>Urban</b> y <b>Alternative</b> que pueden contener elementos de rap.'",
             ""
         ]
         

@@ -511,33 +511,35 @@ Responde ahora de forma natural y conversacional:"""
                     print(f"✅ Marcado para análisis inteligente de '{detected_genre}' en {len(all_artists)} artistas, {len(all_albums)} álbumes, {len(all_tracks)} canciones")
                 
                 # Si hay un artista específico mencionado en la consulta, filtrar por ese artista
-                artist_mentioned = self._extract_artist_from_query(query)
-                if artist_mentioned:
-                    print(f"🎤 Filtrando biblioteca completa por artista: '{artist_mentioned}'")
-                    
-                    # Buscar artista por nombre (búsqueda flexible)
-                    matching_artists = []
-                    for artist in all_artists:
-                        if artist_mentioned.lower() in artist.name.lower() or artist.name.lower() in artist_mentioned.lower():
-                            matching_artists.append(artist)
-                    
-                    # Filtrar tracks del artista
-                    artist_tracks = [track for track in all_tracks if track.artist and artist_mentioned.lower() in track.artist.lower()]
-                    
-                    # Filtrar álbumes del artista
-                    artist_albums = [album for album in all_albums if album.artist and artist_mentioned.lower() in album.artist.lower()]
-                    
-                    data["library"]["complete_data"]["filtered_by_artist"] = {
-                        "artist": artist_mentioned,
-                        "matching_artists": matching_artists,
-                        "tracks": artist_tracks,
-                        "albums": artist_albums,
-                        "total_tracks": len(artist_tracks),
-                        "total_albums": len(artist_albums),
-                        "total_matching_artists": len(matching_artists)
-                    }
-                    
-                    print(f"✅ Filtrado por '{artist_mentioned}': {len(artist_tracks)} canciones, {len(artist_albums)} álbumes, {len(matching_artists)} artistas coincidentes")
+                # PERO solo si NO es una consulta de género
+                if not detected_genre:
+                    artist_mentioned = self._extract_artist_from_query(query)
+                    if artist_mentioned:
+                        print(f"🎤 Filtrando biblioteca completa por artista: '{artist_mentioned}'")
+                        
+                        # Buscar artista por nombre (búsqueda flexible)
+                        matching_artists = []
+                        for artist in all_artists:
+                            if artist_mentioned.lower() in artist.name.lower() or artist.name.lower() in artist_mentioned.lower():
+                                matching_artists.append(artist)
+                        
+                        # Filtrar tracks del artista
+                        artist_tracks = [track for track in all_tracks if track.artist and artist_mentioned.lower() in track.artist.lower()]
+                        
+                        # Filtrar álbumes del artista
+                        artist_albums = [album for album in all_albums if album.artist and artist_mentioned.lower() in album.artist.lower()]
+                        
+                        data["library"]["complete_data"]["filtered_by_artist"] = {
+                            "artist": artist_mentioned,
+                            "matching_artists": matching_artists,
+                            "tracks": artist_tracks,
+                            "albums": artist_albums,
+                            "total_tracks": len(artist_tracks),
+                            "total_albums": len(artist_albums),
+                            "total_matching_artists": len(matching_artists)
+                        }
+                        
+                        print(f"✅ Filtrado por '{artist_mentioned}': {len(artist_tracks)} canciones, {len(artist_albums)} álbumes, {len(matching_artists)} artistas coincidentes")
                 
                 print(f"✅ Biblioteca completa obtenida: {len(all_artists)} artistas, {len(all_albums)} álbumes, {len(all_tracks)} canciones, {len(genres)} géneros")
                 
