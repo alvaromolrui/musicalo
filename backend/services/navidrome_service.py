@@ -275,6 +275,124 @@ class NavidromeService:
             print(f"❌ Error obteniendo artistas: {e}")
             return []
     
+    async def get_all_artists(self) -> List[Artist]:
+        """Obtener TODOS los artistas de la biblioteca sin límite"""
+        try:
+            print(f"🎤 Obteniendo TODOS los artistas de Navidrome...")
+            
+            # Usar getArtists para obtener todos los artistas
+            data = await self._make_request("getArtists", {})
+            artists = []
+            
+            # La API de Subsonic agrupa artistas por índice (A, B, C, etc.)
+            indexes = data.get("artists", {}).get("index", [])
+            if isinstance(indexes, dict):
+                indexes = [indexes]
+            
+            for index in indexes:
+                artists_in_index = index.get("artist", [])
+                if isinstance(artists_in_index, dict):
+                    artists_in_index = [artists_in_index]
+                
+                for item in artists_in_index:
+                    artist = Artist(
+                        id=item.get("id", ""),
+                        name=item.get("name", ""),
+                        album_count=item.get("albumCount"),
+                        track_count=None,  # No disponible en getArtists
+                        play_count=None,   # No disponible en getArtists
+                        genre=None,        # No disponible en getArtists
+                        image_url=None
+                    )
+                    artists.append(artist)
+            
+            print(f"✅ Obtenidos TODOS los {len(artists)} artistas de Navidrome")
+            return artists
+            
+        except Exception as e:
+            print(f"❌ Error obteniendo todos los artistas: {e}")
+            return []
+    
+    async def get_all_albums(self) -> List[Album]:
+        """Obtener TODOS los álbumes de la biblioteca sin límite"""
+        try:
+            print(f"📀 Obteniendo TODOS los álbumes de Navidrome...")
+            
+            # Usar getAlbumList2 con un límite muy alto
+            params = {
+                "type": "alphabeticalByName",  # Orden alfabético para obtener todos
+                "size": 10000,  # Límite muy alto
+                "offset": 0
+            }
+            
+            data = await self._make_request("getAlbumList2", params)
+            albums = []
+            
+            album_list = data.get("albumList2", {}).get("album", [])
+            if isinstance(album_list, dict):
+                album_list = [album_list]
+            
+            for item in album_list:
+                album = Album(
+                    id=item.get("id", ""),
+                    name=item.get("name", ""),
+                    artist=item.get("artist", ""),
+                    year=item.get("year"),
+                    genre=item.get("genre"),
+                    track_count=item.get("songCount"),
+                    play_count=None,  # No disponible en getAlbumList2
+                    image_url=None
+                )
+                albums.append(album)
+            
+            print(f"✅ Obtenidos TODOS los {len(albums)} álbumes de Navidrome")
+            return albums
+            
+        except Exception as e:
+            print(f"❌ Error obteniendo todos los álbumes: {e}")
+            return []
+    
+    async def get_all_tracks(self) -> List[Track]:
+        """Obtener TODAS las canciones de la biblioteca sin límite"""
+        try:
+            print(f"🎵 Obteniendo TODAS las canciones de Navidrome...")
+            
+            # Usar getRandomSongs con un límite muy alto
+            params = {
+                "size": 10000,  # Límite muy alto
+                "fromYear": 1900,  # Desde 1900 para incluir todo
+                "toYear": 2030   # Hasta 2030 para incluir todo
+            }
+            
+            data = await self._make_request("getRandomSongs", params)
+            tracks = []
+            
+            songs = data.get("randomSongs", {}).get("song", [])
+            if isinstance(songs, dict):
+                songs = [songs]
+            
+            for item in songs:
+                track = Track(
+                    id=item.get("id", ""),
+                    title=item.get("title", ""),
+                    artist=item.get("artist", ""),
+                    album=item.get("album", ""),
+                    duration=item.get("duration"),
+                    year=item.get("year"),
+                    genre=item.get("genre"),
+                    play_count=item.get("playCount"),
+                    path=item.get("path"),
+                    cover_url=None
+                )
+                tracks.append(track)
+            
+            print(f"✅ Obtenidas TODAS las {len(tracks)} canciones de Navidrome")
+            return tracks
+            
+        except Exception as e:
+            print(f"❌ Error obteniendo todas las canciones: {e}")
+            return []
+    
     async def search(self, query: str, limit: int = 20) -> Dict[str, List]:
         """Buscar en la biblioteca usando Subsonic API"""
         try:

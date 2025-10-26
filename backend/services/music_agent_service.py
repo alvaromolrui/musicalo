@@ -398,6 +398,14 @@ Responde ahora de forma natural y conversacional:"""
         ])
         print(f"🔍 DEBUG - needs_library_search: {needs_library_search}")
         
+        # Detectar consultas informativas que necesitan biblioteca completa
+        is_informational_query = any(phrase in query_lower for phrase in [
+            "qué géneros", "qué artistas", "cuántos álbumes", "lista de", "qué tengo de",
+            "cuántos artistas", "cuántas canciones", "estadísticas de mi biblioteca",
+            "resumen de mi biblioteca", "análisis de mi biblioteca"
+        ])
+        print(f"🔍 DEBUG - is_informational_query: {is_informational_query}")
+        
         needs_listening_history = any(word in query_lower for word in [
             "escuché", "escuchado", "última", "reciente", "top", "favorito", "estadística", "últimos"
         ])
@@ -446,8 +454,52 @@ Responde ahora de forma natural y conversacional:"""
                 print(f"⚠️ Error obteniendo now playing: {e}")
                 data["now_playing"] = []
         
-        # Datos de biblioteca (Navidrome)
-        if needs_library_search:
+        # Datos de biblioteca completa para consultas informativas
+        if is_informational_query:
+            try:
+                print(f"📊 Obteniendo biblioteca completa para consulta informativa...")
+                
+                # Obtener TODA la biblioteca
+                all_artists = await self.navidrome.get_all_artists()
+                all_albums = await self.navidrome.get_all_albums()
+                all_tracks = await self.navidrome.get_all_tracks()
+                
+                # Organizar datos para análisis
+                data["library"]["complete_data"] = {
+                    "artists": all_artists,
+                    "albums": all_albums,
+                    "tracks": all_tracks,
+                    "total_artists": len(all_artists),
+                    "total_albums": len(all_albums),
+                    "total_tracks": len(all_tracks)
+                }
+                
+                # Extraer géneros únicos de todos los tracks
+                genres = set()
+                for track in all_tracks:
+                    if track.genre:
+                        genres.add(track.genre)
+                
+                data["library"]["complete_data"]["genres"] = sorted(list(genres))
+                data["library"]["complete_data"]["total_genres"] = len(genres)
+                
+                # Extraer artistas únicos
+                unique_artists = set()
+                for track in all_tracks:
+                    if track.artist:
+                        unique_artists.add(track.artist)
+                
+                data["library"]["complete_data"]["unique_artists"] = sorted(list(unique_artists))
+                data["library"]["complete_data"]["unique_artists_count"] = len(unique_artists)
+                
+                print(f"✅ Biblioteca completa obtenida: {len(all_artists)} artistas, {len(all_albums)} álbumes, {len(all_tracks)} canciones, {len(genres)} géneros")
+                
+            except Exception as e:
+                print(f"❌ Error obteniendo biblioteca completa: {e}")
+                data["library"]["complete_data"] = None
+        
+        # Datos de biblioteca (Navidrome) - búsquedas específicas
+        elif needs_library_search:
             try:
                 # Si es recomendación por género, buscar el género
                 if is_recommendation_request and detected_genre and not search_term:
@@ -735,10 +787,10 @@ Responde ahora de forma natural y conversacional:"""
             try:
                 print(f"🆕 Buscando lanzamientos recientes...")
                 
-                # Obtener artistas de la biblioteca
+                # Obtener artistas de la biblioteca (TODOS para lanzamientos recientes)
                 library_artists = []
                 if self.navidrome:
-                    artists = await self.navidrome.get_artists(limit=50)
+                    artists = await self.navidrome.get_all_artists()
                     library_artists = [artist.name for artist in artists if artist.name]
                 
                 if library_artists and self.musicbrainz:
@@ -880,12 +932,42 @@ Responde ahora de forma natural y conversacional:"""
                 formatted += "  ⚠️ No hay nada reproduciéndose en este momento\n"
                 formatted += "  💡 Asegúrate de tener reproductores conectados y activos en Navidrome\n\n"
         
-        # SIEMPRE mostrar primero la biblioteca (si hay búsqueda)
+        # SIEMPRE mostrar primero la biblioteca (si hay búsqueda o datos completos)
         if data.get("library"):
             lib = data["library"]
             search_term = lib.get("search_term", "")
             is_genre_search = lib.get("is_genre_search", False)
             detected_genre = lib.get("detected_genre", "")
+            
+            # Si hay datos completos de biblioteca (consultas informativas)
+            if lib.get("complete_data"):
+                complete_data = lib["complete_data"]
+                formatted += f"\n📚 === BIBLIOTECA COMPLETA ===\n"
+                formatted += f"📊 <b>ESTADÍSTICAS GENERALES:</b>\n"
+                formatted += f"• <b>Total de artistas:</b> {complete_data['total_artists']}\n"
+                formatted += f"• <b>Total de álbumes:</b> {complete_data['total_albums']}\n"
+                formatted += f"• <b>Total de canciones:</b> {complete_data['total_tracks']}\n"
+                formatted += f"• <b>Total de géneros:</b> {complete_data['total_genres']}\n\n"
+                
+                # Mostrar géneros únicos
+                if complete_data.get("genres"):
+                    formatted += f"🎸 <b>GÉNEROS EN TU BIBLIOTECA ({complete_data['total_genres']}):</b>\n"
+                    for i, genre in enumerate(complete_data["genres"][:20], 1):  # Mostrar primeros 20
+                        formatted += f"  {i}. {genre}\n"
+                    if complete_data['total_genres'] > 20:
+                        formatted += f"  ... y {complete_data['total_genres'] - 20} géneros más\n"
+                    formatted += "\n"
+                
+                # Mostrar artistas únicos (primeros 30)
+                if complete_data.get("unique_artists"):
+                    formatted += f"🎤 <b>ARTISTAS EN TU BIBLIOTECA ({complete_data['unique_artists_count']}):</b>\n"
+                    for i, artist in enumerate(complete_data["unique_artists"][:30], 1):  # Mostrar primeros 30
+                        formatted += f"  {i}. {artist}\n"
+                    if complete_data['unique_artists_count'] > 30:
+                        formatted += f"  ... y {complete_data['unique_artists_count'] - 30} artistas más\n"
+                    formatted += "\n"
+                
+                formatted += f"💡 <b>NOTA:</b> Esta es información completa de toda tu biblioteca musical\n\n"
             
             if lib.get("search_results"):
                 results = lib["search_results"]
