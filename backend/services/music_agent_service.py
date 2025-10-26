@@ -403,7 +403,9 @@ Responde ahora de forma natural y conversacional:"""
             "qué géneros", "qué artistas", "cuántos álbumes", "lista de", "qué tengo de",
             "cuántos artistas", "cuántas canciones", "estadísticas de mi biblioteca",
             "resumen de mi biblioteca", "análisis de mi biblioteca", "que hay de",
-            "qué hay de", "tengo de", "tienes de", "en mi biblioteca", "de mi biblioteca"
+            "qué hay de", "tengo de", "tienes de", "en mi biblioteca", "de mi biblioteca",
+            "que tengo de", "qué tengo de", "tengo de la", "tengo del", "tengo de los",
+            "tengo de las", "tienes de la", "tienes del", "tienes de los", "tienes de las"
         ])
         print(f"🔍 DEBUG - is_informational_query: {is_informational_query}")
         
@@ -520,6 +522,35 @@ Responde ahora de forma natural y conversacional:"""
                     }
                     
                     print(f"✅ Filtrado por '{detected_genre}': {len(genre_tracks)} canciones, {len(genre_albums)} álbumes, {len(genre_artists)} artistas")
+                
+                # Si hay un artista específico mencionado en la consulta, filtrar por ese artista
+                artist_mentioned = self._extract_artist_from_query(query)
+                if artist_mentioned:
+                    print(f"🎤 Filtrando biblioteca completa por artista: '{artist_mentioned}'")
+                    
+                    # Buscar artista por nombre (búsqueda flexible)
+                    matching_artists = []
+                    for artist in all_artists:
+                        if artist_mentioned.lower() in artist.name.lower() or artist.name.lower() in artist_mentioned.lower():
+                            matching_artists.append(artist)
+                    
+                    # Filtrar tracks del artista
+                    artist_tracks = [track for track in all_tracks if track.artist and artist_mentioned.lower() in track.artist.lower()]
+                    
+                    # Filtrar álbumes del artista
+                    artist_albums = [album for album in all_albums if album.artist and artist_mentioned.lower() in album.artist.lower()]
+                    
+                    data["library"]["complete_data"]["filtered_by_artist"] = {
+                        "artist": artist_mentioned,
+                        "matching_artists": matching_artists,
+                        "tracks": artist_tracks,
+                        "albums": artist_albums,
+                        "total_tracks": len(artist_tracks),
+                        "total_albums": len(artist_albums),
+                        "total_matching_artists": len(matching_artists)
+                    }
+                    
+                    print(f"✅ Filtrado por '{artist_mentioned}': {len(artist_tracks)} canciones, {len(artist_albums)} álbumes, {len(matching_artists)} artistas coincidentes")
                 
                 print(f"✅ Biblioteca completa obtenida: {len(all_artists)} artistas, {len(all_albums)} álbumes, {len(all_tracks)} canciones, {len(genres)} géneros")
                 
@@ -1026,6 +1057,39 @@ Responde ahora de forma natural y conversacional:"""
                             formatted += f"  ... y {filtered['total_albums'] - 15} álbumes más\n"
                         formatted += "\n"
                 
+                # Si hay datos filtrados por artista, mostrarlos
+                if complete_data.get("filtered_by_artist"):
+                    filtered = complete_data["filtered_by_artist"]
+                    formatted += f"\n🎤 <b>FILTRADO POR ARTISTA: {filtered['artist'].upper()}</b>\n"
+                    formatted += f"📊 <b>ESTADÍSTICAS DE {filtered['artist'].upper()}:</b>\n"
+                    formatted += f"• <b>Artistas coincidentes:</b> {filtered['total_matching_artists']}\n"
+                    formatted += f"• <b>Álbumes:</b> {filtered['total_albums']}\n"
+                    formatted += f"• <b>Canciones:</b> {filtered['total_tracks']}\n\n"
+                    
+                    # Mostrar artistas coincidentes
+                    if filtered.get("matching_artists"):
+                        formatted += f"🎤 <b>ARTISTAS COINCIDENTES:</b>\n"
+                        for i, artist in enumerate(filtered["matching_artists"][:10], 1):
+                            formatted += f"  {i}. {artist.name}"
+                            if artist.album_count:
+                                formatted += f" ({artist.album_count} álbumes)"
+                            formatted += "\n"
+                        if filtered['total_matching_artists'] > 10:
+                            formatted += f"  ... y {filtered['total_matching_artists'] - 10} artistas más\n"
+                        formatted += "\n"
+                    
+                    # Mostrar álbumes del artista
+                    if filtered.get("albums"):
+                        formatted += f"📀 <b>ÁLBUMES DE {filtered['artist'].upper()}:</b>\n"
+                        for i, album in enumerate(filtered["albums"][:15], 1):
+                            formatted += f"  {i}. {album.name}"
+                            if album.year:
+                                formatted += f" ({album.year})"
+                            formatted += "\n"
+                        if filtered['total_albums'] > 15:
+                            formatted += f"  ... y {filtered['total_albums'] - 15} álbumes más\n"
+                        formatted += "\n"
+                
                 formatted += f"💡 <b>NOTA:</b> Esta es información completa de toda tu biblioteca musical\n\n"
             
             if lib.get("search_results"):
@@ -1500,6 +1564,32 @@ Responde ahora de forma natural y conversacional:"""
         print(f"🔍 Generadas {len(variations)} variaciones para '{search_term}'")
         return variations
     
+    def _extract_artist_from_query(self, query: str) -> Optional[str]:
+        """Extraer nombre de artista de consultas como 'que tengo de X'"""
+        import re
+        
+        # Patrones para extraer artista
+        patterns = [
+            r'que tengo de (?:la |el |los |las )?([^?]+)',
+            r'qué tengo de (?:la |el |los |las )?([^?]+)',
+            r'tengo de (?:la |el |los |las )?([^?]+)',
+            r'tienes de (?:la |el |los |las )?([^?]+)',
+            r'de (?:la |el |los |las )?([^?]+) en mi biblioteca',
+            r'de (?:la |el |los |las )?([^?]+) tengo'
+        ]
+        
+        query_lower = query.lower()
+        for pattern in patterns:
+            match = re.search(pattern, query_lower)
+            if match:
+                artist_name = match.group(1).strip()
+                # Limpiar caracteres extra
+                artist_name = re.sub(r'[?¿!¡.,;:]', '', artist_name).strip()
+                if artist_name and len(artist_name) > 1:
+                    return artist_name
+        
+        return None
+
     def _extract_search_term(self, query: str) -> str:
         """Extraer el término de búsqueda real de una consulta en lenguaje natural
         

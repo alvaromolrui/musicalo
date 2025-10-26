@@ -283,12 +283,14 @@ class EnhancedIntentDetector:
                         continue
                     
                     # Validar y enriquecer con análisis local
+                    logger.debug(f"🔍 Intent_data type: {type(intent_data)}, content: {intent_data}")
                     enriched_intent = self._enrich_intent_data(
                         intent_data, 
                         sentiment, 
                         context, 
                         music_context
                     )
+                    logger.debug(f"🔍 Enriched_intent type: {type(enriched_intent)}, content: {enriched_intent}")
                     
                     logger.info(f"✅ Intención detectada: {enriched_intent.get('intent')} (confianza: {enriched_intent.get('confidence', 0)})")
                     return enriched_intent
