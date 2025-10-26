@@ -13,6 +13,7 @@ from services.playlist_service import PlaylistService
 from services.music_agent_service import MusicAgentService
 from services.conversation_manager import ConversationManager
 from services.intent_detector import IntentDetector
+from services.enhanced_intent_detector import EnhancedIntentDetector
 from services.system_prompts import SystemPrompts
 from services.analytics_system import analytics_system
 from functools import wraps
@@ -30,6 +31,7 @@ class TelegramService:
         # Nuevos componentes conversacionales
         self.conversation_manager = ConversationManager()
         self.intent_detector = IntentDetector()
+        self.enhanced_intent_detector = EnhancedIntentDetector()
         
         # Configurar lista de usuarios permitidos
         allowed_ids_str = os.getenv("TELEGRAM_ALLOWED_USER_IDS", "")
@@ -1148,6 +1150,71 @@ Sé todo lo detallado que quieras:
             await update.message.reply_text(f"❌ Error obteniendo analytics: {str(e)}")
     
     @_check_authorization
+    @track_analytics("insights")
+    async def insights_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Comando /insights - Mostrar insights de aprendizaje personalizado"""
+        user_id = update.effective_user.id
+        
+        await update.message.reply_text("🧠 Analizando tus patrones de escucha...")
+        
+        try:
+            # Obtener insights de aprendizaje
+            insights = await self.ai.get_user_learning_insights(user_id)
+            
+            if "error" in insights:
+                await update.message.reply_text(f"❌ Error obteniendo insights: {insights['error']}")
+                return
+            
+            # Formatear respuesta
+            text = "🧠 <b>Insights de Aprendizaje Personalizado</b>\n\n"
+            
+            # Score de personalización
+            personalization_score = insights.get('personalization_score', 0)
+            text += f"🎯 <b>Nivel de personalización:</b> {personalization_score:.1%}\n"
+            
+            # Preferencias detectadas
+            preferences = insights.get('preferences', {})
+            if preferences:
+                text += f"\n📊 <b>Preferencias detectadas:</b>\n"
+                for feature, values in preferences.items():
+                    if values:
+                        top_values = values[:3]  # Top 3
+                        text += f"• <b>{feature.title()}:</b> {', '.join([v[0] for v in top_values])}\n"
+            
+            # Patrones detectados
+            patterns = insights.get('patterns', [])
+            if patterns:
+                text += f"\n🔍 <b>Patrones detectados:</b>\n"
+                for pattern in patterns:
+                    pattern_type = pattern.get('type', '').replace('_', ' ').title()
+                    confidence = pattern.get('confidence', 0)
+                    text += f"• {pattern_type}: {confidence:.1%} confianza\n"
+            
+            # Sugerencias de mejora
+            suggestions = insights.get('improvement_suggestions', [])
+            if suggestions:
+                text += f"\n💡 <b>Sugerencias:</b>\n"
+                for suggestion in suggestions:
+                    text += f"• {suggestion}\n"
+            
+            # Estadísticas
+            total_feedback = insights.get('total_feedback', 0)
+            text += f"\n📈 <b>Estadísticas:</b>\n"
+            text += f"• Interacciones registradas: {total_feedback}\n"
+            text += f"• Última actualización: {insights.get('last_updated', 'N/A')}\n"
+            
+            if personalization_score < 0.3:
+                text += f"\n💡 <i>Tip: Interactúa más con las recomendaciones (❤️/👎) para mejorar la personalización</i>"
+            
+            await update.message.reply_text(text, parse_mode='HTML')
+            
+        except Exception as e:
+            print(f"❌ Error en insights_command: {e}")
+            import traceback
+            traceback.print_exc()
+            await update.message.reply_text(f"❌ Error obteniendo insights: {str(e)}")
+    
+    @_check_authorization
     async def _handle_conversational_query(self, update: Update, user_message: str):
         """Manejar consultas conversacionales usando el agente musical"""
         try:
@@ -1209,12 +1276,32 @@ Sé todo lo detallado que quieras:
             if data.startswith("like_"):
                 print("   ➜ Procesando 'like'")
                 track_id = data.split("_", 1)[1]
+                
+                # Procesar feedback de aprendizaje
+                user_id = query.from_user.id
+                await self.ai.process_recommendation_feedback(
+                    user_id=user_id,
+                    recommendation_id=track_id,
+                    feedback_type="like",
+                    recommendation_context={"timestamp": datetime.now().isoformat()}
+                )
+                
                 await query.edit_message_text("❤️ ¡Gracias! He registrado que te gusta esta recomendación.")
                 print("   ✅ Like procesado")
                 
             elif data.startswith("dislike_"):
                 print("   ➜ Procesando 'dislike'")
                 track_id = data.split("_", 1)[1]
+                
+                # Procesar feedback de aprendizaje
+                user_id = query.from_user.id
+                await self.ai.process_recommendation_feedback(
+                    user_id=user_id,
+                    recommendation_id=track_id,
+                    feedback_type="dislike",
+                    recommendation_context={"timestamp": datetime.now().isoformat()}
+                )
+                
                 await query.edit_message_text("👎 Entendido. Evitaré recomendaciones similares.")
                 print("   ✅ Dislike procesado")
                 
@@ -1570,8 +1657,8 @@ Sé todo lo detallado que quieras:
                 except Exception as e:
                     print(f"⚠️ No se pudo obtener contexto: {e}")
             
-            # Detectar intención usando IntentDetector
-            intent_data = await self.intent_detector.detect_intent(
+            # Detectar intención usando EnhancedIntentDetector
+            intent_data = await self.enhanced_intent_detector.detect_intent(
                 user_message,
                 session_context=session.get_context_for_ai(),
                 user_stats=user_stats

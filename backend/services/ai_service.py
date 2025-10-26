@@ -11,6 +11,7 @@ from services.listenbrainz_service import ListenBrainzService
 from services.musicbrainz_service import MusicBrainzService
 from services.cache_manager import cache_manager, cached
 from services.analytics_system import analytics_system
+from services.adaptive_learning_system import adaptive_learning_system
 
 class MusicRecommendationService:
     def __init__(self):
@@ -34,7 +35,7 @@ class MusicRecommendationService:
         self._library_artists_cache_time = 0
         self._cache_ttl = 300  # 5 minutos
         
-        print("✅ Servicio de recomendaciones usando ListenBrainz + MusicBrainz")
+        print("✅ Servicio de recomendaciones usando ListenBrainz + MusicBrainz + Aprendizaje Adaptativo")
     
     async def _get_library_artists_cached(self) -> set:
         """Obtener lista de artistas de biblioteca con caché mejorado
@@ -2666,3 +2667,86 @@ Números de artistas en {language_name}:"""
         indices = [int(n) for n in numbers if int(n) < 1000]  # Filtrar números muy grandes
         
         return indices
+    
+    async def process_recommendation_feedback(
+        self, 
+        user_id: int, 
+        recommendation_id: str, 
+        feedback_type: str,
+        recommendation_context: Dict[str, Any] = None
+    ):
+        """Procesar feedback del usuario sobre una recomendación"""
+        try:
+            await adaptive_learning_system.process_feedback(
+                user_id=user_id,
+                recommendation_id=recommendation_id,
+                feedback_type=feedback_type,
+                context=recommendation_context
+            )
+            logger.debug(f"📚 Feedback procesado: {user_id} - {feedback_type}")
+        except Exception as e:
+            logger.error(f"❌ Error procesando feedback: {e}")
+    
+    async def get_personalized_weights(self, user_id: int, features: Dict[str, Any]) -> Dict[str, float]:
+        """Obtener pesos personalizados para recomendaciones basados en aprendizaje"""
+        try:
+            return adaptive_learning_system.get_recommendation_weights(user_id, features)
+        except Exception as e:
+            logger.error(f"❌ Error obteniendo pesos personalizados: {e}")
+            return {}
+    
+    async def get_user_learning_insights(self, user_id: int) -> Dict[str, Any]:
+        """Obtener insights de aprendizaje del usuario"""
+        try:
+            return adaptive_learning_system.get_user_insights(user_id)
+        except Exception as e:
+            logger.error(f"❌ Error obteniendo insights de aprendizaje: {e}")
+            return {"error": str(e)}
+    
+    async def _apply_learning_weights(
+        self, 
+        recommendations: List[Recommendation], 
+        user_id: int
+    ) -> List[Recommendation]:
+        """Aplicar pesos de aprendizaje a las recomendaciones"""
+        try:
+            if not recommendations:
+                return recommendations
+            
+            # Obtener pesos personalizados
+            weights = await self.get_personalized_weights(user_id, {})
+            
+            if not weights:
+                return recommendations
+            
+            # Aplicar pesos a las recomendaciones
+            for rec in recommendations:
+                # Extraer características de la recomendación
+                features = {
+                    'artist': rec.track.artist,
+                    'genre': getattr(rec.track, 'genre', ''),
+                    'mood': getattr(rec, 'mood', ''),
+                    'activity': getattr(rec, 'activity', '')
+                }
+                
+                # Calcular peso personalizado
+                personalized_weight = 0.0
+                for feature, value in features.items():
+                    if value and feature in weights:
+                        personalized_weight += weights[feature]
+                
+                # Ajustar confianza con peso personalizado
+                if personalized_weight > 0:
+                    rec.confidence = min(1.0, rec.confidence * (1 + personalized_weight * 0.3))
+                
+                # Agregar información de personalización
+                rec.tags.append(f"personalized:{personalized_weight:.2f}")
+            
+            # Reordenar por confianza ajustada
+            recommendations.sort(key=lambda x: x.confidence, reverse=True)
+            
+            return recommendations
+            
+        except Exception as e:
+            logger.error(f"❌ Error aplicando pesos de aprendizaje: {e}")
+            return recommendations

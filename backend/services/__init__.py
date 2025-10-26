@@ -6,6 +6,8 @@ from .ai_service import MusicRecommendationService
 from .telegram_service import TelegramService
 from .cache_manager import CacheManager, cache_manager, cached
 from .analytics_system import AnalyticsSystem, analytics_system
+from .enhanced_intent_detector import EnhancedIntentDetector
+from .adaptive_learning_system import AdaptiveLearningSystem, adaptive_learning_system
 
 __all__ = [
     'NavidromeService',
@@ -17,5 +19,8 @@ __all__ = [
     'cache_manager',
     'cached',
     'AnalyticsSystem',
-    'analytics_system'
+    'analytics_system',
+    'EnhancedIntentDetector',
+    'AdaptiveLearningSystem',
+    'adaptive_learning_system'
 ]
