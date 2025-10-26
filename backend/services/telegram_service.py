@@ -57,40 +57,40 @@ class TelegramService:
             self.music_service = None
             self.music_service_name = None
             print("⚠️ No hay servicio de scrobbling configurado. Por favor configura LISTENBRAINZ_USERNAME en .env")
-
-
-def track_analytics(interaction_type: str):
-    """Decorador para tracking automático de analytics"""
-    def decorator(func):
-        @wraps(func)
-        async def wrapper(self, update, context, *args, **kwargs):
-            user_id = update.effective_user.id
-            start_time = time.time()
-            success = True
-            error_message = None
-            
-            try:
-                result = await func(self, update, context, *args, **kwargs)
-                return result
-            except Exception as e:
-                success = False
-                error_message = str(e)
-                raise
-            finally:
-                # Calcular duración
-                duration_ms = (time.time() - start_time) * 1000
+    
+    @staticmethod
+    def track_analytics(interaction_type: str):
+        """Decorador para tracking automático de analytics"""
+        def decorator(func):
+            @wraps(func)
+            async def wrapper(self, update, context, *args, **kwargs):
+                user_id = update.effective_user.id
+                start_time = time.time()
+                success = True
+                error_message = None
                 
-                # Tracking de analytics
-                await analytics_system.track_interaction(
-                    user_id=user_id,
-                    interaction_type=interaction_type,
-                    duration_ms=duration_ms,
-                    success=success,
-                    error_message=error_message
-                )
-        
-        return wrapper
-    return decorator
+                try:
+                    result = await func(self, update, context, *args, **kwargs)
+                    return result
+                except Exception as e:
+                    success = False
+                    error_message = str(e)
+                    raise
+                finally:
+                    # Calcular duración
+                    duration_ms = (time.time() - start_time) * 1000
+                    
+                    # Tracking de analytics
+                    await analytics_system.track_interaction(
+                        user_id=user_id,
+                        interaction_type=interaction_type,
+                        duration_ms=duration_ms,
+                        success=success,
+                        error_message=error_message
+                    )
+            
+            return wrapper
+        return decorator
     
     def _is_user_allowed(self, user_id: int) -> bool:
         """Verifica si un usuario está autorizado para usar el bot"""
@@ -123,7 +123,7 @@ def track_analytics(interaction_type: str):
         return wrapper
     
     @_check_authorization
-    @track_analytics("command")
+    @TelegramService.track_analytics("command")
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Comando /start - Bienvenida del bot"""
         welcome_text = """🎵 <b>¡Bienvenido a Musicalo!</b>
@@ -268,7 +268,7 @@ Sé todo lo detallado que quieras:
         await update.message.reply_text(help_text, parse_mode='HTML')
     
     @_check_authorization
-    @track_analytics("recommendation")
+    @TelegramService.track_analytics("recommendation")
     async def recommend_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Comando /recommend - Generar recomendaciones
         
@@ -723,7 +723,7 @@ Sé todo lo detallado que quieras:
             await update.message.reply_text(f"❌ Error obteniendo lanzamientos: {str(e)}")
     
     @_check_authorization
-    @track_analytics("search")
+    @TelegramService.track_analytics("search")
     async def search_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Comando /search - Buscar música con IA
         
@@ -1073,7 +1073,7 @@ Sé todo lo detallado que quieras:
             await update.message.reply_text(f"❌ Error obteniendo información de reproducción: {str(e)}")
     
     @_check_authorization
-    @track_analytics("analytics")
+    @TelegramService.track_analytics("analytics")
     async def analytics_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Comando /analytics - Mostrar métricas del sistema (solo administradores)"""
         user_id = update.effective_user.id
@@ -1150,7 +1150,7 @@ Sé todo lo detallado que quieras:
             await update.message.reply_text(f"❌ Error obteniendo analytics: {str(e)}")
     
     @_check_authorization
-    @track_analytics("insights")
+    @TelegramService.track_analytics("insights")
     async def insights_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Comando /insights - Mostrar insights de aprendizaje personalizado"""
         user_id = update.effective_user.id
@@ -1213,6 +1213,139 @@ Sé todo lo detallado que quieras:
             import traceback
             traceback.print_exc()
             await update.message.reply_text(f"❌ Error obteniendo insights: {str(e)}")
+    
+    @_check_authorization
+    @TelegramService.track_analytics("hybrid")
+    async def hybrid_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Comando /hybrid - Generar recomendaciones híbridas avanzadas"""
+        user_id = update.effective_user.id
+        
+        await update.message.reply_text("🎯 Generando recomendaciones híbridas avanzadas...")
+        
+        try:
+            # Obtener perfil del usuario
+            user_profile = await self._get_user_profile(user_id)
+            if not user_profile:
+                await update.message.reply_text("❌ No se pudo obtener tu perfil. Usa /start primero.")
+                return
+            
+            # Generar recomendaciones híbridas
+            recommendations = await self.ai.generate_hybrid_recommendations(
+                user_profile, user_id, max_recommendations=10
+            )
+            
+            if not recommendations:
+                await update.message.reply_text("❌ No se pudieron generar recomendaciones híbridas.")
+                return
+            
+            # Formatear respuesta
+            text = "🎯 <b>Recomendaciones Híbridas Avanzadas</b>\n\n"
+            
+            for i, rec in enumerate(recommendations[:5], 1):
+                track = rec.track
+                text += f"{i}. <b>{track.title}</b> - {track.artist}\n"
+                text += f"   🎵 {rec.reasoning}\n"
+                text += f"   📊 Confianza: {rec.confidence:.1%}\n"
+                
+                # Mostrar tags de estrategia
+                strategy_tags = [tag for tag in rec.tags if tag.startswith('hybrid:')]
+                if strategy_tags:
+                    strategy = strategy_tags[0].split(':')[1]
+                    text += f"   🔧 Estrategia: {strategy}\n"
+                
+                text += "\n"
+            
+            if len(recommendations) > 5:
+                text += f"... y {len(recommendations) - 5} más\n"
+            
+            text += "\n💡 <i>Estas recomendaciones combinan múltiples estrategias de IA para mayor precisión</i>"
+            
+            await update.message.reply_text(text, parse_mode='HTML')
+            
+        except Exception as e:
+            print(f"❌ Error en hybrid_command: {e}")
+            import traceback
+            traceback.print_exc()
+            await update.message.reply_text(f"❌ Error generando recomendaciones híbridas: {str(e)}")
+    
+    @_check_authorization
+    @TelegramService.track_analytics("profile")
+    async def profile_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Comando /profile - Mostrar perfil avanzado del usuario"""
+        user_id = update.effective_user.id
+        
+        await update.message.reply_text("🧠 Analizando tu perfil musical avanzado...")
+        
+        try:
+            # Obtener perfil del usuario
+            user_profile = await self._get_user_profile(user_id)
+            if not user_profile:
+                await update.message.reply_text("❌ No se pudo obtener tu perfil. Usa /start primero.")
+                return
+            
+            # Analizar perfil avanzado
+            advanced_profile = await self.ai.analyze_advanced_user_profile(user_profile, user_id)
+            
+            if "error" in advanced_profile:
+                await update.message.reply_text(f"❌ Error analizando perfil: {advanced_profile['error']}")
+                return
+            
+            # Formatear respuesta
+            text = "🧠 <b>Tu Perfil Musical Avanzado</b>\n\n"
+            
+            # Personalidad musical
+            personality = advanced_profile.get('personality', {})
+            if personality:
+                text += "🎭 <b>Personalidad Musical:</b>\n"
+                traits = personality.get('traits', {})
+                for trait, score in traits.items():
+                    if score > 0.3:  # Solo mostrar rasgos significativos
+                        text += f"• {trait.replace('_', ' ').title()}: {score:.1%}\n"
+                
+                text += f"\n🔍 <b>Descubrimiento:</b> {personality.get('discovery_rate', 0):.1%}\n"
+                text += f"👥 <b>Influencia Social:</b> {personality.get('social_influence', 0):.1%}\n\n"
+            
+            # Preferencias contextuales
+            contextual_prefs = advanced_profile.get('contextual_preferences', [])
+            if contextual_prefs:
+                text += "🎯 <b>Preferencias Contextuales:</b>\n"
+                for pref in contextual_prefs[:3]:  # Top 3 contextos
+                    context = pref['context'].replace('_', ' ').title()
+                    genres = ', '.join(pref['preferred_genres'][:3])
+                    text += f"• {context}: {genres}\n"
+                text += "\n"
+            
+            # Insights de aprendizaje
+            learning_insights = advanced_profile.get('learning_insights', {})
+            if learning_insights:
+                personalization_score = learning_insights.get('personalization_score', 0)
+                text += f"📊 <b>Nivel de Personalización:</b> {personalization_score:.1%}\n"
+                
+                total_feedback = learning_insights.get('total_feedback', 0)
+                text += f"💬 <b>Interacciones:</b> {total_feedback}\n\n"
+            
+            # Preferencias musicales
+            music_prefs = advanced_profile.get('music_preferences', {})
+            if music_prefs:
+                text += "🎵 <b>Estadísticas Musicales:</b>\n"
+                text += f"• Géneros únicos: {music_prefs.get('genre_diversity', 0)}\n"
+                text += f"• Artistas únicos: {music_prefs.get('artist_diversity', 0)}\n"
+                
+                avg_duration = music_prefs.get('avg_track_duration', 0)
+                if avg_duration > 0:
+                    minutes = int(avg_duration // 60)
+                    seconds = int(avg_duration % 60)
+                    text += f"• Duración promedio: {minutes}:{seconds:02d}\n"
+            
+            text += f"\n🕐 <i>Actualizado: {advanced_profile.get('last_updated', 'N/A')}</i>"
+            
+            await update.message.reply_text(text, parse_mode='HTML')
+            
+        except Exception as e:
+            print(f"❌ Error en profile_command: {e}")
+            import traceback
+            traceback.print_exc()
+            await update.message.reply_text(f"❌ Error analizando perfil: {str(e)}")
     
     @_check_authorization
     async def _handle_conversational_query(self, update: Update, user_message: str):

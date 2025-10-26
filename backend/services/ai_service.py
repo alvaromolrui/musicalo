@@ -12,6 +12,8 @@ from services.musicbrainz_service import MusicBrainzService
 from services.cache_manager import cache_manager, cached
 from services.analytics_system import analytics_system
 from services.adaptive_learning_system import adaptive_learning_system
+from services.hybrid_recommendation_engine import HybridRecommendationEngine, RecommendationStrategy
+from services.advanced_personalization_system import advanced_personalization_system
 
 class MusicRecommendationService:
     def __init__(self):
@@ -35,7 +37,10 @@ class MusicRecommendationService:
         self._library_artists_cache_time = 0
         self._cache_ttl = 300  # 5 minutos
         
-        print("✅ Servicio de recomendaciones usando ListenBrainz + MusicBrainz + Aprendizaje Adaptativo")
+        print("✅ Servicio de recomendaciones usando ListenBrainz + MusicBrainz + Aprendizaje Adaptativo + Motor Híbrido")
+        
+        # Inicializar motor híbrido
+        self.hybrid_engine = HybridRecommendationEngine(self)
     
     async def _get_library_artists_cached(self) -> set:
         """Obtener lista de artistas de biblioteca con caché mejorado
@@ -2750,3 +2755,98 @@ Números de artistas en {language_name}:"""
         except Exception as e:
             logger.error(f"❌ Error aplicando pesos de aprendizaje: {e}")
             return recommendations
+    
+    async def generate_hybrid_recommendations(
+        self, 
+        user_profile: UserProfile, 
+        user_id: int,
+        max_recommendations: int = 20,
+        strategy_preferences: Optional[Dict[str, float]] = None
+    ) -> List[Recommendation]:
+        """Generar recomendaciones usando el motor híbrido"""
+        try:
+            # Convertir preferencias de estrategia si es necesario
+            strategy_weights = None
+            if strategy_preferences:
+                strategy_weights = {}
+                for strategy_name, weight in strategy_preferences.items():
+                    try:
+                        strategy_enum = RecommendationStrategy(strategy_name)
+                        strategy_weights[strategy_enum] = weight
+                    except ValueError:
+                        logger.warning(f"⚠️ Estrategia desconocida: {strategy_name}")
+            
+            # Generar recomendaciones híbridas
+            hybrid_scores = await self.hybrid_engine.generate_hybrid_recommendations(
+                user_profile, user_id, max_recommendations, strategy_weights
+            )
+            
+            # Convertir a formato Recommendation
+            recommendations = []
+            for score in hybrid_scores:
+                recommendation = Recommendation(
+                    track=score.track,
+                    confidence=score.confidence,
+                    reasoning=score.reasoning,
+                    tags=[f"hybrid:{score.strategy.value}", f"score:{score.score:.2f}"]
+                )
+                
+                # Agregar metadatos
+                if score.metadata:
+                    recommendation.tags.extend([f"{k}:{v}" for k, v in score.metadata.items()])
+                
+                recommendations.append(recommendation)
+            
+            logger.info(f"✅ Generadas {len(recommendations)} recomendaciones híbridas")
+            return recommendations
+            
+        except Exception as e:
+            logger.error(f"❌ Error generando recomendaciones híbridas: {e}")
+            # Fallback a recomendaciones normales
+            return await self.generate_recommendations(user_profile)
+    
+    async def analyze_advanced_user_profile(
+        self, 
+        user_profile: UserProfile, 
+        user_id: int,
+        context_data: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """Analizar perfil avanzado del usuario"""
+        try:
+            return await advanced_personalization_system.analyze_user_profile(
+                user_profile, user_id, context_data
+            )
+        except Exception as e:
+            logger.error(f"❌ Error analizando perfil avanzado: {e}")
+            return {"error": str(e)}
+    
+    async def get_contextual_recommendations(
+        self, 
+        user_id: int, 
+        context: str,
+        available_tracks: List[Track]
+    ) -> List[Track]:
+        """Obtener recomendaciones contextuales"""
+        try:
+            return advanced_personalization_system.get_contextual_recommendations(
+                user_id, context, available_tracks
+            )
+        except Exception as e:
+            logger.error(f"❌ Error obteniendo recomendaciones contextuales: {e}")
+            return []
+    
+    def get_hybrid_engine_stats(self) -> Dict[str, Any]:
+        """Obtener estadísticas del motor híbrido"""
+        try:
+            return self.hybrid_engine.get_engine_stats()
+        except Exception as e:
+            logger.error(f"❌ Error obteniendo estadísticas del motor híbrido: {e}")
+            return {"error": str(e)}
+    
+    def get_personalization_stats(self) -> Dict[str, Any]:
+        """Obtener estadísticas del sistema de personalización"""
+        try:
+            return advanced_personalization_system.get_system_stats()
+        except Exception as e:
+            logger.error(f"❌ Error obteniendo estadísticas de personalización: {e}")
+            return {"error": str(e)}
