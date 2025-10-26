@@ -12,9 +12,12 @@ import numpy as np
 from collections import defaultdict
 
 from models.schemas import UserProfile, Recommendation, Track
-from services.ai_service import MusicRecommendationService
 from services.adaptive_learning_system import adaptive_learning_system
 from services.cache_manager import cached
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from services.ai_service import MusicRecommendationService
 
 logger = logging.getLogger(__name__)
 
@@ -292,7 +295,7 @@ class DiversityEngine:
 class HybridRecommendationEngine:
     """Motor principal de recomendaciones híbridas"""
     
-    def __init__(self, ai_service: MusicRecommendationService):
+    def __init__(self, ai_service: "MusicRecommendationService"):
         self.ai_service = ai_service
         self.collaborative_filtering = CollaborativeFiltering()
         self.content_based_filtering = ContentBasedFiltering()

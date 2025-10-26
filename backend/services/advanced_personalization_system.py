@@ -16,6 +16,10 @@ import math
 from models.schemas import UserProfile, Track, ScrobbleTrack, ScrobbleArtist
 from services.adaptive_learning_system import adaptive_learning_system
 from services.cache_manager import cached
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from services.ai_service import MusicRecommendationService
 
 logger = logging.getLogger(__name__)
 
