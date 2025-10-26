@@ -45,6 +45,14 @@ class MusicRecommendationService:
         # Inicializar motor híbrido
         self.hybrid_engine = HybridRecommendationEngine(self)
     
+    async def initialize_monitoring(self):
+        """Inicializar sistemas de monitoreo después de que el event loop esté ejecutándose"""
+        try:
+            await advanced_monitoring_system.start_monitoring()
+            print("✅ Sistema de monitoreo avanzado iniciado")
+        except Exception as e:
+            print(f"⚠️ Error iniciando monitoreo avanzado: {e}")
+    
     async def _get_library_artists_cached(self) -> set:
         """Obtener lista de artistas de biblioteca con caché mejorado
         

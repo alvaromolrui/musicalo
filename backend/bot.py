@@ -70,9 +70,21 @@ class MusicAgentBot:
                 "❌ Ocurrió un error inesperado. Intenta de nuevo más tarde."
             )
     
+    async def post_init(self, application):
+        """Inicializar sistemas después de que el bot esté listo"""
+        try:
+            await self.telegram_service.ai.initialize_monitoring()
+            logger.info("✅ Sistemas de monitoreo inicializados")
+        except Exception as e:
+            logger.warning(f"⚠️ Error inicializando monitoreo: {e}")
+    
     def run_polling(self):
         """Ejecutar bot en modo polling"""
         logger.info("Iniciando bot en modo polling...")
+        
+        # Registrar callback de post-inicialización
+        self.application.post_init = self.post_init
+        
         self.application.run_polling(
             allowed_updates=Update.ALL_TYPES,
             drop_pending_updates=True

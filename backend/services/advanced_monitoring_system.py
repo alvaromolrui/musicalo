@@ -355,10 +355,14 @@ class AdvancedMonitoringSystem:
         
         if self.monitoring_enabled:
             logger.info("✅ AdvancedMonitoringSystem habilitado")
-            # Iniciar recolección automática de métricas
-            asyncio.create_task(self._start_metrics_collection())
         else:
             logger.info("⚠️ AdvancedMonitoringSystem deshabilitado")
+    
+    async def start_monitoring(self):
+        """Iniciar el monitoreo (llamar después de que el event loop esté ejecutándose)"""
+        if self.monitoring_enabled:
+            # Iniciar recolección automática de métricas
+            asyncio.create_task(self._start_metrics_collection())
     
     async def _start_metrics_collection(self):
         """Iniciar recolección automática de métricas"""
