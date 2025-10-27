@@ -266,6 +266,12 @@ IMPORTANTE - "Playlist con música DE [artistas]":
 - VERIFICA que cada canción sea del artista correcto
 - Si NO tienes algunos artistas, menciona cuáles SÍ tienes y cuáles NO
 
+IMPORTANTE - CREACIÓN DE PLAYLISTS:
+- Cuando el usuario pida crear una playlist, el sistema AUTOMÁTICAMENTE creará la playlist en Navidrome
+- Tu respuesta debe incluir las canciones que se van a agregar a la playlist
+- Sé específico sobre qué canciones se incluirán y por qué
+- Si no hay suficientes canciones, explica por qué y sugiere alternativas
+
 FORMATO DE RESPUESTA:
 - Si hay álbumes en biblioteca DEL ARTISTA CORRECTO → Lista y recomienda
 - Si hay artistas en biblioteca → Lista los artistas directamente
@@ -283,6 +289,24 @@ Responde ahora de forma natural y conversacional:"""
             
             print(f"✅ Agente musical: Respuesta generada ({len(answer)} caracteres)")
             
+            # 6. NUEVO: Si es una petición de playlist, crear la playlist en Navidrome
+            playlist_created = None
+            is_playlist_request = any(phrase in user_question.lower() for phrase in [
+                "playlist", "crea una playlist", "crear playlist", "haz una playlist", 
+                "hacer playlist", "genera playlist", "generar playlist"
+            ])
+            
+            if is_playlist_request:
+                playlist_created = await self._create_playlist_in_navidrome(
+                    user_question, data_context, user_id
+                )
+                
+                # Si se creó la playlist, agregar información al mensaje
+                if playlist_created:
+                    answer += f"\n\n🎵 <b>Playlist creada en Navidrome:</b> {playlist_created['name']}\n"
+                    answer += f"📝 <b>Canciones incluidas:</b> {playlist_created['track_count']}\n"
+                    answer += f"🆔 <b>ID de playlist:</b> {playlist_created['id']}"
+            
             # Guardar respuesta en historial de conversación
             session.add_message("assistant", answer)
             
@@ -291,7 +315,8 @@ Responde ahora de forma natural y conversacional:"""
                 "data_used": data_context,
                 "links": self._extract_links(data_context),
                 "success": True,
-                "session_id": user_id
+                "session_id": user_id,
+                "playlist_created": playlist_created
             }
         
         except Exception as e:
@@ -1934,6 +1959,160 @@ Responde ahora de forma natural y conversacional:"""
         
         return full
     
+    async def _create_playlist_in_navidrome(
+        self, 
+        user_question: str, 
+        data_context: Dict[str, Any], 
+        user_id: int
+    ) -> Optional[Dict[str, Any]]:
+        """Crear playlist en Navidrome basada en la consulta del usuario
+        
+        Args:
+            user_question: Pregunta original del usuario
+            data_context: Datos recopilados de la consulta
+            user_id: ID del usuario
+            
+        Returns:
+            Diccionario con información de la playlist creada o None si falla
+        """
+        try:
+            print(f"🎵 Creando playlist en Navidrome para: {user_question}")
+            
+            # Extraer nombre de la playlist de la consulta
+            playlist_name = self._extract_playlist_name(user_question)
+            
+            # Obtener canciones de los datos de contexto
+            song_ids = self._extract_song_ids_from_context(data_context)
+            
+            if not song_ids:
+                print("⚠️ No se encontraron canciones para la playlist")
+                return None
+            
+            # Limitar a 50 canciones máximo (límite de Navidrome)
+            if len(song_ids) > 50:
+                song_ids = song_ids[:50]
+                print(f"⚠️ Limitando playlist a 50 canciones (tenías {len(song_ids)})")
+            
+            # Crear playlist en Navidrome
+            playlist_id = await self.navidrome.create_playlist(playlist_name, song_ids)
+            
+            if playlist_id:
+                print(f"✅ Playlist creada exitosamente: {playlist_name} (ID: {playlist_id})")
+                return {
+                    "id": playlist_id,
+                    "name": playlist_name,
+                    "track_count": len(song_ids),
+                    "song_ids": song_ids
+                }
+            else:
+                print("❌ No se pudo crear la playlist en Navidrome")
+                return None
+                
+        except Exception as e:
+            print(f"❌ Error creando playlist en Navidrome: {e}")
+            return None
+    
+    def _extract_playlist_name(self, user_question: str) -> str:
+        """Extraer nombre de playlist de la consulta del usuario
+        
+        Args:
+            user_question: Consulta original del usuario
+            
+        Returns:
+            Nombre de la playlist
+        """
+        import re
+        
+        # Patrones para extraer nombre de playlist
+        patterns = [
+            r'playlist\s+(?:de\s+|con\s+|para\s+)?(.+?)(?:\s+\d+\s+canciones?)?$',
+            r'crea\s+(?:una\s+)?playlist\s+(?:de\s+|con\s+|para\s+)?(.+?)(?:\s+\d+\s+canciones?)?$',
+            r'crear\s+(?:una\s+)?playlist\s+(?:de\s+|con\s+|para\s+)?(.+?)(?:\s+\d+\s+canciones?)?$',
+            r'haz\s+(?:una\s+)?playlist\s+(?:de\s+|con\s+|para\s+)?(.+?)(?:\s+\d+\s+canciones?)?$',
+            r'hacer\s+(?:una\s+)?playlist\s+(?:de\s+|con\s+|para\s+)?(.+?)(?:\s+\d+\s+canciones?)?$',
+            r'genera\s+(?:una\s+)?playlist\s+(?:de\s+|con\s+|para\s+)?(.+?)(?:\s+\d+\s+canciones?)?$',
+            r'generar\s+(?:una\s+)?playlist\s+(?:de\s+|con\s+|para\s+)?(.+?)(?:\s+\d+\s+canciones?)?$'
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, user_question.lower())
+            if match:
+                name = match.group(1).strip()
+                # Limpiar caracteres extra
+                name = re.sub(r'[?¿!¡.,;:]', '', name).strip()
+                if name and len(name) > 2:
+                    return name.title()
+        
+        # Fallback: usar parte de la consulta
+        words = user_question.split()
+        if len(words) > 2:
+            # Tomar las últimas palabras como nombre
+            return ' '.join(words[-3:]).title()
+        
+        return "Playlist Musicalo"
+    
+    def _extract_song_ids_from_context(self, data_context: Dict[str, Any]) -> List[str]:
+        """Extraer IDs de canciones de los datos de contexto
+        
+        Args:
+            data_context: Datos recopilados de la consulta
+            
+        Returns:
+            Lista de IDs de canciones
+        """
+        song_ids = []
+        
+        # Buscar en resultados de biblioteca
+        if data_context.get("library", {}).get("search_results"):
+            results = data_context["library"]["search_results"]
+            
+            # Priorizar tracks si están disponibles
+            if results.get("tracks"):
+                for track in results["tracks"]:
+                    if hasattr(track, 'id') and track.id:
+                        song_ids.append(track.id)
+            
+            # Si no hay tracks, buscar en álbumes y obtener sus tracks
+            elif results.get("albums"):
+                print(f"🎵 Obteniendo tracks de {len(results['albums'])} álbumes...")
+                for album in results["albums"][:5]:  # Limitar a 5 álbumes para evitar demasiadas canciones
+                    try:
+                        album_tracks = await self.navidrome.get_album_tracks(album.id)
+                        for track in album_tracks:
+                            if hasattr(track, 'id') and track.id:
+                                song_ids.append(track.id)
+                    except Exception as e:
+                        print(f"⚠️ Error obteniendo tracks del álbum {album.name}: {e}")
+                        continue
+        
+        # Buscar en datos completos de biblioteca
+        if data_context.get("library", {}).get("complete_data"):
+            complete_data = data_context["library"]["complete_data"]
+            
+            # Si hay datos filtrados por artista
+            if complete_data.get("filtered_by_artist"):
+                filtered = complete_data["filtered_by_artist"]
+                for track in filtered.get("tracks", []):
+                    if hasattr(track, 'id') and track.id:
+                        song_ids.append(track.id)
+            
+            # Si hay tracks en los datos completos
+            elif complete_data.get("tracks"):
+                for track in complete_data["tracks"][:20]:  # Limitar a 20
+                    if hasattr(track, 'id') and track.id:
+                        song_ids.append(track.id)
+        
+        # Eliminar duplicados manteniendo el orden
+        seen = set()
+        unique_song_ids = []
+        for song_id in song_ids:
+            if song_id not in seen:
+                seen.add(song_id)
+                unique_song_ids.append(song_id)
+        
+        print(f"🎵 Extraídos {len(unique_song_ids)} IDs de canciones para la playlist")
+        return unique_song_ids
+
     async def close(self):
         """Cerrar todas las conexiones"""
         try:
