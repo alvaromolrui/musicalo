@@ -2233,7 +2233,7 @@ Responde ahora de forma natural y conversacional:"""
         return list(set(mentioned_artists))
     
     async def _search_songs_by_criteria(self, criteria: Dict[str, Any]) -> List[str]:
-        """Buscar canciones usando criterios específicos
+        """Buscar canciones usando criterios específicos con validación inteligente
         
         Args:
             criteria: Criterios de búsqueda
@@ -2244,83 +2244,369 @@ Responde ahora de forma natural y conversacional:"""
         song_ids = []
         
         try:
-            # PRIORIDAD 1: Buscar por artistas mencionados específicamente
+            # PRIORIDAD 1: Buscar por artistas mencionados con validación inteligente
             if criteria.get("mentioned_artists"):
-                print(f"🎵 Buscando canciones de artistas mencionados: {criteria['mentioned_artists']}")
+                print(f"🎵 Validando artistas mencionados: {criteria['mentioned_artists']}")
+                
                 for artist_name in criteria["mentioned_artists"]:
                     try:
-                        # Buscar específicamente por el artista
-                        artist_results = await self.navidrome.search(artist_name, limit=20)
+                        # VALIDACIÓN INTELIGENTE: Verificar si el artista realmente corresponde con los criterios
+                        validation_result = await self._validate_artist_against_criteria(artist_name, criteria)
                         
-                        if artist_results.get("tracks"):
-                            tracks = artist_results["tracks"]
-                            print(f"🎵 Encontradas {len(tracks)} canciones de {artist_name}")
+                        if validation_result["is_relevant"]:
+                            print(f"✅ {artist_name}: RELEVANTE ({validation_result['confidence']:.1f}%) - {validation_result['reason']}")
                             
-                            # Filtrar por criterios adicionales si es necesario
-                            filtered_tracks = self._filter_tracks_by_criteria(tracks, criteria)
-                            
-                            for track in filtered_tracks:
-                                if hasattr(track, 'id') and track.id:
-                                    song_ids.append(track.id)
-                        
-                        elif artist_results.get("albums"):
-                            albums = artist_results["albums"]
-                            print(f"🎵 Encontrados {len(albums)} álbumes de {artist_name}")
-                            
-                            # Obtener tracks de álbumes del artista
-                            for album in albums[:3]:  # Limitar a 3 álbumes por artista
-                                try:
-                                    album_tracks = await self.navidrome.get_album_tracks(album.id)
-                                    filtered_tracks = self._filter_tracks_by_criteria(album_tracks, criteria)
-                                    
-                                    for track in filtered_tracks:
-                                        if hasattr(track, 'id') and track.id:
-                                            song_ids.append(track.id)
-                                except Exception as e:
-                                    print(f"⚠️ Error obteniendo tracks del álbum {album.name}: {e}")
-                                    continue
+                            # Buscar canciones del artista validado
+                            artist_songs = await self._get_artist_songs_with_validation(artist_name, criteria, validation_result)
+                            song_ids.extend(artist_songs)
+                        else:
+                            print(f"❌ {artist_name}: NO RELEVANTE ({validation_result['confidence']:.1f}%) - {validation_result['reason']}")
                     
                     except Exception as e:
-                        print(f"⚠️ Error buscando artista {artist_name}: {e}")
+                        print(f"⚠️ Error validando artista {artist_name}: {e}")
                         continue
             
-            # PRIORIDAD 2: Búsqueda general por término si no hay artistas específicos o necesitamos más canciones
-            if len(song_ids) < 10:  # Si tenemos menos de 10 canciones de artistas específicos
+            # PRIORIDAD 2: Búsqueda inteligente por género usando MusicBrainz
+            if len(song_ids) < 15:  # Si necesitamos más canciones
+                genre = criteria.get("genre")
+                if genre:
+                    print(f"🎵 Búsqueda inteligente por género '{genre}' usando MusicBrainz...")
+                    intelligent_songs = await self._find_genre_artists_intelligently(genre, criteria)
+                    song_ids.extend(intelligent_songs)
+            
+            # PRIORIDAD 3: Búsqueda general por término si aún necesitamos más canciones
+            if len(song_ids) < 10:
                 search_term = criteria.get("search_term", "")
                 if search_term:
-                    print(f"🎵 Buscando en Navidrome con término general: '{search_term}'")
-                    search_results = await self.navidrome.search(search_term, limit=50)
+                    print(f"🎵 Búsqueda general con término: '{search_term}'")
+                    general_songs = await self._search_general_term(search_term, criteria)
+                    song_ids.extend(general_songs)
+        
+        except Exception as e:
+            print(f"⚠️ Error en búsqueda por criterios: {e}")
+        
+        return song_ids
+    
+    async def _validate_artist_against_criteria(self, artist_name: str, criteria: Dict[str, Any]) -> Dict[str, Any]:
+        """Validar si un artista realmente corresponde con los criterios solicitados
+        
+        Args:
+            artist_name: Nombre del artista a validar
+            criteria: Criterios de validación
+            
+        Returns:
+            Diccionario con resultado de validación
+        """
+        validation_result = {
+            "is_relevant": False,
+            "confidence": 0.0,
+            "reason": "",
+            "details": {}
+        }
+        
+        try:
+            # Preparar filtros para MusicBrainz
+            filters = {}
+            
+            # Filtro por género
+            if criteria.get("genre"):
+                filters["genre"] = criteria["genre"]
+            
+            # Filtro por país/idioma
+            if criteria.get("language") == "spanish":
+                filters["country"] = "ES"  # España
+            elif criteria.get("language") == "english":
+                filters["country"] = "US"  # Estados Unidos (principalmente)
+            
+            # Filtro por años
+            if criteria.get("years"):
+                filters["year_from"] = min(criteria["years"])
+                filters["year_to"] = max(criteria["years"])
+            elif criteria.get("year_range"):
+                year_min, year_max = criteria["year_range"]
+                filters["year_from"] = year_min
+                filters["year_to"] = year_max
+            
+            # Consultar MusicBrainz para validar el artista
+            if self.musicbrainz:
+                mb_result = await self.musicbrainz.verify_artist_metadata(artist_name, filters)
+                
+                if mb_result.get("found"):
+                    validation_result["details"] = mb_result
                     
-                    if search_results.get("tracks"):
-                        tracks = search_results["tracks"]
-                        print(f"🎵 Encontrados {len(tracks)} tracks en búsqueda general")
-                        
-                        # Filtrar tracks por criterios adicionales
-                        filtered_tracks = self._filter_tracks_by_criteria(tracks, criteria)
+                    if mb_result.get("matches"):
+                        validation_result["is_relevant"] = True
+                        validation_result["confidence"] = 85.0
+                        validation_result["reason"] = f"Verificado en MusicBrainz: {mb_result.get('genres', [])}"
+                    else:
+                        validation_result["confidence"] = 15.0
+                        validation_result["reason"] = f"No coincide con criterios en MusicBrainz"
+                else:
+                    validation_result["confidence"] = 30.0
+                    validation_result["reason"] = "Artista no encontrado en MusicBrainz"
+            
+            # Si no hay MusicBrainz o no se encontró, usar validación heurística
+            if not validation_result["details"] or validation_result["confidence"] < 50:
+                heuristic_result = self._validate_artist_heuristically(artist_name, criteria)
+                if heuristic_result["confidence"] > validation_result["confidence"]:
+                    validation_result.update(heuristic_result)
+        
+        except Exception as e:
+            print(f"⚠️ Error validando artista {artist_name}: {e}")
+            validation_result["reason"] = f"Error en validación: {str(e)}"
+        
+        return validation_result
+    
+    def _validate_artist_heuristically(self, artist_name: str, criteria: Dict[str, Any]) -> Dict[str, Any]:
+        """Validación heurística cuando MusicBrainz no está disponible
+        
+        Args:
+            artist_name: Nombre del artista
+            criteria: Criterios de validación
+            
+        Returns:
+            Resultado de validación heurística
+        """
+        artist_lower = artist_name.lower()
+        confidence = 50.0
+        reasons = []
+        
+        # Validación por género
+        if criteria.get("genre"):
+            genre = criteria["genre"]
+            genre_patterns = criteria.get("genre_patterns", [genre])
+            
+            # Buscar patrones del género en el nombre del artista
+            genre_found = any(pattern in artist_lower for pattern in genre_patterns)
+            
+            if genre_found:
+                confidence += 20
+                reasons.append(f"Nombre contiene '{genre}'")
+            else:
+                confidence -= 15
+                reasons.append(f"Nombre no sugiere '{genre}'")
+        
+        # Validación por idioma
+        if criteria.get("language"):
+            language = criteria["language"]
+            
+            if language == "spanish":
+                spanish_indicators = ['ñ', 'á', 'é', 'í', 'ó', 'ú', 'ü']
+                spanish_words = ['los', 'las', 'del', 'de la', 'y']
+                
+                if any(indicator in artist_name for indicator in spanish_indicators):
+                    confidence += 15
+                    reasons.append("Contiene caracteres españoles")
+                elif any(word in artist_lower for word in spanish_words):
+                    confidence += 10
+                    reasons.append("Contiene palabras españolas")
+                else:
+                    confidence -= 10
+                    reasons.append("No sugiere español")
+            
+            elif language == "english":
+                english_indicators = ['the ', 'and ', 'of ', 'in ']
+                
+                if any(indicator in artist_lower for indicator in english_indicators):
+                    confidence += 15
+                    reasons.append("Contiene artículos ingleses")
+                else:
+                    confidence -= 5
+                    reasons.append("No sugiere inglés")
+        
+        # Validación por años (aproximada)
+        if criteria.get("years") or criteria.get("year_range"):
+            # Esta es una validación muy básica, pero puede ayudar
+            confidence += 5
+            reasons.append("Criterios de año aplicados")
+        
+        return {
+            "is_relevant": confidence >= 60,
+            "confidence": min(max(confidence, 0), 100),
+            "reason": "; ".join(reasons),
+            "details": {"method": "heuristic"}
+        }
+    
+    async def _get_artist_songs_with_validation(self, artist_name: str, criteria: Dict[str, Any], validation_result: Dict[str, Any]) -> List[str]:
+        """Obtener canciones de un artista validado
+        
+        Args:
+            artist_name: Nombre del artista
+            criteria: Criterios de búsqueda
+            validation_result: Resultado de validación
+            
+        Returns:
+            Lista de IDs de canciones
+        """
+        song_ids = []
+        
+        try:
+            # Buscar canciones del artista
+            artist_results = await self.navidrome.search(artist_name, limit=20)
+            
+            if artist_results.get("tracks"):
+                tracks = artist_results["tracks"]
+                print(f"🎵 Encontradas {len(tracks)} canciones de {artist_name}")
+                
+                # Aplicar filtrado inteligente
+                filtered_tracks = self._filter_tracks_by_criteria(tracks, criteria)
+                
+                for track in filtered_tracks:
+                    if hasattr(track, 'id') and track.id:
+                        song_ids.append(track.id)
+            
+            elif artist_results.get("albums"):
+                albums = artist_results["albums"]
+                print(f"🎵 Encontrados {len(albums)} álbumes de {artist_name}")
+                
+                # Obtener tracks de álbumes
+                for album in albums[:3]:
+                    try:
+                        album_tracks = await self.navidrome.get_album_tracks(album.id)
+                        filtered_tracks = self._filter_tracks_by_criteria(album_tracks, criteria)
                         
                         for track in filtered_tracks:
                             if hasattr(track, 'id') and track.id:
                                 song_ids.append(track.id)
-                    
-                    elif search_results.get("albums"):
-                        albums = search_results["albums"]
-                        print(f"🎵 Encontrados {len(albums)} álbumes en búsqueda general")
-                        
-                        # Obtener tracks de álbumes y filtrar
-                        for album in albums[:5]:  # Limitar a 5 álbumes
-                            try:
-                                album_tracks = await self.navidrome.get_album_tracks(album.id)
-                                filtered_tracks = self._filter_tracks_by_criteria(album_tracks, criteria)
-                                
-                                for track in filtered_tracks:
-                                    if hasattr(track, 'id') and track.id:
-                                        song_ids.append(track.id)
-                            except Exception as e:
-                                print(f"⚠️ Error obteniendo tracks del álbum {album.name}: {e}")
-                                continue
+                    except Exception as e:
+                        print(f"⚠️ Error obteniendo tracks del álbum {album.name}: {e}")
+                        continue
         
         except Exception as e:
-            print(f"⚠️ Error en búsqueda por criterios: {e}")
+            print(f"⚠️ Error obteniendo canciones de {artist_name}: {e}")
+        
+        return song_ids
+    
+    async def _find_genre_artists_intelligently(self, genre: str, criteria: Dict[str, Any]) -> List[str]:
+        """Encontrar artistas de un género específico usando MusicBrainz
+        
+        Args:
+            genre: Género musical
+            criteria: Criterios adicionales
+            
+        Returns:
+            Lista de IDs de canciones
+        """
+        song_ids = []
+        
+        try:
+            if self.musicbrainz:
+                # Preparar filtros adicionales
+                additional_filters = {}
+                
+                if criteria.get("language") == "spanish":
+                    additional_filters["country"] = "ES"
+                elif criteria.get("language") == "english":
+                    additional_filters["country"] = "US"
+                
+                if criteria.get("year_range"):
+                    year_min, year_max = criteria["year_range"]
+                    additional_filters["year_from"] = year_min
+                    additional_filters["year_to"] = year_max
+                
+                # Obtener artistas de la biblioteca
+                print(f"🎵 Obteniendo artistas de la biblioteca para validar género '{genre}'...")
+                library_artists = await self.navidrome.get_artists(limit=1000)
+                
+                if library_artists:
+                    artist_names = [artist.name for artist in library_artists if hasattr(artist, 'name')]
+                    print(f"🎵 Validando {len(artist_names)} artistas contra género '{genre}'...")
+                    
+                    # Usar MusicBrainz para encontrar artistas que coincidan con el género
+                    matching_artists_data = await self.musicbrainz.find_matching_artists_in_library(
+                        artist_names,
+                        {"genre": genre, **additional_filters},
+                        max_artists=20
+                    )
+                    
+                    if matching_artists_data:
+                        matching_artist_names = set([a["name"].lower() for a in matching_artists_data])
+                        print(f"🎵 Artistas validados para '{genre}': {list(matching_artist_names)}")
+                        
+                        # Buscar canciones de estos artistas validados
+                        for artist_name in matching_artist_names:
+                            try:
+                                artist_results = await self.navidrome.search(artist_name, limit=10)
+                                
+                                if artist_results.get("tracks"):
+                                    tracks = artist_results["tracks"]
+                                    filtered_tracks = self._filter_tracks_by_criteria(tracks, criteria)
+                                    
+                                    for track in filtered_tracks:
+                                        if hasattr(track, 'id') and track.id:
+                                            song_ids.append(track.id)
+                                
+                                elif artist_results.get("albums"):
+                                    albums = artist_results["albums"]
+                                    for album in albums[:2]:  # Limitar a 2 álbumes por artista
+                                        try:
+                                            album_tracks = await self.navidrome.get_album_tracks(album.id)
+                                            filtered_tracks = self._filter_tracks_by_criteria(album_tracks, criteria)
+                                            
+                                            for track in filtered_tracks:
+                                                if hasattr(track, 'id') and track.id:
+                                                    song_ids.append(track.id)
+                                        except Exception as e:
+                                            print(f"⚠️ Error obteniendo tracks del álbum {album.name}: {e}")
+                                            continue
+                            
+                            except Exception as e:
+                                print(f"⚠️ Error buscando canciones de {artist_name}: {e}")
+                                continue
+                        
+                        print(f"🎵 Encontradas {len(song_ids)} canciones de género '{genre}' usando MusicBrainz")
+                    else:
+                        print(f"🎵 No se encontraron artistas de género '{genre}' en la biblioteca")
+        
+        except Exception as e:
+            print(f"⚠️ Error en búsqueda inteligente por género: {e}")
+        
+        return song_ids
+    
+    async def _search_general_term(self, search_term: str, criteria: Dict[str, Any]) -> List[str]:
+        """Búsqueda general por término con filtrado inteligente
+        
+        Args:
+            search_term: Término de búsqueda
+            criteria: Criterios de filtrado
+            
+        Returns:
+            Lista de IDs de canciones
+        """
+        song_ids = []
+        
+        try:
+            search_results = await self.navidrome.search(search_term, limit=50)
+            
+            if search_results.get("tracks"):
+                tracks = search_results["tracks"]
+                print(f"🎵 Encontrados {len(tracks)} tracks en búsqueda general")
+                
+                # Filtrar por criterios
+                filtered_tracks = self._filter_tracks_by_criteria(tracks, criteria)
+                
+                for track in filtered_tracks:
+                    if hasattr(track, 'id') and track.id:
+                        song_ids.append(track.id)
+            
+            elif search_results.get("albums"):
+                albums = search_results["albums"]
+                print(f"🎵 Encontrados {len(albums)} álbumes en búsqueda general")
+                
+                for album in albums[:5]:
+                    try:
+                        album_tracks = await self.navidrome.get_album_tracks(album.id)
+                        filtered_tracks = self._filter_tracks_by_criteria(album_tracks, criteria)
+                        
+                        for track in filtered_tracks:
+                            if hasattr(track, 'id') and track.id:
+                                song_ids.append(track.id)
+                    except Exception as e:
+                        print(f"⚠️ Error obteniendo tracks del álbum {album.name}: {e}")
+                        continue
+        
+        except Exception as e:
+            print(f"⚠️ Error en búsqueda general: {e}")
         
         return song_ids
     
