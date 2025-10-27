@@ -2052,7 +2052,7 @@ Responde ahora de forma natural y conversacional:"""
         return "Playlist Musicalo"
     
     async def _extract_song_ids_from_context(self, data_context: Dict[str, Any]) -> List[str]:
-        """Extraer IDs de canciones de los datos de contexto con filtrado inteligente
+        """Extraer IDs de canciones de los datos de contexto con validación inteligente
         
         Args:
             data_context: Datos recopilados de la consulta
@@ -2062,58 +2062,77 @@ Responde ahora de forma natural y conversacional:"""
         """
         song_ids = []
         
-        # PRIORIDAD 1: Resultados de búsqueda específica (más relevantes)
+        # Extraer criterios de la consulta para validación
+        search_criteria = self._extract_search_criteria_from_context(data_context)
+        print(f"🎵 Criterios extraídos para validación: {search_criteria}")
+        
+        # PRIORIDAD 1: Resultados de búsqueda específica CON VALIDACIÓN
         if data_context.get("library", {}).get("search_results"):
             results = data_context["library"]["search_results"]
             
-            # Priorizar tracks si están disponibles
+            # Validar tracks de búsqueda específica
             if results.get("tracks"):
-                print(f"🎵 Usando {len(results['tracks'])} tracks de búsqueda específica")
-                for track in results["tracks"]:
+                print(f"🎵 Validando {len(results['tracks'])} tracks de búsqueda específica...")
+                validated_tracks = await self._validate_tracks_against_criteria(results["tracks"], search_criteria)
+                
+                for track in validated_tracks:
                     if hasattr(track, 'id') and track.id:
                         song_ids.append(track.id)
+                
+                print(f"✅ {len(validated_tracks)} tracks validados de búsqueda específica")
             
-            # Si no hay tracks, buscar en álbumes y obtener sus tracks
+            # Validar álbumes de búsqueda específica
             elif results.get("albums"):
-                print(f"🎵 Obteniendo tracks de {len(results['albums'])} álbumes de búsqueda específica...")
+                print(f"🎵 Validando {len(results['albums'])} álbumes de búsqueda específica...")
                 for album in results["albums"][:5]:  # Limitar a 5 álbumes
                     try:
                         album_tracks = await self.navidrome.get_album_tracks(album.id)
-                        for track in album_tracks:
+                        validated_tracks = await self._validate_tracks_against_criteria(album_tracks, search_criteria)
+                        
+                        for track in validated_tracks:
                             if hasattr(track, 'id') and track.id:
                                 song_ids.append(track.id)
                     except Exception as e:
                         print(f"⚠️ Error obteniendo tracks del álbum {album.name}: {e}")
                         continue
         
-        # PRIORIDAD 2: Datos filtrados por artista específico
+        # PRIORIDAD 2: Datos filtrados por artista específico CON VALIDACIÓN
         elif data_context.get("library", {}).get("complete_data", {}).get("filtered_by_artist"):
             filtered = data_context["library"]["complete_data"]["filtered_by_artist"]
-            print(f"🎵 Usando {len(filtered.get('tracks', []))} tracks filtrados por artista específico")
-            for track in filtered.get("tracks", []):
-                if hasattr(track, 'id') and track.id:
-                    song_ids.append(track.id)
-        
-        # PRIORIDAD 3: Búsqueda inteligente por género/año si no hay resultados específicos
-        elif not song_ids:
-            print("⚠️ No hay resultados específicos, intentando búsqueda inteligente...")
+            tracks = filtered.get("tracks", [])
             
-            # Extraer criterios de la consulta para búsqueda más precisa
-            search_criteria = self._extract_search_criteria_from_context(data_context)
-            
-            if search_criteria:
-                print(f"🎵 Criterios extraídos: {search_criteria}")
-                song_ids = await self._search_songs_by_criteria(search_criteria)
-            
-            # Si aún no hay resultados, usar datos generales como último recurso
-            if not song_ids and data_context.get("library", {}).get("complete_data", {}).get("tracks"):
-                print("⚠️ Usando datos generales de biblioteca como último recurso")
-                tracks = data_context["library"]["complete_data"]["tracks"]
-                # Filtrar por relevancia si es posible
-                relevant_tracks = self._filter_tracks_by_relevance(tracks, search_criteria)
-                for track in relevant_tracks[:20]:  # Limitar a 20
+            if tracks:
+                print(f"🎵 Validando {len(tracks)} tracks filtrados por artista específico...")
+                validated_tracks = await self._validate_tracks_against_criteria(tracks, search_criteria)
+                
+                for track in validated_tracks:
                     if hasattr(track, 'id') and track.id:
                         song_ids.append(track.id)
+                
+                print(f"✅ {len(validated_tracks)} tracks validados de artista específico")
+        
+        # PRIORIDAD 3: Búsqueda inteligente por criterios si no hay resultados válidos
+        if len(song_ids) < 5:  # Si tenemos menos de 5 canciones válidas
+            print("⚠️ Pocas canciones válidas encontradas, usando búsqueda inteligente...")
+            
+            intelligent_songs = await self._search_songs_by_criteria(search_criteria)
+            song_ids.extend(intelligent_songs)
+            
+            print(f"✅ Búsqueda inteligente agregó {len(intelligent_songs)} canciones adicionales")
+        
+        # PRIORIDAD 4: Último recurso - datos generales con validación estricta
+        if len(song_ids) < 3 and data_context.get("library", {}).get("complete_data", {}).get("tracks"):
+            print("⚠️ Usando datos generales como último recurso con validación estricta...")
+            tracks = data_context["library"]["complete_data"]["tracks"]
+            
+            # Aplicar validación muy estricta
+            validated_tracks = await self._validate_tracks_against_criteria(tracks, search_criteria, strict_mode=True)
+            
+            for track in validated_tracks[:20]:  # Limitar a 20
+                if hasattr(track, 'id') and track.id:
+                    song_ids.append(track.id)
+            
+            print(f"✅ Validación estricta agregó {len(validated_tracks)} canciones")
         
         # Eliminar duplicados manteniendo el orden
         seen = set()
@@ -2125,6 +2144,219 @@ Responde ahora de forma natural y conversacional:"""
         
         print(f"🎵 Extraídos {len(unique_song_ids)} IDs de canciones relevantes para la playlist")
         return unique_song_ids
+    
+    async def _validate_tracks_against_criteria(self, tracks: List, criteria: Dict[str, Any], strict_mode: bool = False) -> List:
+        """Validar tracks contra criterios específicos
+        
+        Args:
+            tracks: Lista de tracks a validar
+            criteria: Criterios de validación
+            strict_mode: Si True, aplica validación más estricta
+            
+        Returns:
+            Lista de tracks validados
+        """
+        validated_tracks = []
+        
+        for track in tracks:
+            if not hasattr(track, 'id') or not track.id:
+                continue
+            
+            # Validación básica por criterios
+            is_valid = True
+            validation_score = 100.0
+            
+            # Validar género
+            if criteria.get("genre"):
+                genre_score = self._calculate_genre_score(track, criteria["genre"], criteria.get("genre_patterns", []))
+                if genre_score < (70 if strict_mode else 50):
+                    is_valid = False
+                validation_score *= (genre_score / 100)
+            
+            # Validar idioma
+            if criteria.get("language"):
+                language_score = self._calculate_language_score(track, criteria["language"])
+                if language_score < (80 if strict_mode else 60):
+                    is_valid = False
+                validation_score *= (language_score / 100)
+            
+            # Validar años
+            if criteria.get("years") or criteria.get("year_range"):
+                year_score = self._calculate_year_score(track, criteria)
+                if year_score < (70 if strict_mode else 50):
+                    is_valid = False
+                validation_score *= (year_score / 100)
+            
+            # Solo incluir si pasa la validación
+            if is_valid and validation_score >= (80 if strict_mode else 60):
+                validated_tracks.append(track)
+        
+        print(f"🎵 Validados {len(validated_tracks)} tracks de {len(tracks)} (modo {'estricto' if strict_mode else 'normal'})")
+        return validated_tracks
+    
+    def _calculate_genre_score(self, track, genre: str, genre_patterns: List[str]) -> float:
+        """Calcular score de relevancia por género
+        
+        Args:
+            track: Track a evaluar
+            genre: Género solicitado
+            genre_patterns: Patrones del género
+            
+        Returns:
+            Score de 0-100
+        """
+        score = 0.0
+        
+        # Verificar género del track
+        track_genre = getattr(track, 'genre', '').lower() if hasattr(track, 'genre') else ''
+        track_artist = getattr(track, 'artist', '').lower() if hasattr(track, 'artist') else ''
+        track_title = getattr(track, 'title', '').lower() if hasattr(track, 'title') else ''
+        
+        # Score por género exacto
+        if genre.lower() in track_genre:
+            score += 40
+        
+        # Score por patrones del género
+        for pattern in genre_patterns:
+            if pattern.lower() in track_genre:
+                score += 30
+                break
+        
+        # Score por género en artista/título
+        for pattern in genre_patterns:
+            if pattern.lower() in track_artist or pattern.lower() in track_title:
+                score += 20
+                break
+        
+        # Score por artistas conocidos del género
+        known_artists = self._get_known_artists_for_genre(genre)
+        if any(known_artist.lower() in track_artist for known_artist in known_artists):
+            score += 30
+        
+        return min(score, 100.0)
+    
+    def _calculate_language_score(self, track, language: str) -> float:
+        """Calcular score de relevancia por idioma
+        
+        Args:
+            track: Track a evaluar
+            language: Idioma solicitado
+            
+        Returns:
+            Score de 0-100
+        """
+        score = 0.0
+        
+        track_artist = getattr(track, 'artist', '').lower() if hasattr(track, 'artist') else ''
+        track_title = getattr(track, 'title', '').lower() if hasattr(track, 'title') else ''
+        track_album = getattr(track, 'album', '').lower() if hasattr(track, 'album') else ''
+        
+        combined_text = f"{track_artist} {track_title} {track_album}"
+        
+        if language == "spanish":
+            # Indicadores de español
+            spanish_indicators = ['ñ', 'á', 'é', 'í', 'ó', 'ú', 'ü']
+            spanish_words = ['que', 'con', 'para', 'por', 'del', 'las', 'los', 'una', 'uno']
+            spanish_artists = [
+                'manu chao', 'jarabe de palo', 'la oreja de van gogh', 'fito paez',
+                'joan manuel serrat', 'ana belén', 'victor manuel', 'alejandro sanz',
+                'enrique iglesias', 'julio iglesias', 'rosario', 'malú', 'melendi'
+            ]
+            
+            if any(indicator in combined_text for indicator in spanish_indicators):
+                score += 40
+            if any(word in combined_text for word in spanish_words):
+                score += 30
+            if any(artist in track_artist for artist in spanish_artists):
+                score += 50
+        
+        elif language == "english":
+            # Indicadores de inglés
+            english_indicators = ['the ', 'and ', 'of ', 'in ', 'to ', 'for ']
+            english_artists = [
+                'the beatles', 'the rolling stones', 'led zeppelin', 'pink floyd',
+                'queen', 'elton john', 'david bowie', 'michael jackson', 'madonna'
+            ]
+            
+            if any(indicator in combined_text for indicator in english_indicators):
+                score += 40
+            if any(artist in track_artist for artist in english_artists):
+                score += 50
+        
+        return min(score, 100.0)
+    
+    def _calculate_year_score(self, track, criteria: Dict[str, Any]) -> float:
+        """Calcular score de relevancia por año
+        
+        Args:
+            track: Track a evaluar
+            criteria: Criterios de año
+            
+        Returns:
+            Score de 0-100
+        """
+        score = 0.0
+        
+        track_year = getattr(track, 'year', None) if hasattr(track, 'year') else None
+        
+        if not track_year:
+            return 50.0  # Score neutral si no hay año
+        
+        # Validar años específicos
+        if criteria.get("years"):
+            if track_year in criteria["years"]:
+                score = 100.0
+            else:
+                score = 20.0
+        
+        # Validar rango de años
+        elif criteria.get("year_range"):
+            year_min, year_max = criteria["year_range"]
+            if year_min <= track_year <= year_max:
+                score = 100.0
+            else:
+                score = 20.0
+        
+        return score
+    
+    def _get_known_artists_for_genre(self, genre: str) -> List[str]:
+        """Obtener artistas conocidos para un género específico
+        
+        Args:
+            genre: Género musical
+            
+        Returns:
+            Lista de artistas conocidos del género
+        """
+        known_artists = {
+            "indie": [
+                "arctic monkeys", "the strokes", "interpol", "yeah yeah yeahs",
+                "vampire weekend", "arcade fire", "the shins", "death cab for cutie",
+                "modest mouse", "neutral milk hotel", "pavement", "sonic youth"
+            ],
+            "rock": [
+                "led zeppelin", "the rolling stones", "queen", "pink floyd",
+                "ac/dc", "guns n roses", "aerosmith", "deep purple",
+                "black sabbath", "the who", "creedence clearwater revival"
+            ],
+            "pop": [
+                "michael jackson", "madonna", "prince", "whitney houston",
+                "mariah carey", "britney spears", "justin timberlake",
+                "taylor swift", "adele", "ed sheeran"
+            ],
+            "jazz": [
+                "miles davis", "john coltrane", "louis armstrong", "duke ellington",
+                "charlie parker", "dizzy gillespie", "billie holiday",
+                "ella fitzgerald", "thelonious monk", "dave brubeck"
+            ],
+            "metal": [
+                "metallica", "iron maiden", "black sabbath", "judas priest",
+                "motorhead", "slayer", "megadeth", "pantera",
+                "tool", "system of a down"
+            ]
+        }
+        
+        return known_artists.get(genre.lower(), [])
     
     def _extract_search_criteria_from_context(self, data_context: Dict[str, Any]) -> Dict[str, Any]:
         """Extraer criterios de búsqueda del contexto para filtrado inteligente
