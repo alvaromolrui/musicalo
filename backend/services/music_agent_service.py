@@ -2052,30 +2052,31 @@ Responde ahora de forma natural y conversacional:"""
         return "Playlist Musicalo"
     
     async def _extract_song_ids_from_context(self, data_context: Dict[str, Any]) -> List[str]:
-        """Extraer IDs de canciones de los datos de contexto
+        """Extraer IDs de canciones de los datos de contexto con filtrado inteligente
         
         Args:
             data_context: Datos recopilados de la consulta
             
         Returns:
-            Lista de IDs de canciones
+            Lista de IDs de canciones filtradas por relevancia
         """
         song_ids = []
         
-        # Buscar en resultados de biblioteca
+        # PRIORIDAD 1: Resultados de búsqueda específica (más relevantes)
         if data_context.get("library", {}).get("search_results"):
             results = data_context["library"]["search_results"]
             
             # Priorizar tracks si están disponibles
             if results.get("tracks"):
+                print(f"🎵 Usando {len(results['tracks'])} tracks de búsqueda específica")
                 for track in results["tracks"]:
                     if hasattr(track, 'id') and track.id:
                         song_ids.append(track.id)
             
             # Si no hay tracks, buscar en álbumes y obtener sus tracks
             elif results.get("albums"):
-                print(f"🎵 Obteniendo tracks de {len(results['albums'])} álbumes...")
-                for album in results["albums"][:5]:  # Limitar a 5 álbumes para evitar demasiadas canciones
+                print(f"🎵 Obteniendo tracks de {len(results['albums'])} álbumes de búsqueda específica...")
+                for album in results["albums"][:5]:  # Limitar a 5 álbumes
                     try:
                         album_tracks = await self.navidrome.get_album_tracks(album.id)
                         for track in album_tracks:
@@ -2085,21 +2086,32 @@ Responde ahora de forma natural y conversacional:"""
                         print(f"⚠️ Error obteniendo tracks del álbum {album.name}: {e}")
                         continue
         
-        # Buscar en datos completos de biblioteca (solo si no hay resultados específicos)
-        if not song_ids and data_context.get("library", {}).get("complete_data"):
-            complete_data = data_context["library"]["complete_data"]
+        # PRIORIDAD 2: Datos filtrados por artista específico
+        elif data_context.get("library", {}).get("complete_data", {}).get("filtered_by_artist"):
+            filtered = data_context["library"]["complete_data"]["filtered_by_artist"]
+            print(f"🎵 Usando {len(filtered.get('tracks', []))} tracks filtrados por artista específico")
+            for track in filtered.get("tracks", []):
+                if hasattr(track, 'id') and track.id:
+                    song_ids.append(track.id)
+        
+        # PRIORIDAD 3: Búsqueda inteligente por género/año si no hay resultados específicos
+        elif not song_ids:
+            print("⚠️ No hay resultados específicos, intentando búsqueda inteligente...")
             
-            # Si hay datos filtrados por artista
-            if complete_data.get("filtered_by_artist"):
-                filtered = complete_data["filtered_by_artist"]
-                for track in filtered.get("tracks", []):
-                    if hasattr(track, 'id') and track.id:
-                        song_ids.append(track.id)
+            # Extraer criterios de la consulta para búsqueda más precisa
+            search_criteria = self._extract_search_criteria_from_context(data_context)
             
-            # Si hay tracks en los datos completos (solo como último recurso)
-            elif complete_data.get("tracks"):
+            if search_criteria:
+                print(f"🎵 Criterios extraídos: {search_criteria}")
+                song_ids = await self._search_songs_by_criteria(search_criteria)
+            
+            # Si aún no hay resultados, usar datos generales como último recurso
+            if not song_ids and data_context.get("library", {}).get("complete_data", {}).get("tracks"):
                 print("⚠️ Usando datos generales de biblioteca como último recurso")
-                for track in complete_data["tracks"][:20]:  # Limitar a 20
+                tracks = data_context["library"]["complete_data"]["tracks"]
+                # Filtrar por relevancia si es posible
+                relevant_tracks = self._filter_tracks_by_relevance(tracks, search_criteria)
+                for track in relevant_tracks[:20]:  # Limitar a 20
                     if hasattr(track, 'id') and track.id:
                         song_ids.append(track.id)
         
@@ -2111,8 +2123,178 @@ Responde ahora de forma natural y conversacional:"""
                 seen.add(song_id)
                 unique_song_ids.append(song_id)
         
-        print(f"🎵 Extraídos {len(unique_song_ids)} IDs de canciones para la playlist")
+        print(f"🎵 Extraídos {len(unique_song_ids)} IDs de canciones relevantes para la playlist")
         return unique_song_ids
+    
+    def _extract_search_criteria_from_context(self, data_context: Dict[str, Any]) -> Dict[str, Any]:
+        """Extraer criterios de búsqueda del contexto para filtrado inteligente
+        
+        Args:
+            data_context: Datos de contexto
+            
+        Returns:
+            Diccionario con criterios extraídos
+        """
+        criteria = {}
+        
+        # Extraer término de búsqueda
+        search_term = data_context.get("library", {}).get("search_term", "")
+        if search_term:
+            criteria["search_term"] = search_term.lower()
+            
+            # Detectar géneros específicos
+            genres = ["indie", "rock", "pop", "jazz", "metal", "punk", "folk", "blues", "electronic", "hip hop", "rap", "reggae", "country", "classical"]
+            for genre in genres:
+                if genre in search_term.lower():
+                    criteria["genre"] = genre
+                    break
+            
+            # Detectar años específicos
+            import re
+            year_matches = re.findall(r'\b(19|20)\d{2}\b', search_term)
+            if year_matches:
+                criteria["years"] = [int(year) for year in year_matches]
+            
+            # Detectar décadas
+            decade_matches = re.findall(r'\b(60s|70s|80s|90s|00s|10s|20s)\b', search_term.lower())
+            if decade_matches:
+                decade_map = {"60s": (1960, 1969), "70s": (1970, 1979), "80s": (1980, 1989), 
+                             "90s": (1990, 1999), "00s": (2000, 2009), "10s": (2010, 2019), "20s": (2020, 2029)}
+                decade = decade_matches[0]
+                if decade in decade_map:
+                    criteria["year_range"] = decade_map[decade]
+            
+            # Detectar idioma
+            if any(word in search_term.lower() for word in ["español", "spanish", "castellano"]):
+                criteria["language"] = "spanish"
+            elif any(word in search_term.lower() for word in ["inglés", "english"]):
+                criteria["language"] = "english"
+        
+        return criteria
+    
+    async def _search_songs_by_criteria(self, criteria: Dict[str, Any]) -> List[str]:
+        """Buscar canciones usando criterios específicos
+        
+        Args:
+            criteria: Criterios de búsqueda
+            
+        Returns:
+            Lista de IDs de canciones que coinciden con los criterios
+        """
+        song_ids = []
+        
+        try:
+            # Hacer búsqueda en Navidrome con los criterios
+            search_term = criteria.get("search_term", "")
+            if search_term:
+                print(f"🎵 Buscando en Navidrome con término: '{search_term}'")
+                search_results = await self.navidrome.search(search_term, limit=50)
+                
+                if search_results.get("tracks"):
+                    tracks = search_results["tracks"]
+                    print(f"🎵 Encontrados {len(tracks)} tracks en búsqueda")
+                    
+                    # Filtrar tracks por criterios adicionales
+                    filtered_tracks = self._filter_tracks_by_criteria(tracks, criteria)
+                    
+                    for track in filtered_tracks:
+                        if hasattr(track, 'id') and track.id:
+                            song_ids.append(track.id)
+                
+                elif search_results.get("albums"):
+                    albums = search_results["albums"]
+                    print(f"🎵 Encontrados {len(albums)} álbumes en búsqueda")
+                    
+                    # Obtener tracks de álbumes y filtrar
+                    for album in albums[:5]:  # Limitar a 5 álbumes
+                        try:
+                            album_tracks = await self.navidrome.get_album_tracks(album.id)
+                            filtered_tracks = self._filter_tracks_by_criteria(album_tracks, criteria)
+                            
+                            for track in filtered_tracks:
+                                if hasattr(track, 'id') and track.id:
+                                    song_ids.append(track.id)
+                        except Exception as e:
+                            print(f"⚠️ Error obteniendo tracks del álbum {album.name}: {e}")
+                            continue
+        
+        except Exception as e:
+            print(f"⚠️ Error en búsqueda por criterios: {e}")
+        
+        return song_ids
+    
+    def _filter_tracks_by_criteria(self, tracks: List, criteria: Dict[str, Any]) -> List:
+        """Filtrar tracks por criterios específicos
+        
+        Args:
+            tracks: Lista de tracks a filtrar
+            criteria: Criterios de filtrado
+            
+        Returns:
+            Lista de tracks filtrados
+        """
+        filtered_tracks = []
+        
+        for track in tracks:
+            if not hasattr(track, 'id') or not track.id:
+                continue
+            
+            # Verificar género
+            if criteria.get("genre"):
+                track_genre = getattr(track, 'genre', '').lower() if hasattr(track, 'genre') else ''
+                if criteria["genre"] not in track_genre:
+                    continue
+            
+            # Verificar año
+            if criteria.get("years"):
+                track_year = getattr(track, 'year', None) if hasattr(track, 'year') else None
+                if track_year and track_year not in criteria["years"]:
+                    continue
+            
+            # Verificar rango de años (décadas)
+            if criteria.get("year_range"):
+                track_year = getattr(track, 'year', None) if hasattr(track, 'year') else None
+                if track_year:
+                    year_min, year_max = criteria["year_range"]
+                    if not (year_min <= track_year <= year_max):
+                        continue
+            
+            # Verificar idioma (aproximado por artista/título)
+            if criteria.get("language"):
+                track_artist = getattr(track, 'artist', '').lower() if hasattr(track, 'artist') else ''
+                track_title = getattr(track, 'title', '').lower() if hasattr(track, 'title') else ''
+                
+                if criteria["language"] == "spanish":
+                    # Buscar indicadores de español
+                    spanish_indicators = ['ñ', 'á', 'é', 'í', 'ó', 'ú', 'ü']
+                    if not any(indicator in track_artist + track_title for indicator in spanish_indicators):
+                        continue
+                elif criteria["language"] == "english":
+                    # Buscar indicadores de inglés (más complejo, pero básico)
+                    english_indicators = ['the ', 'and ', 'of ', 'in ', 'to ', 'for ']
+                    if not any(indicator in track_artist + track_title for indicator in english_indicators):
+                        continue
+            
+            filtered_tracks.append(track)
+        
+        print(f"🎵 Filtrados {len(filtered_tracks)} tracks de {len(tracks)} por criterios específicos")
+        return filtered_tracks
+    
+    def _filter_tracks_by_relevance(self, tracks: List, criteria: Dict[str, Any]) -> List:
+        """Filtrar tracks por relevancia cuando no hay criterios específicos
+        
+        Args:
+            tracks: Lista de tracks a filtrar
+            criteria: Criterios de relevancia
+            
+        Returns:
+            Lista de tracks más relevantes
+        """
+        if not criteria:
+            return tracks[:20]  # Si no hay criterios, tomar los primeros 20
+        
+        # Aplicar filtros básicos si es posible
+        return self._filter_tracks_by_criteria(tracks, criteria)
 
     async def close(self):
         """Cerrar todas las conexiones"""
