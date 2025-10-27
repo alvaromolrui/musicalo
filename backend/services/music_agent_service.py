@@ -2142,11 +2142,27 @@ Responde ahora de forma natural y conversacional:"""
         if search_term:
             criteria["search_term"] = search_term.lower()
             
-            # Detectar géneros específicos
-            genres = ["indie", "rock", "pop", "jazz", "metal", "punk", "folk", "blues", "electronic", "hip hop", "rap", "reggae", "country", "classical"]
-            for genre in genres:
-                if genre in search_term.lower():
+            # Detectar géneros específicos (más flexible)
+            genre_patterns = {
+                "indie": ["indie", "independiente", "alternativo"],
+                "rock": ["rock", "rocker", "rockero"],
+                "pop": ["pop", "popular"],
+                "jazz": ["jazz", "jazzy"],
+                "metal": ["metal", "metálico", "heavy metal"],
+                "punk": ["punk", "punk rock"],
+                "folk": ["folk", "folclórico", "folklore"],
+                "blues": ["blues", "bluesy"],
+                "electronic": ["electronic", "electrónico", "electro", "edm", "techno", "house"],
+                "hip hop": ["hip hop", "hip-hop", "rap", "rapper"],
+                "reggae": ["reggae", "reggaeton"],
+                "country": ["country", "country music"],
+                "classical": ["classical", "clásico", "clasica", "orchestral", "orquestal"]
+            }
+            
+            for genre, patterns in genre_patterns.items():
+                if any(pattern in search_term.lower() for pattern in patterns):
                     criteria["genre"] = genre
+                    criteria["genre_patterns"] = patterns
                     break
             
             # Detectar años específicos
@@ -2164,13 +2180,57 @@ Responde ahora de forma natural y conversacional:"""
                 if decade in decade_map:
                     criteria["year_range"] = decade_map[decade]
             
-            # Detectar idioma
-            if any(word in search_term.lower() for word in ["español", "spanish", "castellano"]):
+            # Detectar idioma (más flexible)
+            if any(word in search_term.lower() for word in ["español", "spanish", "castellano", "en español"]):
                 criteria["language"] = "spanish"
-            elif any(word in search_term.lower() for word in ["inglés", "english"]):
+            elif any(word in search_term.lower() for word in ["inglés", "english", "en inglés"]):
                 criteria["language"] = "english"
+            
+            # Extraer artistas mencionados específicamente
+            mentioned_artists = self._extract_mentioned_artists(search_term, data_context)
+            if mentioned_artists:
+                criteria["mentioned_artists"] = mentioned_artists
         
         return criteria
+    
+    def _extract_mentioned_artists(self, search_term: str, data_context: Dict[str, Any]) -> List[str]:
+        """Extraer artistas mencionados específicamente en la consulta
+        
+        Args:
+            search_term: Término de búsqueda
+            data_context: Datos de contexto
+            
+        Returns:
+            Lista de nombres de artistas mencionados
+        """
+        mentioned_artists = []
+        
+        # Buscar patrones como "de [artista]", "por [artista]", "[artista]", etc.
+        import re
+        
+        # Patrones comunes para mencionar artistas
+        patterns = [
+            r'de\s+([A-Za-zÀ-ÿ\s\']+)',  # "de [artista]"
+            r'por\s+([A-Za-zÀ-ÿ\s\']+)',  # "por [artista]"
+            r'artistas?\s+([A-Za-zÀ-ÿ\s\']+)',  # "artista [nombre]"
+            r'grupos?\s+([A-Za-zÀ-ÿ\s\']+)',  # "grupo [nombre]"
+        ]
+        
+        for pattern in patterns:
+            matches = re.findall(pattern, search_term, re.IGNORECASE)
+            for match in matches:
+                artist_name = match.strip()
+                if len(artist_name) > 2 and len(artist_name) < 50:  # Filtrar nombres muy cortos o largos
+                    mentioned_artists.append(artist_name)
+        
+        # También buscar en los datos de contexto si hay artistas filtrados
+        if data_context.get("library", {}).get("complete_data", {}).get("filtered_by_artist"):
+            filtered_data = data_context["library"]["complete_data"]["filtered_by_artist"]
+            if filtered_data.get("artist_name"):
+                mentioned_artists.append(filtered_data["artist_name"])
+        
+        # Eliminar duplicados
+        return list(set(mentioned_artists))
     
     async def _search_songs_by_criteria(self, criteria: Dict[str, Any]) -> List[str]:
         """Buscar canciones usando criterios específicos
@@ -2184,39 +2244,80 @@ Responde ahora de forma natural y conversacional:"""
         song_ids = []
         
         try:
-            # Hacer búsqueda en Navidrome con los criterios
-            search_term = criteria.get("search_term", "")
-            if search_term:
-                print(f"🎵 Buscando en Navidrome con término: '{search_term}'")
-                search_results = await self.navidrome.search(search_term, limit=50)
-                
-                if search_results.get("tracks"):
-                    tracks = search_results["tracks"]
-                    print(f"🎵 Encontrados {len(tracks)} tracks en búsqueda")
-                    
-                    # Filtrar tracks por criterios adicionales
-                    filtered_tracks = self._filter_tracks_by_criteria(tracks, criteria)
-                    
-                    for track in filtered_tracks:
-                        if hasattr(track, 'id') and track.id:
-                            song_ids.append(track.id)
-                
-                elif search_results.get("albums"):
-                    albums = search_results["albums"]
-                    print(f"🎵 Encontrados {len(albums)} álbumes en búsqueda")
-                    
-                    # Obtener tracks de álbumes y filtrar
-                    for album in albums[:5]:  # Limitar a 5 álbumes
-                        try:
-                            album_tracks = await self.navidrome.get_album_tracks(album.id)
-                            filtered_tracks = self._filter_tracks_by_criteria(album_tracks, criteria)
+            # PRIORIDAD 1: Buscar por artistas mencionados específicamente
+            if criteria.get("mentioned_artists"):
+                print(f"🎵 Buscando canciones de artistas mencionados: {criteria['mentioned_artists']}")
+                for artist_name in criteria["mentioned_artists"]:
+                    try:
+                        # Buscar específicamente por el artista
+                        artist_results = await self.navidrome.search(artist_name, limit=20)
+                        
+                        if artist_results.get("tracks"):
+                            tracks = artist_results["tracks"]
+                            print(f"🎵 Encontradas {len(tracks)} canciones de {artist_name}")
+                            
+                            # Filtrar por criterios adicionales si es necesario
+                            filtered_tracks = self._filter_tracks_by_criteria(tracks, criteria)
                             
                             for track in filtered_tracks:
                                 if hasattr(track, 'id') and track.id:
                                     song_ids.append(track.id)
-                        except Exception as e:
-                            print(f"⚠️ Error obteniendo tracks del álbum {album.name}: {e}")
-                            continue
+                        
+                        elif artist_results.get("albums"):
+                            albums = artist_results["albums"]
+                            print(f"🎵 Encontrados {len(albums)} álbumes de {artist_name}")
+                            
+                            # Obtener tracks de álbumes del artista
+                            for album in albums[:3]:  # Limitar a 3 álbumes por artista
+                                try:
+                                    album_tracks = await self.navidrome.get_album_tracks(album.id)
+                                    filtered_tracks = self._filter_tracks_by_criteria(album_tracks, criteria)
+                                    
+                                    for track in filtered_tracks:
+                                        if hasattr(track, 'id') and track.id:
+                                            song_ids.append(track.id)
+                                except Exception as e:
+                                    print(f"⚠️ Error obteniendo tracks del álbum {album.name}: {e}")
+                                    continue
+                    
+                    except Exception as e:
+                        print(f"⚠️ Error buscando artista {artist_name}: {e}")
+                        continue
+            
+            # PRIORIDAD 2: Búsqueda general por término si no hay artistas específicos o necesitamos más canciones
+            if len(song_ids) < 10:  # Si tenemos menos de 10 canciones de artistas específicos
+                search_term = criteria.get("search_term", "")
+                if search_term:
+                    print(f"🎵 Buscando en Navidrome con término general: '{search_term}'")
+                    search_results = await self.navidrome.search(search_term, limit=50)
+                    
+                    if search_results.get("tracks"):
+                        tracks = search_results["tracks"]
+                        print(f"🎵 Encontrados {len(tracks)} tracks en búsqueda general")
+                        
+                        # Filtrar tracks por criterios adicionales
+                        filtered_tracks = self._filter_tracks_by_criteria(tracks, criteria)
+                        
+                        for track in filtered_tracks:
+                            if hasattr(track, 'id') and track.id:
+                                song_ids.append(track.id)
+                    
+                    elif search_results.get("albums"):
+                        albums = search_results["albums"]
+                        print(f"🎵 Encontrados {len(albums)} álbumes en búsqueda general")
+                        
+                        # Obtener tracks de álbumes y filtrar
+                        for album in albums[:5]:  # Limitar a 5 álbumes
+                            try:
+                                album_tracks = await self.navidrome.get_album_tracks(album.id)
+                                filtered_tracks = self._filter_tracks_by_criteria(album_tracks, criteria)
+                                
+                                for track in filtered_tracks:
+                                    if hasattr(track, 'id') and track.id:
+                                        song_ids.append(track.id)
+                            except Exception as e:
+                                print(f"⚠️ Error obteniendo tracks del álbum {album.name}: {e}")
+                                continue
         
         except Exception as e:
             print(f"⚠️ Error en búsqueda por criterios: {e}")
@@ -2239,10 +2340,24 @@ Responde ahora de forma natural y conversacional:"""
             if not hasattr(track, 'id') or not track.id:
                 continue
             
-            # Verificar género
+            # Verificar género (más flexible)
             if criteria.get("genre"):
                 track_genre = getattr(track, 'genre', '').lower() if hasattr(track, 'genre') else ''
-                if criteria["genre"] not in track_genre:
+                track_artist = getattr(track, 'artist', '').lower() if hasattr(track, 'artist') else ''
+                track_title = getattr(track, 'title', '').lower() if hasattr(track, 'title') else ''
+                
+                genre_patterns = criteria.get("genre_patterns", [criteria["genre"]])
+                
+                # Buscar el género en múltiples campos
+                genre_found = False
+                for pattern in genre_patterns:
+                    if (pattern in track_genre or 
+                        pattern in track_artist or 
+                        pattern in track_title):
+                        genre_found = True
+                        break
+                
+                if not genre_found:
                     continue
             
             # Verificar año
@@ -2259,20 +2374,59 @@ Responde ahora de forma natural y conversacional:"""
                     if not (year_min <= track_year <= year_max):
                         continue
             
-            # Verificar idioma (aproximado por artista/título)
+            # Verificar idioma (más inteligente)
             if criteria.get("language"):
                 track_artist = getattr(track, 'artist', '').lower() if hasattr(track, 'artist') else ''
                 track_title = getattr(track, 'title', '').lower() if hasattr(track, 'title') else ''
+                track_album = getattr(track, 'album', '').lower() if hasattr(track, 'album') else ''
+                
+                combined_text = f"{track_artist} {track_title} {track_album}"
                 
                 if criteria["language"] == "spanish":
-                    # Buscar indicadores de español
-                    spanish_indicators = ['ñ', 'á', 'é', 'í', 'ó', 'ú', 'ü']
-                    if not any(indicator in track_artist + track_title for indicator in spanish_indicators):
+                    # Indicadores más amplios de español
+                    spanish_indicators = [
+                        'ñ', 'á', 'é', 'í', 'ó', 'ú', 'ü',  # Caracteres especiales
+                        'que', 'con', 'para', 'por', 'del', 'las', 'los', 'una', 'uno',  # Palabras comunes
+                        'español', 'spain', 'madrid', 'barcelona', 'sevilla', 'valencia'  # Indicadores geográficos
+                    ]
+                    
+                    # También buscar artistas conocidos en español
+                    spanish_artists = [
+                        'manu chao', 'jarabe de palo', 'la oreja de van gogh', 'fito paez',
+                        'joan manuel serrat', 'ana belén', 'victor manuel', 'alejandro sanz',
+                        'enrique iglesias', 'julio iglesias', 'rosario', 'malú', 'melendi',
+                        'el canto del loco', 'la quinta estación', 'amistades peligrosas',
+                        'mecano', 'hombres g', 'tequila', 'radio futura', 'los secretos'
+                    ]
+                    
+                    spanish_found = (
+                        any(indicator in combined_text for indicator in spanish_indicators) or
+                        any(artist in track_artist for artist in spanish_artists)
+                    )
+                    
+                    if not spanish_found:
                         continue
+                        
                 elif criteria["language"] == "english":
-                    # Buscar indicadores de inglés (más complejo, pero básico)
-                    english_indicators = ['the ', 'and ', 'of ', 'in ', 'to ', 'for ']
-                    if not any(indicator in track_artist + track_title for indicator in english_indicators):
+                    # Indicadores más amplios de inglés
+                    english_indicators = [
+                        'the ', 'and ', 'of ', 'in ', 'to ', 'for ', 'with ', 'from ',  # Artículos y preposiciones
+                        'english', 'american', 'british', 'usa', 'uk', 'london', 'new york'  # Indicadores geográficos
+                    ]
+                    
+                    # También buscar artistas conocidos en inglés
+                    english_artists = [
+                        'the beatles', 'the rolling stones', 'led zeppelin', 'pink floyd',
+                        'queen', 'elton john', 'david bowie', 'michael jackson', 'madonna',
+                        'prince', 'bruce springsteen', 'bob dylan', 'elvis presley'
+                    ]
+                    
+                    english_found = (
+                        any(indicator in combined_text for indicator in english_indicators) or
+                        any(artist in track_artist for artist in english_artists)
+                    )
+                    
+                    if not english_found:
                         continue
             
             filtered_tracks.append(track)
