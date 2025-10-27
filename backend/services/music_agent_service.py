@@ -1982,7 +1982,7 @@ Responde ahora de forma natural y conversacional:"""
             playlist_name = self._extract_playlist_name(user_question)
             
             # Obtener canciones de los datos de contexto
-            song_ids = self._extract_song_ids_from_context(data_context)
+            song_ids = await self._extract_song_ids_from_context(data_context)
             
             if not song_ids:
                 print("⚠️ No se encontraron canciones para la playlist")
@@ -2051,7 +2051,7 @@ Responde ahora de forma natural y conversacional:"""
         
         return "Playlist Musicalo"
     
-    def _extract_song_ids_from_context(self, data_context: Dict[str, Any]) -> List[str]:
+    async def _extract_song_ids_from_context(self, data_context: Dict[str, Any]) -> List[str]:
         """Extraer IDs de canciones de los datos de contexto
         
         Args:
@@ -2085,8 +2085,8 @@ Responde ahora de forma natural y conversacional:"""
                         print(f"⚠️ Error obteniendo tracks del álbum {album.name}: {e}")
                         continue
         
-        # Buscar en datos completos de biblioteca
-        if data_context.get("library", {}).get("complete_data"):
+        # Buscar en datos completos de biblioteca (solo si no hay resultados específicos)
+        if not song_ids and data_context.get("library", {}).get("complete_data"):
             complete_data = data_context["library"]["complete_data"]
             
             # Si hay datos filtrados por artista
@@ -2096,8 +2096,9 @@ Responde ahora de forma natural y conversacional:"""
                     if hasattr(track, 'id') and track.id:
                         song_ids.append(track.id)
             
-            # Si hay tracks en los datos completos
+            # Si hay tracks en los datos completos (solo como último recurso)
             elif complete_data.get("tracks"):
+                print("⚠️ Usando datos generales de biblioteca como último recurso")
                 for track in complete_data["tracks"][:20]:  # Limitar a 20
                     if hasattr(track, 'id') and track.id:
                         song_ids.append(track.id)
