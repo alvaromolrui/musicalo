@@ -17,8 +17,8 @@ class IntentDetector:
     def __init__(self):
         """Inicializar detector de intenciones"""
         genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-        self.model = genai.GenerativeModel('gemini-2.0-flash-exp')
-        logger.info("IntentDetector inicializado con Gemini 2.0 Flash")
+        self.model = genai.GenerativeModel('gemini-2.5-flash')
+        logger.info("IntentDetector inicializado con Gemini 2.5 Flash")
     
     async def detect_intent(
         self, 

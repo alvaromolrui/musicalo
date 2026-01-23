@@ -664,8 +664,8 @@ class ListenBrainzService:
                     import google.generativeai as genai
                     
                     # Usar IA para generar artistas similares
-                    # OPTIMIZACIÓN: Usar modelo flash-exp más rápido
-                    model = genai.GenerativeModel('gemini-2.0-flash-exp')
+                    # OPTIMIZACIÓN: Usar modelo flash más rápido
+                    model = genai.GenerativeModel('gemini-2.5-flash')
                     
                     prompt = f"""Eres un experto en música. Genera una lista de {limit} artistas similares a "{artist_name}".
 
