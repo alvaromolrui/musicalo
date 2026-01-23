@@ -5,6 +5,15 @@ Todos los cambios notables en este proyecto serán documentados en este archivo.
 El formato está basado en [Keep a Changelog](https://keepachangelog.com/es/1.0.0/),
 y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
+## [4.2.1] - 2025-01-21
+
+### 🔄 Actualizado
+- **Migración a Gemini 2.5 Flash**: Todos los servicios actualizados de `gemini-2.0-flash-exp` a `gemini-2.5-flash`
+  - `MusicAgentService`: Actualizado a Gemini 2.5 Flash
+  - `EnhancedIntentDetector`: Actualizado a Gemini 2.5 Flash
+  - `IntentDetector`: Actualizado a Gemini 2.5 Flash
+  - `ListenBrainzService`: Actualizado a Gemini 2.5 Flash para generación de artistas similares
+
 ## [4.2.0-alpha] - 2025-01-21
 
 ### ✨ Nuevo
