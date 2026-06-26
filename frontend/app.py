@@ -27,9 +27,55 @@ _HEADERS = {"X-API-Key": API_KEY} if API_KEY else {}
 _TIMEOUT = 90  # segundos — las respuestas de IA pueden tardar
 
 
-# Data layer persistente: guarda threads y mensajes en SQLite
 _DB_PATH = os.getenv("CHAINLIT_DB_PATH", "/app/data/chainlit.db")
-cl_data._data_layer = SQLAlchemyDataLayer(conninfo=f"sqlite+aiosqlite:///{_DB_PATH}")
+_DEFAULT_USER = os.getenv("CHAINLIT_DEFAULT_USER", "musicalo")
+
+
+class _DataLayer(SQLAlchemyDataLayer):
+    """Data layer con dos correcciones para Chainlit 2.11.1 + SQLite:
+
+    1. get_thread_author: create_thread no persiste userIdentifier, por lo que
+       la columna queda NULL. En vez de lanzar ValueError (→ HTTP 500 al cargar
+       un thread), devolvemos el usuario por defecto.
+
+    2. update_thread: interceptamos la llamada para escribir userIdentifier
+       directamente en la BD, ya que el SQL interno de Chainlit no lo incluye
+       en el ON CONFLICT … DO UPDATE.
+    """
+
+    async def get_thread_author(self, thread_id: str) -> str:
+        try:
+            author = await super().get_thread_author(thread_id)
+            if author:
+                return author
+        except Exception:
+            pass
+        return _DEFAULT_USER
+
+    async def update_thread(self, thread_id: str, name=None, user_id=None,
+                            metadata=None, tags=None):
+        await super().update_thread(
+            thread_id, name=name, user_id=user_id,
+            metadata=metadata, tags=tags,
+        )
+        # Chainlit no incluye userIdentifier en el ON CONFLICT … DO UPDATE,
+        # así que lo escribimos nosotros para que get_thread_author funcione.
+        if user_id:
+            import aiosqlite
+            async with aiosqlite.connect(_DB_PATH) as db:
+                row = await (await db.execute(
+                    'SELECT "identifier" FROM "users" WHERE "id" = ?', (user_id,)
+                )).fetchone()
+                if row:
+                    await db.execute(
+                        'UPDATE "threads" SET "userIdentifier" = ? WHERE "id" = ?',
+                        (row[0], thread_id),
+                    )
+                    await db.commit()
+
+
+# Data layer persistente: guarda threads y mensajes en SQLite
+cl_data._data_layer = _DataLayer(conninfo=f"sqlite+aiosqlite:///{_DB_PATH}")
 
 
 # ---------------------------------------------------------------------------
