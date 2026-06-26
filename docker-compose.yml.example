@@ -107,7 +107,7 @@ services:
   #
   frontend:
     # Para producción (imagen publicada en Docker Hub):
-    image: alvaromolrui/musicalo-frontend:latest
+    image: alvaromolrui/musicalo-frontend:main
     # Para desarrollo local (build desde el código fuente):
     # build: ./frontend
     container_name: musicalo-frontend
