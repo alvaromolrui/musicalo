@@ -1,44 +1,91 @@
+
+# =============================================================================
+# Musicalo — docker-compose.yml.example
+#
+# Copia este archivo a docker-compose.yml y ajusta los valores.
+# El comportamiento depende de START_MODE (ver sección "Modos de arranque").
+# =============================================================================
+
+# =============================================================================
+# MODOS DE ARRANQUE (START_MODE)
+# =============================================================================
+#
+#  telegram  (por defecto)
+#    Solo bot de Telegram. Comportamiento original.
+#    No expone ningún puerto.
+#
+#  api
+#    Solo API REST en el puerto indicado (API_PORT, por defecto 8000).
+#    Útil para conectar una UI externa (Chainlit, app móvil, etc.).
+#    No requiere TELEGRAM_BOT_TOKEN.
+#    Swagger disponible en http://localhost:8000/docs
+#
+#  both
+#    Telegram + API REST simultáneamente.
+#    Requiere TELEGRAM_BOT_TOKEN y expone el puerto de la API.
+#
+# =============================================================================
+# CONFIGURACIÓN RECOMENDADA SEGÚN USO
+# =============================================================================
+#
+#  Solo Telegram (original):
+#    START_MODE=telegram
+#    # Comentar la sección "ports" del servicio musicalo
+#
+#  Telegram + acceso desde frontend web:
+#    START_MODE=both
+#    MUSICALO_API_KEY=genera-una-clave-segura
+#
+#  Solo API (para conectar Chainlit u otra UI):
+#    START_MODE=api
+#    MUSICALO_API_KEY=genera-una-clave-segura
+#    # Descomentar el servicio "frontend" más abajo
+#
+# =============================================================================
+
 services:
+
+  # ---------------------------------------------------------------------------
+  # Servicio principal: Musicalo
+  # ---------------------------------------------------------------------------
   musicalo:
     image: alvaromolrui/musicalo:latest
     container_name: musicalo
     restart: unless-stopped
     environment:
-      # Navidrome Configuration
+      # --- Navidrome ---
       - NAVIDROME_URL=${NAVIDROME_URL}
       - NAVIDROME_USERNAME=${NAVIDROME_USERNAME}
       - NAVIDROME_PASSWORD=${NAVIDROME_PASSWORD}
 
-      # ListenBrainz Configuration
+      # --- ListenBrainz ---
       - LISTENBRAINZ_USERNAME=${LISTENBRAINZ_USERNAME}
       - LISTENBRAINZ_TOKEN=${LISTENBRAINZ_TOKEN}
 
-      # MusicBrainz Configuration
+      # --- MusicBrainz ---
       - ENABLE_MUSICBRAINZ=${ENABLE_MUSICBRAINZ:-true}
       - APP_NAME=${APP_NAME:-MusicaloBot}
       - CONTACT_EMAIL=${CONTACT_EMAIL}
       - MUSICBRAINZ_BATCH_SIZE=${MUSICBRAINZ_BATCH_SIZE:-15}
       - MUSICBRAINZ_MAX_TOTAL=${MUSICBRAINZ_MAX_TOTAL:-100}
 
-      # Gemini Configuration
+      # --- Gemini AI ---
       - GEMINI_API_KEY=${GEMINI_API_KEY}
 
-      # Telegram Bot Configuration
+      # --- Telegram (solo necesario si START_MODE=telegram o both) ---
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - TELEGRAM_ALLOWED_USER_IDS=${TELEGRAM_ALLOWED_USER_IDS}
+      - TELEGRAM_ADMIN_USER_IDS=${TELEGRAM_ADMIN_USER_IDS}
 
-      # Modo de arranque
-      # telegram  → solo bot de Telegram (por defecto, comportamiento original)
-      # api       → solo API REST en el puerto indicado
-      # both      → Telegram + API REST simultáneamente
+      # --- Modo de arranque ---
       - START_MODE=${START_MODE:-telegram}
 
-      # API REST — clave de acceso opcional (deja vacío para acceso abierto en red privada)
-      - MUSICALO_API_KEY=${MUSICALO_API_KEY:-}
+      # --- API REST (solo si START_MODE=api o both) ---
+      - MUSICALO_API_KEY=${MUSICALO_API_KEY:-}   # vacío = sin autenticación
       - HOST=0.0.0.0
       - PORT=8000
 
-    # Puerto de la API REST (solo se usa si START_MODE=api o both)
+    # Puerto de la API REST. Comentar esta sección si START_MODE=telegram.
     ports:
       - "${API_PORT:-8000}:8000"
 
@@ -48,6 +95,28 @@ services:
 
     networks:
       - musicalo-network
+
+  # ---------------------------------------------------------------------------
+  # Servicio frontend — Chainlit (FASE 4, descomenta cuando esté disponible)
+  # ---------------------------------------------------------------------------
+  # Para activarlo:
+  #   1. Asegúrate de que START_MODE=api o both en el servicio musicalo
+  #   2. Configura MUSICALO_API_KEY con el mismo valor en ambos servicios
+  #   3. Descomenta este bloque
+  #
+  # frontend:
+  #   image: alvaromolrui/musicalo-frontend:latest
+  #   container_name: musicalo-frontend
+  #   restart: unless-stopped
+  #   ports:
+  #     - "${FRONTEND_PORT:-8080}:8080"
+  #   environment:
+  #     - BACKEND_URL=http://musicalo:8000
+  #     - MUSICALO_API_KEY=${MUSICALO_API_KEY:-}
+  #   depends_on:
+  #     - musicalo
+  #   networks:
+  #     - musicalo-network
 
 networks:
   musicalo-network:
