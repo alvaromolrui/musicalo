@@ -13,6 +13,9 @@ COPY . .
 # evitando el error "Your config file is outdated".
 RUN rm -f .chainlit/config.toml
 
+# Directorio para el SQLite del historial de conversaciones
+RUN mkdir -p /app/data
+
 RUN useradd -m -s /bin/bash appuser && chown -R appuser:appuser /app
 USER appuser
 

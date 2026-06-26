@@ -2,7 +2,7 @@
 Endpoints de chat: POST /chat (síncrono) y WS /chat/stream (streaming).
 """
 import json
-from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, Request, WebSocket, WebSocketDisconnect
 from api.auth import verify_api_key
 from api.models import ChatRequest, ChatResponse, ActionItem
 from core.music_assistant import MusicAssistant
@@ -10,17 +10,12 @@ from core.music_assistant import MusicAssistant
 router = APIRouter()
 
 
-def _get_assistant(request) -> MusicAssistant:
-    return request.app.state.assistant
-
-
 @router.post("/", response_model=ChatResponse, dependencies=[Depends(verify_api_key)])
-async def chat(body: ChatRequest, request=None):
+async def chat(body: ChatRequest, request: Request):
     """
     Envía un mensaje en lenguaje natural y recibe la respuesta completa.
     El campo user_id es el identificador de sesión (puede ser cualquier string único por usuario).
     """
-    from fastapi import Request
     assistant: MusicAssistant = request.app.state.assistant
     response = await assistant.chat(int(body.user_id) if body.user_id.isdigit() else hash(body.user_id), body.message)
     return ChatResponse(

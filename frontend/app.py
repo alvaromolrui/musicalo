@@ -3,18 +3,57 @@ Musicalo Frontend — interfaz de chat web construida con Chainlit.
 
 Conecta con la API REST de Musicalo (backend) vía HTTP.
 Variables de entorno:
-  BACKEND_URL      URL base del backend (default: http://localhost:8000)
-  MUSICALO_API_KEY Clave de API del backend (vacía = sin auth)
+  BACKEND_URL           URL base del backend (default: http://localhost:8000)
+  MUSICALO_API_KEY      Clave de API del backend (vacía = sin auth)
+  CHAINLIT_DEFAULT_USER Usuario por defecto cuando no hay reverse proxy (default: musicalo)
+  CHAINLIT_DB_PATH      Ruta al fichero SQLite de historial (default: /app/data/chainlit.db)
 """
 import os
 import re
+from typing import Optional
+
 import httpx
 import chainlit as cl
+import chainlit.data as cl_data
+from chainlit.data.sql_alchemy import SQLAlchemyDataLayer
+
+# ---------------------------------------------------------------------------
+# Configuración
+# ---------------------------------------------------------------------------
 
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000").rstrip("/")
 API_KEY = os.getenv("MUSICALO_API_KEY", "").strip()
 _HEADERS = {"X-API-Key": API_KEY} if API_KEY else {}
 _TIMEOUT = 90  # segundos — las respuestas de IA pueden tardar
+
+# Data layer persistente: guarda threads y mensajes en SQLite
+_DB_PATH = os.getenv("CHAINLIT_DB_PATH", "/app/data/chainlit.db")
+cl_data._data_layer = SQLAlchemyDataLayer(conninfo=f"sqlite+aiosqlite:///{_DB_PATH}")
+
+
+# ---------------------------------------------------------------------------
+# Auth: identifica al usuario sin mostrar formulario de login
+# ---------------------------------------------------------------------------
+
+@cl.header_auth_callback
+def header_auth_callback(headers: dict) -> Optional[cl.User]:
+    """
+    Identifica al usuario a partir de cabeceras HTTP, sin pantalla de login.
+
+    Con un reverse proxy que soporte forward auth (Traefik, nginx + Authelia,
+    Caddy, etc.) se puede proporcionar la cabecera X-Auth-User para que cada
+    usuario tenga su propio historial separado.
+
+    Sin proxy, todos los accesos se identifican con CHAINLIT_DEFAULT_USER
+    y comparten el mismo historial.
+    """
+    username = (
+        headers.get("x-auth-user")
+        or headers.get("x-forwarded-user")
+        or headers.get("remote-user")
+        or os.getenv("CHAINLIT_DEFAULT_USER", "musicalo")
+    )
+    return cl.User(identifier=username)
 
 
 # ---------------------------------------------------------------------------
@@ -22,8 +61,15 @@ _TIMEOUT = 90  # segundos — las respuestas de IA pueden tardar
 # ---------------------------------------------------------------------------
 
 def _user_id() -> str:
-    """ID de sesión único por pestaña de navegador."""
-    return str(abs(hash(cl.context.session.id)) % 10**9)
+    """
+    Devuelve el identificador estable del usuario autenticado.
+    Al usar header auth, este valor es el mismo en todas las sesiones del mismo usuario,
+    lo que permite al backend mantener contexto conversacional persistente.
+    """
+    user = cl.user_session.get("user")
+    if user and hasattr(user, "identifier"):
+        return user.identifier
+    return cl.context.session.id
 
 
 def _html_to_md(text: str) -> str:
@@ -60,21 +106,12 @@ async def _call_chat(message: str) -> dict:
         return resp.json()
 
 
-async def _send_response(data: dict):
-    """Envía el texto + botones de una respuesta de la API como mensaje Chainlit."""
-    text = _html_to_md(data.get("text", ""))
-    actions = _build_actions(data.get("actions", []))
-    await cl.Message(content=text, actions=actions).send()
-
-
 # ---------------------------------------------------------------------------
 # Handlers de Chainlit
 # ---------------------------------------------------------------------------
 
 @cl.on_chat_start
 async def on_chat_start():
-    cl.user_session.set("user_id", _user_id())
-
     await cl.Message(
         content=(
             "## 🎵 Bienvenido a Musicalo\n\n"
@@ -90,7 +127,6 @@ async def on_chat_start():
 
 @cl.on_message
 async def on_message(message: cl.Message):
-    # Mostrar indicador de espera
     thinking = cl.Message(content="🤔 Analizando tu mensaje...")
     await thinking.send()
 
@@ -105,10 +141,8 @@ async def on_message(message: cl.Message):
         await thinking.update()
         return
 
-    # Reemplazar el mensaje de espera con la respuesta real
     text = _html_to_md(data.get("text", ""))
     actions = _build_actions(data.get("actions", []))
-
     thinking.content = text
     thinking.actions = actions
     await thinking.update()

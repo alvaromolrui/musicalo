@@ -117,6 +117,13 @@ services:
     environment:
       - BACKEND_URL=http://musicalo:8000
       - MUSICALO_API_KEY=${MUSICALO_API_KEY:-}
+      # Usuario identificado cuando no hay reverse proxy con forward auth.
+      # Con Traefik/nginx + Authelia se puede pasar X-Auth-User por cabecera
+      # para que cada usuario tenga su propio historial separado.
+      - CHAINLIT_DEFAULT_USER=${CHAINLIT_DEFAULT_USER:-musicalo}
+      - CHAINLIT_DB_PATH=/app/data/chainlit.db
+    volumes:
+      - chainlit_data:/app/data   # historial de conversaciones (SQLite)
     depends_on:
       - musicalo
     networks:
@@ -130,4 +137,6 @@ volumes:
   logs:
     driver: local
   config:
+    driver: local
+  chainlit_data:
     driver: local
