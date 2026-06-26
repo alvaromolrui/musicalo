@@ -12,6 +12,7 @@ import os
 import re
 from typing import Optional
 
+import aiosqlite
 import httpx
 import chainlit as cl
 import chainlit.data as cl_data
@@ -26,21 +27,20 @@ API_KEY = os.getenv("MUSICALO_API_KEY", "").strip()
 _HEADERS = {"X-API-Key": API_KEY} if API_KEY else {}
 _TIMEOUT = 90  # segundos — las respuestas de IA pueden tardar
 
-
 _DB_PATH = os.getenv("CHAINLIT_DB_PATH", "/app/data/chainlit.db")
 _DEFAULT_USER = os.getenv("CHAINLIT_DEFAULT_USER", "musicalo")
 
 
 class _DataLayer(SQLAlchemyDataLayer):
-    """Data layer con dos correcciones para Chainlit 2.11.1 + SQLite:
+    """Data layer con correcciones para Chainlit 2.11.1 + SQLite.
 
-    1. get_thread_author: create_thread no persiste userIdentifier, por lo que
-       la columna queda NULL. En vez de lanzar ValueError (→ HTTP 500 al cargar
-       un thread), devolvemos el usuario por defecto.
+    - get_thread_author: la columna userIdentifier queda NULL porque Chainlit
+      no la incluye en el INSERT. Devolvemos el usuario por defecto en lugar
+      de lanzar ValueError (que provoca HTTP 500).
 
-    2. update_thread: interceptamos la llamada para escribir userIdentifier
-       directamente en la BD, ya que el SQL interno de Chainlit no lo incluye
-       en el ON CONFLICT … DO UPDATE.
+    - get_thread: si falla la deserialización de pasos o cualquier otro
+      error, devolvemos None para que Chainlit arranque un chat limpio en
+      lugar de mostrar la pantalla negra.
     """
 
     async def get_thread_author(self, thread_id: str) -> str:
@@ -52,26 +52,12 @@ class _DataLayer(SQLAlchemyDataLayer):
             pass
         return _DEFAULT_USER
 
-    async def update_thread(self, thread_id: str, name=None, user_id=None,
-                            metadata=None, tags=None):
-        await super().update_thread(
-            thread_id, name=name, user_id=user_id,
-            metadata=metadata, tags=tags,
-        )
-        # Chainlit no incluye userIdentifier en el ON CONFLICT … DO UPDATE,
-        # así que lo escribimos nosotros para que get_thread_author funcione.
-        if user_id:
-            import aiosqlite
-            async with aiosqlite.connect(_DB_PATH) as db:
-                row = await (await db.execute(
-                    'SELECT "identifier" FROM "users" WHERE "id" = ?', (user_id,)
-                )).fetchone()
-                if row:
-                    await db.execute(
-                        'UPDATE "threads" SET "userIdentifier" = ? WHERE "id" = ?',
-                        (row[0], thread_id),
-                    )
-                    await db.commit()
+    async def get_thread(self, thread_id: str):
+        try:
+            return await super().get_thread(thread_id)
+        except Exception as exc:
+            print(f"[warn] get_thread {thread_id}: {exc}")
+            return None
 
 
 # Data layer persistente: guarda threads y mensajes en SQLite
@@ -103,11 +89,6 @@ async def header_auth_callback(headers: dict) -> Optional[cl.User]:
     user = cl.User(identifier=username, metadata={})
 
     # Crear el usuario en el data layer si no existe todavía.
-    # Chainlit llama a get_user() antes de on_chat_start para cargar el historial
-    # del panel lateral; si el usuario no está en la BD lanza "User not found".
-    # Lo creamos aquí para evitar esa carrera — create_user llama internamente
-    # a get_user(), por lo que NO podemos hacerlo desde un override de get_user
-    # sin caer en recursión infinita.
     data_layer = cl_data._data_layer
     if data_layer:
         existing = await data_layer.get_user(username)
@@ -122,15 +103,47 @@ async def header_auth_callback(headers: dict) -> Optional[cl.User]:
 # ---------------------------------------------------------------------------
 
 def _user_id() -> str:
-    """
-    Devuelve el identificador estable del usuario autenticado.
-    Al usar header auth, este valor es el mismo en todas las sesiones del mismo usuario,
-    lo que permite al backend mantener contexto conversacional persistente.
-    """
     user = cl.user_session.get("user")
     if user and hasattr(user, "identifier"):
         return user.identifier
     return cl.context.session.id
+
+
+async def _patch_thread_author(user_identifier: str) -> None:
+    """
+    Escribe userIdentifier en la fila del thread actual.
+
+    Chainlit 2.11.1 no persiste userIdentifier en el INSERT de threads,
+    así que lo hacemos nosotros en on_chat_start, cuando ya tenemos el
+    thread_id y el usuario identificado.
+    Sin userIdentifier, list_threads no devuelve nada y la restauración
+    de conversaciones del sidebar no funciona.
+    """
+    try:
+        thread_id = cl.context.session.thread_id
+    except AttributeError:
+        # En algunas versiones thread_id no existe; usamos session.id como fallback
+        try:
+            thread_id = cl.context.session.id
+        except Exception:
+            return
+
+    try:
+        async with aiosqlite.connect(_DB_PATH) as db:
+            await db.execute(
+                '''UPDATE "threads"
+                   SET "userIdentifier" = ?,
+                       "userId" = (
+                           SELECT "id" FROM "users"
+                           WHERE "identifier" = ?
+                           LIMIT 1
+                       )
+                   WHERE "id" = ?''',
+                (user_identifier, user_identifier, thread_id),
+            )
+            await db.commit()
+    except Exception as exc:
+        print(f"[warn] patch_thread_author({thread_id}): {exc}")
 
 
 def _html_to_md(text: str) -> str:
@@ -173,6 +186,12 @@ async def _call_chat(message: str) -> dict:
 
 @cl.on_chat_start
 async def on_chat_start():
+    # Registrar al usuario como autor del thread recién creado para que
+    # list_threads lo devuelva en el sidebar y get_thread pueda cargarlo.
+    user = cl.user_session.get("user")
+    if user:
+        await _patch_thread_author(user.identifier)
+
     await cl.Message(
         content=(
             "## 🎵 Bienvenido a Musicalo\n\n"
