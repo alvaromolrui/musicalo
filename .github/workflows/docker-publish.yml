@@ -1,4 +1,4 @@
-name: Build and Push Docker Image
+name: Build and Push Docker Images
 
 on:
   push:
@@ -16,86 +16,90 @@ on:
 
 env:
   DOCKER_USERNAME: alvaromolrui
-  IMAGE_NAME: musicalo
 
 jobs:
-  build-and-push:
+
+  # ---------------------------------------------------------------------------
+  # Detectar qué partes del repo han cambiado
+  # ---------------------------------------------------------------------------
+  changes:
     runs-on: ubuntu-latest
-    
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+              - 'Dockerfile'
+              - 'requirements.txt'
+              - 'start-bot.py'
+              - 'docker-entrypoint.sh'
+            frontend:
+              - 'frontend/**'
+
+  # ---------------------------------------------------------------------------
+  # Imagen backend: alvaromolrui/musicalo
+  # ---------------------------------------------------------------------------
+  build-backend:
+    needs: changes
+    # Siempre construir en tags de versión; en main solo si cambió algo del backend
+    if: ${{ needs.changes.outputs.backend == 'true' || startsWith(github.ref, 'refs/tags/') }}
+    runs-on: ubuntu-latest
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-      
+
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ env.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
-      
+
       - name: Extract metadata
         id: meta
         run: |
-          # Determinar tags según el tipo de push
+          IMAGE="${{ env.DOCKER_USERNAME }}/musicalo"
+
           if [[ $GITHUB_REF == refs/tags/v* ]]; then
-            # Es un tag (release)
             VERSION=${GITHUB_REF#refs/tags/v}
             echo "version=${VERSION}" >> $GITHUB_OUTPUT
             echo "is_release=true" >> $GITHUB_OUTPUT
-            
-            # Leer versión desde archivo VERSION para comparar
+
             CURRENT_VERSION=$(cat VERSION 2>/dev/null || echo "0.0.0")
-            CURRENT_VERSION=$(echo "$CURRENT_VERSION" | tr -d '\n' | tr -d '\r')
-            echo "current_version=${CURRENT_VERSION}" >> $GITHUB_OUTPUT
-            
-            # Determinar si debe actualizar latest
-            SHOULD_UPDATE_LATEST=true
-            
-            # Extraer números de versión (ignorar sufijos como -alpha, -beta)
+            CURRENT_VERSION=$(echo "$CURRENT_VERSION" | tr -d '\n\r')
             TAG_VERSION=$(echo "$VERSION" | sed 's/-.*$//')
             FILE_VERSION=$(echo "$CURRENT_VERSION" | sed 's/-.*$//')
-            
-            # Comparar versiones
-            if [ "$TAG_VERSION" != "$FILE_VERSION" ]; then
-              echo "⚠️ Tag version ($TAG_VERSION) != VERSION file ($FILE_VERSION)"
-              echo "latest_note=Version mismatch" >> $GITHUB_OUTPUT
-              SHOULD_UPDATE_LATEST=false
-            fi
-            
-            # Tags para release
-            TAGS="${{ env.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${VERSION}"
-            
-            if [ "$SHOULD_UPDATE_LATEST" = true ]; then
-              TAGS="${TAGS},${{ env.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:latest"
+
+            TAGS="${IMAGE}:${VERSION}"
+            if [ "$TAG_VERSION" = "$FILE_VERSION" ]; then
+              TAGS="${TAGS},${IMAGE}:latest"
               echo "✅ Se actualizará latest a $VERSION"
             else
-              echo "⚠️ NO se actualizará latest (solo tag específico: $VERSION)"
+              echo "⚠️ Version mismatch: tag=$TAG_VERSION, archivo=$FILE_VERSION — latest NO se actualizará"
             fi
-            
-            {
-              echo "tags<<EOF"
-              echo "$TAGS"
-              echo "EOF"
-            } >> $GITHUB_OUTPUT
-            
+
           elif [[ $GITHUB_REF == refs/heads/main ]]; then
-            # Es push a main
             echo "version=main" >> $GITHUB_OUTPUT
             echo "is_release=false" >> $GITHUB_OUTPUT
-            
-            # Tag para main: solo main (NO latest)
-            TAGS="${{ env.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:main"
-            {
-              echo "tags<<EOF"
-              echo "$TAGS"
-              echo "EOF"
-            } >> $GITHUB_OUTPUT
+            TAGS="${IMAGE}:main"
           fi
-          
-          echo "📦 Tags a construir: $TAGS"
-      
+
+          {
+            echo "tags<<EOF"
+            echo "$TAGS"
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
+          echo "📦 Tags: $TAGS"
+
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
@@ -103,27 +107,107 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,scope=backend,mode=max
           labels: |
             org.opencontainers.image.title=Musicalo
-            org.opencontainers.image.description=Bot de Telegram con IA para recomendaciones musicales
+            org.opencontainers.image.description=Asistente musical con IA — backend y bot de Telegram
             org.opencontainers.image.version=${{ steps.meta.outputs.version }}
-            org.opencontainers.image.source=https://github.com/${{ env.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}
-      
+            org.opencontainers.image.source=https://github.com/${{ env.DOCKER_USERNAME }}/musicalo
+
       - name: Summary
         run: |
-          echo "### 🎉 Build Completado" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Versión**: \`${{ steps.meta.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "### 🎵 Backend — Build Completado" >> $GITHUB_STEP_SUMMARY
+          echo "**Imagen**: \`alvaromolrui/musicalo\`" >> $GITHUB_STEP_SUMMARY
           echo "**Tags**: \`${{ steps.meta.outputs.tags }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
           if [[ "${{ steps.meta.outputs.is_release }}" == "true" ]]; then
-            echo "✅ **Release** publicado en Docker Hub" >> $GITHUB_STEP_SUMMARY
-            echo "🏷️ Tag \`latest\` actualizado" >> $GITHUB_STEP_SUMMARY
+            echo "✅ Release publicado en Docker Hub" >> $GITHUB_STEP_SUMMARY
           else
-            echo "🔄 Tag \`main\` actualizado (desarrollo)" >> $GITHUB_STEP_SUMMARY
+            echo "🔄 Tag \`main\` actualizado" >> $GITHUB_STEP_SUMMARY
           fi
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "🐳 **Docker Hub**: https://hub.docker.com/r/${{ env.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}" >> $GITHUB_STEP_SUMMARY
+          echo "🐳 https://hub.docker.com/r/${{ env.DOCKER_USERNAME }}/musicalo" >> $GITHUB_STEP_SUMMARY
 
+  # ---------------------------------------------------------------------------
+  # Imagen frontend: alvaromolrui/musicalo-frontend
+  # ---------------------------------------------------------------------------
+  build-frontend:
+    needs: changes
+    # Siempre construir en tags de versión; en main solo si cambió algo del frontend
+    if: ${{ needs.changes.outputs.frontend == 'true' || startsWith(github.ref, 'refs/tags/') }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ env.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Extract metadata
+        id: meta
+        run: |
+          IMAGE="${{ env.DOCKER_USERNAME }}/musicalo-frontend"
+
+          if [[ $GITHUB_REF == refs/tags/v* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/v}
+            echo "version=${VERSION}" >> $GITHUB_OUTPUT
+            echo "is_release=true" >> $GITHUB_OUTPUT
+
+            CURRENT_VERSION=$(cat VERSION 2>/dev/null || echo "0.0.0")
+            CURRENT_VERSION=$(echo "$CURRENT_VERSION" | tr -d '\n\r')
+            TAG_VERSION=$(echo "$VERSION" | sed 's/-.*$//')
+            FILE_VERSION=$(echo "$CURRENT_VERSION" | sed 's/-.*$//')
+
+            TAGS="${IMAGE}:${VERSION}"
+            if [ "$TAG_VERSION" = "$FILE_VERSION" ]; then
+              TAGS="${TAGS},${IMAGE}:latest"
+              echo "✅ Se actualizará latest a $VERSION"
+            else
+              echo "⚠️ Version mismatch: tag=$TAG_VERSION, archivo=$FILE_VERSION — latest NO se actualizará"
+            fi
+
+          elif [[ $GITHUB_REF == refs/heads/main ]]; then
+            echo "version=main" >> $GITHUB_OUTPUT
+            echo "is_release=false" >> $GITHUB_OUTPUT
+            TAGS="${IMAGE}:main"
+          fi
+
+          {
+            echo "tags<<EOF"
+            echo "$TAGS"
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
+          echo "📦 Tags: $TAGS"
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,scope=frontend,mode=max
+          labels: |
+            org.opencontainers.image.title=Musicalo Frontend
+            org.opencontainers.image.description=Interfaz web de chat para Musicalo — construida con Chainlit
+            org.opencontainers.image.version=${{ steps.meta.outputs.version }}
+            org.opencontainers.image.source=https://github.com/${{ env.DOCKER_USERNAME }}/musicalo
+
+      - name: Summary
+        run: |
+          echo "### 🎨 Frontend — Build Completado" >> $GITHUB_STEP_SUMMARY
+          echo "**Imagen**: \`alvaromolrui/musicalo-frontend\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Tags**: \`${{ steps.meta.outputs.tags }}\`" >> $GITHUB_STEP_SUMMARY
+          if [[ "${{ steps.meta.outputs.is_release }}" == "true" ]]; then
+            echo "✅ Release publicado en Docker Hub" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "🔄 Tag \`main\` actualizado" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "🐳 https://hub.docker.com/r/${{ env.DOCKER_USERNAME }}/musicalo-frontend" >> $GITHUB_STEP_SUMMARY
