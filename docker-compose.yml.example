@@ -1,7 +1,6 @@
 services:
   musicalo:
-    build: .
-    # image: alvaromolrui/musicalo:latest  # Comentado para usar build local
+    image: alvaromolrui/musicalo:latest
     container_name: musicalo
     restart: unless-stopped
     environment:
