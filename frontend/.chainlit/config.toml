@@ -1,0 +1,24 @@
+[project]
+# Desactiva el envío de telemetría a Chainlit
+enable_telemetry = false
+
+# Sin autenticación — protege el acceso a nivel de red (reverse proxy, VPN, etc.)
+# Para habilitar auth básica: https://docs.chainlit.io/authentication/password
+# [auth]
+# secret = "cambia-esto-por-un-secreto-seguro"
+
+[UI]
+name = "Musicalo"
+description = "Tu asistente musical con IA"
+# Muestra el logo si existe public/logo.png
+# logo = "/public/logo.png"
+default_collapse_content = false
+hide_cot = true
+# Tema: "light" | "dark"
+# default_theme = "dark"
+
+[features]
+# Permite subir archivos en el chat (no necesario para Musicalo)
+multi_modal = false
+# Desactiva el historial persistente de conversaciones (cada sesión es nueva)
+prompt_playground = false

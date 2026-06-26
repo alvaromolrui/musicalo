@@ -97,26 +97,30 @@ services:
       - musicalo-network
 
   # ---------------------------------------------------------------------------
-  # Servicio frontend — Chainlit (FASE 4, descomenta cuando esté disponible)
+  # Servicio frontend — Chainlit (chat web)
   # ---------------------------------------------------------------------------
-  # Para activarlo:
-  #   1. Asegúrate de que START_MODE=api o both en el servicio musicalo
-  #   2. Configura MUSICALO_API_KEY con el mismo valor en ambos servicios
-  #   3. Descomenta este bloque
+  # Requisitos previos:
+  #   - START_MODE=api o both en el servicio musicalo
+  #   - MUSICALO_API_KEY configurada con el mismo valor en ambos servicios
   #
-  # frontend:
-  #   image: alvaromolrui/musicalo-frontend:latest
-  #   container_name: musicalo-frontend
-  #   restart: unless-stopped
-  #   ports:
-  #     - "${FRONTEND_PORT:-8080}:8080"
-  #   environment:
-  #     - BACKEND_URL=http://musicalo:8000
-  #     - MUSICALO_API_KEY=${MUSICALO_API_KEY:-}
-  #   depends_on:
-  #     - musicalo
-  #   networks:
-  #     - musicalo-network
+  # Acceso: http://localhost:8080  (o el FRONTEND_PORT que configures)
+  #
+  frontend:
+    # Para producción (imagen publicada en Docker Hub):
+    image: alvaromolrui/musicalo-frontend:latest
+    # Para desarrollo local (build desde el código fuente):
+    # build: ./frontend
+    container_name: musicalo-frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-8080}:8080"
+    environment:
+      - BACKEND_URL=http://musicalo:8000
+      - MUSICALO_API_KEY=${MUSICALO_API_KEY:-}
+    depends_on:
+      - musicalo
+    networks:
+      - musicalo-network
 
 networks:
   musicalo-network:
