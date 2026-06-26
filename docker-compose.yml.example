@@ -8,70 +8,46 @@ services:
       - NAVIDROME_URL=${NAVIDROME_URL}
       - NAVIDROME_USERNAME=${NAVIDROME_USERNAME}
       - NAVIDROME_PASSWORD=${NAVIDROME_PASSWORD}
-      
+
       # ListenBrainz Configuration
       - LISTENBRAINZ_USERNAME=${LISTENBRAINZ_USERNAME}
       - LISTENBRAINZ_TOKEN=${LISTENBRAINZ_TOKEN}
-      
+
       # MusicBrainz Configuration
-      - ENABLE_MUSICBRAINZ=${ENABLE_MUSICBRAINZ}
-      - APP_NAME=${APP_NAME}
+      - ENABLE_MUSICBRAINZ=${ENABLE_MUSICBRAINZ:-true}
+      - APP_NAME=${APP_NAME:-MusicaloBot}
       - CONTACT_EMAIL=${CONTACT_EMAIL}
-      - MUSICBRAINZ_BATCH_SIZE=${MUSICBRAINZ_BATCH_SIZE}
-      - MUSICBRAINZ_MAX_TOTAL=${MUSICBRAINZ_MAX_TOTAL}
-      - MUSICBRAINZ_MAX_RELEASES=${MUSICBRAINZ_MAX_RELEASES}
-      
+      - MUSICBRAINZ_BATCH_SIZE=${MUSICBRAINZ_BATCH_SIZE:-15}
+      - MUSICBRAINZ_MAX_TOTAL=${MUSICBRAINZ_MAX_TOTAL:-100}
+
       # Gemini Configuration
       - GEMINI_API_KEY=${GEMINI_API_KEY}
-      
+
       # Telegram Bot Configuration
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - TELEGRAM_ALLOWED_USER_IDS=${TELEGRAM_ALLOWED_USER_IDS}
-      
-      # Redis Configuration
-      - REDIS_URL=redis://redis:6379/0
-      - REDIS_CACHE_TTL=3600
-      
-      # Analytics Configuration
-      - ENABLE_ANALYTICS=true
-      - ANALYTICS_RETENTION_DAYS=30
-    
-    volumes:
-      # Volumen para logs persistentes
-      - logs:/app/logs
-      # Volumen para configuración (opcional)
-      - config:/app/config
-    
-    networks:
-      - musicalo-network
-    
-    depends_on:
-      - redis
-    
-    # Límites de recursos
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-        reservations:
-          memory: 256M
 
-  redis:
-    image: redis:7-alpine
-    container_name: musicalo-redis
-    restart: unless-stopped
-    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+      # Modo de arranque
+      # telegram  → solo bot de Telegram (por defecto, comportamiento original)
+      # api       → solo API REST en el puerto indicado
+      # both      → Telegram + API REST simultáneamente
+      - START_MODE=${START_MODE:-telegram}
+
+      # API REST — clave de acceso opcional (deja vacío para acceso abierto en red privada)
+      - MUSICALO_API_KEY=${MUSICALO_API_KEY:-}
+      - HOST=0.0.0.0
+      - PORT=8000
+
+    # Puerto de la API REST (solo se usa si START_MODE=api o both)
+    ports:
+      - "${API_PORT:-8000}:8000"
+
     volumes:
-      - redis_data:/data
+      - logs:/app/logs
+      - config:/app/config
+
     networks:
       - musicalo-network
-    # Límites de recursos
-    deploy:
-      resources:
-        limits:
-          memory: 256M
-        reservations:
-          memory: 128M
 
 networks:
   musicalo-network:
@@ -81,6 +57,4 @@ volumes:
   logs:
     driver: local
   config:
-    driver: local
-  redis_data:
     driver: local

@@ -1,34 +1,77 @@
 #!/usr/bin/env python3
 """
-Musicalo - Script de inicio
+Musicalo — script de inicio.
 
-Ejecuta el bot de Telegram con la configuración apropiada.
+START_MODE (variable de entorno):
+  telegram  (por defecto) — solo bot de Telegram
+  api                     — solo API REST (uvicorn en PORT, por defecto 8000)
+  both                    — Telegram + API REST simultáneamente
 """
-
 import sys
 import os
+import asyncio
 from pathlib import Path
 
-# Agregar el directorio backend al path
 backend_dir = Path(__file__).parent / "backend"
 sys.path.insert(0, str(backend_dir))
-
-# Cambiar al directorio backend
 os.chdir(backend_dir)
 
-# Importar y ejecutar el bot
-from bot import main
+MODE = os.getenv("START_MODE", "telegram").lower()
+PORT = int(os.getenv("PORT", "8000"))
+HOST = os.getenv("HOST", "0.0.0.0")
+
+
+def run_telegram():
+    from bot import main
+    print("📱 Modo: Telegram bot")
+    main()
+
+
+async def run_api():
+    import uvicorn
+    print(f"🌐 Modo: API REST en http://{HOST}:{PORT}")
+    config = uvicorn.Config("api.main:app", host=HOST, port=PORT, log_level="info")
+    server = uvicorn.Server(config)
+    await server.serve()
+
+
+async def run_both():
+    """Ejecuta Telegram bot y API REST en el mismo event loop."""
+    import uvicorn
+    from bot import MusicAgentBot
+
+    print(f"🎵 Modo: Telegram + API REST en http://{HOST}:{PORT}")
+
+    bot = MusicAgentBot()
+    application = bot.application
+
+    config = uvicorn.Config("api.main:app", host=HOST, port=PORT, log_level="info")
+    server = uvicorn.Server(config)
+
+    async with application:
+        await application.start()
+        await application.updater.start_polling()
+        await server.serve()          # bloquea hasta Ctrl+C
+        await application.updater.stop()
+        await application.stop()
+
 
 if __name__ == "__main__":
     print("🎵 Iniciando Musicalo...")
-    print("📱 Busca tu bot en Telegram y escribe /start para comenzar")
-    print("🛑 Presiona Ctrl+C para detener el bot")
     print("-" * 50)
-    
+
     try:
-        main()
+        if MODE == "telegram":
+            run_telegram()
+        elif MODE == "api":
+            asyncio.run(run_api())
+        elif MODE == "both":
+            asyncio.run(run_both())
+        else:
+            print(f"❌ START_MODE desconocido: '{MODE}'. Usa: telegram | api | both")
+            sys.exit(1)
     except KeyboardInterrupt:
-        print("\n🛑 Bot detenido por el usuario")
+        print("\n🛑 Musicalo detenido por el usuario")
     except Exception as e:
         print(f"❌ Error: {e}")
         sys.exit(1)
