@@ -26,9 +26,26 @@ API_KEY = os.getenv("MUSICALO_API_KEY", "").strip()
 _HEADERS = {"X-API-Key": API_KEY} if API_KEY else {}
 _TIMEOUT = 90  # segundos — las respuestas de IA pueden tardar
 
+
+class _DataLayer(SQLAlchemyDataLayer):
+    """SQLAlchemy data layer con auto-creación de usuario en el primer acceso.
+
+    Chainlit llama a get_user() antes de on_chat_start para cargar el historial
+    del panel lateral. Si el usuario no existe en la BD lanza 'User not found'.
+    Esta subclase lo crea automáticamente la primera vez.
+    """
+
+    async def get_user(self, identifier: str):
+        user = await super().get_user(identifier)
+        if user is None:
+            await self.create_user(cl.User(identifier=identifier, metadata={}))
+            user = await super().get_user(identifier)
+        return user
+
+
 # Data layer persistente: guarda threads y mensajes en SQLite
 _DB_PATH = os.getenv("CHAINLIT_DB_PATH", "/app/data/chainlit.db")
-cl_data._data_layer = SQLAlchemyDataLayer(conninfo=f"sqlite+aiosqlite:///{_DB_PATH}")
+cl_data._data_layer = _DataLayer(conninfo=f"sqlite+aiosqlite:///{_DB_PATH}")
 
 
 # ---------------------------------------------------------------------------
