@@ -27,25 +27,9 @@ _HEADERS = {"X-API-Key": API_KEY} if API_KEY else {}
 _TIMEOUT = 90  # segundos — las respuestas de IA pueden tardar
 
 
-class _DataLayer(SQLAlchemyDataLayer):
-    """SQLAlchemy data layer con auto-creación de usuario en el primer acceso.
-
-    Chainlit llama a get_user() antes de on_chat_start para cargar el historial
-    del panel lateral. Si el usuario no existe en la BD lanza 'User not found'.
-    Esta subclase lo crea automáticamente la primera vez.
-    """
-
-    async def get_user(self, identifier: str):
-        user = await super().get_user(identifier)
-        if user is None:
-            await self.create_user(cl.User(identifier=identifier, metadata={}))
-            user = await super().get_user(identifier)
-        return user
-
-
 # Data layer persistente: guarda threads y mensajes en SQLite
 _DB_PATH = os.getenv("CHAINLIT_DB_PATH", "/app/data/chainlit.db")
-cl_data._data_layer = _DataLayer(conninfo=f"sqlite+aiosqlite:///{_DB_PATH}")
+cl_data._data_layer = SQLAlchemyDataLayer(conninfo=f"sqlite+aiosqlite:///{_DB_PATH}")
 
 
 # ---------------------------------------------------------------------------
@@ -53,7 +37,7 @@ cl_data._data_layer = _DataLayer(conninfo=f"sqlite+aiosqlite:///{_DB_PATH}")
 # ---------------------------------------------------------------------------
 
 @cl.header_auth_callback
-def header_auth_callback(headers: dict) -> Optional[cl.User]:
+async def header_auth_callback(headers: dict) -> Optional[cl.User]:
     """
     Identifica al usuario a partir de cabeceras HTTP, sin pantalla de login.
 
@@ -70,7 +54,21 @@ def header_auth_callback(headers: dict) -> Optional[cl.User]:
         or headers.get("remote-user")
         or os.getenv("CHAINLIT_DEFAULT_USER", "musicalo")
     )
-    return cl.User(identifier=username)
+    user = cl.User(identifier=username, metadata={})
+
+    # Crear el usuario en el data layer si no existe todavía.
+    # Chainlit llama a get_user() antes de on_chat_start para cargar el historial
+    # del panel lateral; si el usuario no está en la BD lanza "User not found".
+    # Lo creamos aquí para evitar esa carrera — create_user llama internamente
+    # a get_user(), por lo que NO podemos hacerlo desde un override de get_user
+    # sin caer en recursión infinita.
+    data_layer = cl_data._data_layer
+    if data_layer:
+        existing = await data_layer.get_user(username)
+        if not existing:
+            await data_layer.create_user(user)
+
+    return user
 
 
 # ---------------------------------------------------------------------------
