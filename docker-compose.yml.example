@@ -122,6 +122,9 @@ services:
       # para que cada usuario tenga su propio historial separado.
       - CHAINLIT_DEFAULT_USER=${CHAINLIT_DEFAULT_USER:-musicalo}
       - CHAINLIT_DB_PATH=/app/data/chainlit.db
+      # Secreto JWT requerido por Chainlit para firmar sesiones de auth.
+      # Genera uno con: openssl rand -hex 32
+      - CHAINLIT_AUTH_SECRET=${CHAINLIT_AUTH_SECRET}
     volumes:
       - chainlit_data:/app/data   # historial de conversaciones (SQLite)
     depends_on:
