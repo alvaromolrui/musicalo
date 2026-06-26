@@ -8,6 +8,11 @@ RUN pip install --no-cache-dir --upgrade pip && \
 
 COPY . .
 
+# El config.toml se valida contra la versión instalada de Chainlit.
+# Borrarlo aquí hace que Chainlit lo regenere en el primer arranque,
+# evitando el error "Your config file is outdated".
+RUN rm -f .chainlit/config.toml
+
 RUN useradd -m -s /bin/bash appuser && chown -R appuser:appuser /app
 USER appuser
 
