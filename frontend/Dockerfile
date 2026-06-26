@@ -21,4 +21,5 @@ USER appuser
 
 EXPOSE 8080
 
-CMD ["chainlit", "run", "app.py", "--host", "0.0.0.0", "--port", "8080"]
+# init_db.py crea las tablas SQLite si no existen (idempotente)
+CMD ["sh", "-c", "python init_db.py && chainlit run app.py --host 0.0.0.0 --port 8080"]
