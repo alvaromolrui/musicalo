@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS "steps" (
     "end"          TEXT,
     "generation"   TEXT,
     "showInput"    TEXT,
+    "language"     TEXT,
     "defaultOpen"  INTEGER,
     "autoCollapse" INTEGER
 );
@@ -64,7 +65,8 @@ CREATE TABLE IF NOT EXISTS "elements" (
     "page"        INTEGER,
     "language"    TEXT,
     "forId"       TEXT,
-    "mime"        TEXT
+    "mime"        TEXT,
+    "props"       TEXT
 );
 
 CREATE TABLE IF NOT EXISTS "feedbacks" (
@@ -82,6 +84,21 @@ async def main() -> None:
 
     async with aiosqlite.connect(DB_PATH) as db:
         await db.executescript(_SCHEMA)
+
+        # Migraciones de columnas: ALTER TABLE falla si la columna ya existe;
+        # lo ignoramos para que init_db.py sea idempotente.
+        # Chainlit 2.11.1 consulta steps.language y elements.props, que no
+        # estaban en el esquema original → get_thread fallaba en toda carga.
+        for table, column, col_type in [
+            ("steps",    "language", "TEXT"),
+            ("elements", "props",    "TEXT"),
+        ]:
+            try:
+                await db.execute(
+                    f'ALTER TABLE "{table}" ADD COLUMN "{column}" {col_type}'
+                )
+            except Exception:
+                pass  # columna ya existe
 
         # Migración: threads sin userIdentifier no aparecen en list_threads.
         # Chainlit 2.11.1 no persiste userIdentifier en el INSERT, así que
