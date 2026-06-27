@@ -237,18 +237,6 @@ async def on_chat_start():
     if user:
         await _patch_thread_author(user.identifier)
 
-    await cl.Message(
-        content=(
-            "## 🎵 Bienvenido a Musicalo\n\n"
-            "Soy tu asistente musical con IA. Puedes hablarme en lenguaje natural:\n\n"
-            "- *\"Recomiéndame rock progresivo de los 70s\"*\n"
-            "- *\"¿Qué álbumes tengo de Pink Floyd?\"*\n"
-            "- *\"Crea una playlist de jazz suave\"*\n"
-            "- *\"¿Qué estoy escuchando ahora?\"*\n\n"
-            "¿Por dónde empezamos? 🎶"
-        )
-    ).send()
-
 
 @cl.on_message
 async def on_message(message: cl.Message):
