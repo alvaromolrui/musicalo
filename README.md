@@ -2,12 +2,14 @@
 
 [![Version](https://img.shields.io/badge/Version-4.2.1-blue.svg)](VERSION)
 [![Docker Hub](https://img.shields.io/badge/Docker%20Hub-alvaromolrui%2Fmusicalo-blue?logo=docker)](https://hub.docker.com/r/alvaromolrui/musicalo)
+[![Frontend](https://img.shields.io/badge/Docker%20Hub-alvaromolrui%2Fmusicalo--frontend-blue?logo=docker)](https://hub.docker.com/r/alvaromolrui/musicalo-frontend)
 [![GitHub](https://img.shields.io/badge/GitHub-alvaromolrui%2Fmusicalo-black?logo=github)](https://github.com/alvaromolrui/musicalo)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.11-blue?logo=python)](https://python.org)
 [![Telegram](https://img.shields.io/badge/Telegram-Bot-blue?logo=telegram)](https://telegram.org)
+[![Chainlit](https://img.shields.io/badge/Web%20UI-Chainlit-orange)](https://chainlit.io)
 
-Un bot de Telegram inteligente que utiliza IA para generar recomendaciones musicales personalizadas basadas en tu biblioteca de Navidrome y tus scrobbles de ListenBrainz.
+Asistente musical con IA que combina un bot de Telegram y una interfaz web (Chainlit). Genera recomendaciones personalizadas basadas en tu biblioteca de Navidrome y tus scrobbles de ListenBrainz.
 
 ## ✨ Características
 
@@ -80,6 +82,42 @@ Bot: "Has escuchado 523 canciones este mes, tu artista top es..."
 
 **Todos los comandos aprovechan el contexto:** `/recommend`, `/stats`, `/playlist`, `/library`, `/releases`, `/search`, `/nowplaying`
 
+## 🖥️ Modos de uso (`START_MODE`)
+
+El backend puede arrancar en tres modos:
+
+| Modo | Descripción | Requiere |
+|------|-------------|----------|
+| `telegram` | Solo bot de Telegram (por defecto) | `TELEGRAM_BOT_TOKEN` |
+| `api` | Solo API REST — para conectar el frontend web u otra UI | — |
+| `both` | Telegram + API REST simultáneamente | `TELEGRAM_BOT_TOKEN` |
+
+### 🌐 Frontend web (Chainlit)
+
+Cuando `START_MODE=api` o `both`, puedes desplegar también el frontend web:
+
+- Chat en el navegador accesible en `http://localhost:8080`
+- Historial de conversaciones persistente (SQLite)
+- Mismas capacidades que el bot de Telegram
+- Imagen Docker: `alvaromolrui/musicalo-frontend:main`
+
+```yaml
+# Fragmento docker-compose.yml
+frontend:
+  image: alvaromolrui/musicalo-frontend:main
+  ports:
+    - "8080:8080"
+  environment:
+    - BACKEND_URL=http://musicalo:8000
+    - MUSICALO_API_KEY=${MUSICALO_API_KEY}
+    - CHAINLIT_AUTH_SECRET=${CHAINLIT_AUTH_SECRET}   # openssl rand -hex 32
+    - CHAINLIT_DEFAULT_USER=${CHAINLIT_DEFAULT_USER:-musicalo}
+  volumes:
+    - chainlit_data:/app/data   # historial SQLite persistente
+```
+
+> Ver `docker-compose.yml.example` para la configuración completa.
+
 ## 🏗️ Arquitectura
 
 ### Bot de Telegram
@@ -90,13 +128,19 @@ Bot: "Has escuchado 523 canciones este mes, tu artista top es..."
 - **🎵 Recomendaciones variadas**: Diferentes sugerencias cada vez
 - **🔄 Modo Polling**: Conexión simple y directa con Telegram
 
-### Backend (Python + Telegram Bot API)
-- **Servicios integrados**: 
+### Backend (FastAPI + Telegram Bot API)
+- **API REST** en `POST /chat/` — consume el frontend web y cualquier cliente externo
+- **Servicios integrados**:
   - `NavidromeService`: Conexión con tu servidor Navidrome
   - `ListenBrainzService`: Datos de escucha y recomendaciones colaborativas (open source, sin límites)
   - `MusicBrainzService`: Metadatos detallados, relaciones entre artistas y búsqueda inversa por género/país/época
   - `MusicRecommendationService`: IA con Google Gemini para recomendaciones personalizadas
   - `TelegramService`: Manejo de interacciones del bot en modo polling
+
+### Frontend web (Chainlit)
+- Interfaz de chat en el navegador
+- Historial persistente en SQLite (volumen Docker `chainlit_data`)
+- Autenticación sin formulario vía `@cl.header_auth_callback`; compatible con reverse proxy (Traefik + Authelia) para multiusuario
 
 **Stack completamente open-source:**
 - ✅ **ListenBrainz** para datos de escucha y recomendaciones basadas en usuarios similares
@@ -159,14 +203,21 @@ nano .env
 
 El archivo `.env` está completamente documentado con comentarios explicativos para cada variable.
 
-**Variables principales:**
-- `NAVIDROME_URL`: URL de tu servidor Navidrome
-- `NAVIDROME_USERNAME` y `NAVIDROME_PASSWORD`: Credenciales de Navidrome
-- `LISTENBRAINZ_USERNAME` y `LISTENBRAINZ_TOKEN`: Para datos de escucha (REQUERIDO)
+**Variables principales del backend:**
+- `START_MODE`: `telegram` (default) / `api` / `both`
+- `NAVIDROME_URL`, `NAVIDROME_USERNAME`, `NAVIDROME_PASSWORD`: Credenciales de Navidrome
+- `LISTENBRAINZ_USERNAME`, `LISTENBRAINZ_TOKEN`: Para datos de escucha (REQUERIDO)
 - `ENABLE_MUSICBRAINZ`: Habilitar metadatos y descubrimiento avanzado (RECOMENDADO)
 - `GEMINI_API_KEY`: API key de Google Gemini (REQUERIDO)
-- `TELEGRAM_BOT_TOKEN`: Token de tu bot de Telegram (REQUERIDO)
+- `TELEGRAM_BOT_TOKEN`: Token de tu bot de Telegram (solo si `START_MODE=telegram` o `both`)
 - `TELEGRAM_ALLOWED_USER_IDS`: IDs permitidos para bot privado (RECOMENDADO)
+- `MUSICALO_API_KEY`: Clave de acceso a la API REST (vacía = sin auth)
+
+**Variables del frontend web** (solo si usas el servicio `frontend`):
+- `CHAINLIT_AUTH_SECRET`: JWT secret requerido por Chainlit — genera con `openssl rand -hex 32`
+- `CHAINLIT_DEFAULT_USER`: Usuario cuando no hay reverse proxy (default: `musicalo`)
+- `CHAINLIT_DB_PATH`: Ruta al SQLite de historial (default: `/app/data/chainlit.db`)
+- `BACKEND_URL`: URL del backend desde el contenedor frontend (default: `http://musicalo:8000`)
 
 **Stack completamente open-source:** ListenBrainz + MusicBrainz + Navidrome = Sin dependencias de servicios comerciales.
 
@@ -390,7 +441,7 @@ El sistema utiliza múltiples enfoques con **contexto adaptativo**:
 ## 🎨 Tecnologías
 
 ### Backend
-- **python-telegram-bot 20.7**: Framework moderno para bots
+- **FastAPI**: API REST + python-telegram-bot 20.7
 - **Google Gemini**: IA para recomendaciones contextuales
 - **httpx**: Cliente HTTP asíncrono para APIs
 - **Pydantic**: Validación de datos
@@ -401,6 +452,11 @@ El sistema utiliza múltiples enfoques con **contexto adaptativo**:
 - **Reply Keyboards**: Teclados personalizados
 - **Callback Handlers**: Manejo de interacciones
 - **Async/Await**: Operaciones asíncronas para mejor rendimiento
+
+### Frontend web
+- **Chainlit 2.11.1**: Framework de chat web
+- **SQLAlchemy + aiosqlite**: Historial persistente en SQLite
+- **httpx**: Comunicación con la API REST del backend
 
 ## 📊 Características de la IA
 
