@@ -118,18 +118,31 @@ async def _patch_thread_author(user_identifier: str) -> None:
     thread_id y el usuario identificado.
     Sin userIdentifier, list_threads no devuelve nada y la restauración
     de conversaciones del sidebar no funciona.
+
+    Estrategia para encontrar el thread:
+    1. cl.context.session.thread_id  (atributo directo, Chainlit ≥ 2.x)
+    2. Buscar en la BD el thread cuyo campo metadata.id coincide con
+       cl.context.session.id (session ID que Chainlit guarda en metadata)
     """
-    try:
-        thread_id = cl.context.session.thread_id
-    except AttributeError:
-        # En algunas versiones thread_id no existe; usamos session.id como fallback
-        try:
-            thread_id = cl.context.session.id
-        except Exception:
-            return
+    session_id = cl.context.session.id
+    thread_id: Optional[str] = getattr(cl.context.session, "thread_id", None)
 
     try:
         async with aiosqlite.connect(_DB_PATH) as db:
+            if not thread_id:
+                # Chainlit almacena el session_id dentro del JSON de metadata:
+                # {"id": "<session_id>", "env": {}, ...}
+                row = await (await db.execute(
+                    "SELECT id FROM threads"
+                    " WHERE json_extract(metadata, '$.id') = ? LIMIT 1",
+                    (session_id,),
+                )).fetchone()
+                thread_id = row[0] if row else None
+
+            if not thread_id:
+                print(f"[warn] patch_thread_author: no thread found for session {session_id}")
+                return
+
             await db.execute(
                 '''UPDATE "threads"
                    SET "userIdentifier" = ?,
@@ -142,8 +155,9 @@ async def _patch_thread_author(user_identifier: str) -> None:
                 (user_identifier, user_identifier, thread_id),
             )
             await db.commit()
+            print(f"[info] patch_thread_author: thread={thread_id[:8]}… → user={user_identifier}")
     except Exception as exc:
-        print(f"[warn] patch_thread_author({thread_id}): {exc}")
+        print(f"[warn] patch_thread_author: {exc}")
 
 
 def _html_to_md(text: str) -> str:
