@@ -8,6 +8,8 @@ Variables de entorno:
   CHAINLIT_DEFAULT_USER Usuario por defecto cuando no hay reverse proxy (default: musicalo)
   CHAINLIT_DB_PATH      Ruta al fichero SQLite de historial (default: /app/data/chainlit.db)
 """
+import asyncio
+import json
 import os
 import re
 from typing import Optional
@@ -29,6 +31,9 @@ _TIMEOUT = 90  # segundos — las respuestas de IA pueden tardar
 
 _DB_PATH = os.getenv("CHAINLIT_DB_PATH", "/app/data/chainlit.db")
 _DEFAULT_USER = os.getenv("CHAINLIT_DEFAULT_USER", "musicalo")
+
+# Velocidad del efecto streaming (segundos entre palabras)
+_STREAM_DELAY = 0.018
 
 
 class _DataLayer(SQLAlchemyDataLayer):
@@ -99,6 +104,40 @@ async def header_auth_callback(headers: dict) -> Optional[cl.User]:
 
 
 # ---------------------------------------------------------------------------
+# Starters: mensajes sugeridos en chat nuevo
+# ---------------------------------------------------------------------------
+
+@cl.set_starters
+async def set_starters() -> list[cl.Starter]:
+    return [
+        cl.Starter(
+            label="Recomiéndame música",
+            message="Recomiéndame artistas o álbumes que me puedan gustar basándote en mis gustos musicales",
+        ),
+        cl.Starter(
+            label="¿Qué estoy escuchando?",
+            message="¿Qué está sonando ahora mismo en mis reproductores?",
+        ),
+        cl.Starter(
+            label="Mis estadísticas",
+            message="¿Cuáles son mis estadísticas de escucha de este mes?",
+        ),
+        cl.Starter(
+            label="Crear playlist",
+            message="Crea una playlist de jazz suave para trabajar",
+        ),
+        cl.Starter(
+            label="Buscar en mi biblioteca",
+            message="Busca álbumes de Pink Floyd en mi biblioteca",
+        ),
+        cl.Starter(
+            label="Lanzamientos recientes",
+            message="¿Ha sacado algo nuevo alguno de mis artistas favoritos?",
+        ),
+    ]
+
+
+# ---------------------------------------------------------------------------
 # Utilidades
 # ---------------------------------------------------------------------------
 
@@ -118,11 +157,6 @@ async def _patch_thread_author(user_identifier: str) -> None:
     thread_id y el usuario identificado.
     Sin userIdentifier, list_threads no devuelve nada y la restauración
     de conversaciones del sidebar no funciona.
-
-    Estrategia para encontrar el thread:
-    1. cl.context.session.thread_id  (atributo directo, Chainlit ≥ 2.x)
-    2. Buscar en la BD el thread cuyo campo metadata.id coincide con
-       cl.context.session.id (session ID que Chainlit guarda en metadata)
     """
     session_id = cl.context.session.id
     thread_id: Optional[str] = getattr(cl.context.session, "thread_id", None)
@@ -130,8 +164,6 @@ async def _patch_thread_author(user_identifier: str) -> None:
     try:
         async with aiosqlite.connect(_DB_PATH) as db:
             if not thread_id:
-                # Chainlit almacena el session_id dentro del JSON de metadata:
-                # {"id": "<session_id>", "env": {}, ...}
                 row = await (await db.execute(
                     "SELECT id FROM threads"
                     " WHERE json_extract(metadata, '$.id') = ? LIMIT 1",
@@ -166,12 +198,11 @@ def _html_to_md(text: str) -> str:
     text = re.sub(r"<i>(.*?)</i>", r"*\1*", text, flags=re.DOTALL)
     text = re.sub(r"<code>(.*?)</code>", r"`\1`", text, flags=re.DOTALL)
     text = re.sub(r'<a href="([^"]+)">([^<]+)</a>', r"[\2](\1)", text)
-    text = re.sub(r"<[^>]+>", "", text)  # eliminar etiquetas restantes
+    text = re.sub(r"<[^>]+>", "", text)
     return text
 
 
 def _build_actions(raw_actions: list) -> list:
-    """Convierte la lista de acciones de la API en objetos cl.Action."""
     return [
         cl.Action(
             name=a["id"],
@@ -182,16 +213,18 @@ def _build_actions(raw_actions: list) -> list:
     ]
 
 
-async def _call_chat(message: str) -> dict:
-    """Llama a POST /chat/ y devuelve el JSON de respuesta."""
-    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-        resp = await client.post(
-            f"{BACKEND_URL}/chat/",
-            json={"user_id": _user_id(), "message": message},
-            headers=_HEADERS,
-        )
-        resp.raise_for_status()
-        return resp.json()
+async def _stream_response(text: str, actions: list) -> None:
+    """Envía la respuesta palabra a palabra para efecto de streaming visual."""
+    msg = cl.Message(content="")
+    await msg.send()
+
+    words = text.split(" ")
+    for i, word in enumerate(words):
+        await msg.stream_token(word + (" " if i < len(words) - 1 else ""))
+        await asyncio.sleep(_STREAM_DELAY)
+
+    msg.actions = _build_actions(actions)
+    await msg.update()
 
 
 # ---------------------------------------------------------------------------
@@ -200,8 +233,6 @@ async def _call_chat(message: str) -> dict:
 
 @cl.on_chat_start
 async def on_chat_start():
-    # Registrar al usuario como autor del thread recién creado para que
-    # list_threads lo devuelva en el sidebar y get_thread pueda cargarlo.
     user = cl.user_session.get("user")
     if user:
         await _patch_thread_author(user.identifier)
@@ -221,25 +252,47 @@ async def on_chat_start():
 
 @cl.on_message
 async def on_message(message: cl.Message):
-    thinking = cl.Message(content="🤔 Analizando tu mensaje...")
-    await thinking.send()
+    text = ""
+    actions_data = []
 
-    try:
-        data = await _call_chat(message.content)
-    except httpx.HTTPStatusError as e:
-        thinking.content = f"❌ Error del backend: {e.response.status_code} — {e.response.text}"
-        await thinking.update()
-        return
-    except Exception as e:
-        thinking.content = f"❌ No pude conectar con el backend: {e}"
-        await thinking.update()
-        return
+    # Step visible mientras el backend procesa (Navidrome, ListenBrainz, Gemini…)
+    async with cl.Step(name="Procesando tu consulta", type="run") as step:
+        step.input = message.content
+        try:
+            async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+                async with client.stream(
+                    "POST",
+                    f"{BACKEND_URL}/chat/stream",
+                    json={"user_id": _user_id(), "message": message.content},
+                    headers=_HEADERS,
+                ) as resp:
+                    resp.raise_for_status()
+                    async for line in resp.aiter_lines():
+                        if not line.startswith("data: "):
+                            continue
+                        event = json.loads(line[6:])
+                        if event["type"] == "text":
+                            text = _html_to_md(event["content"])
+                        elif event["type"] == "done":
+                            actions_data = event.get("actions", [])
+                        elif event["type"] == "error":
+                            raise RuntimeError(event["message"])
 
-    text = _html_to_md(data.get("text", ""))
-    actions = _build_actions(data.get("actions", []))
-    thinking.content = text
-    thinking.actions = actions
-    await thinking.update()
+            step.output = "✓"
+
+        except httpx.HTTPStatusError as e:
+            step.output = f"Error {e.response.status_code}"
+            await cl.Message(
+                content=f"❌ Error del backend: {e.response.status_code} — {e.response.text}"
+            ).send()
+            return
+        except Exception as e:
+            step.output = f"Error: {e}"
+            await cl.Message(content=f"❌ No pude conectar con el backend: {e}").send()
+            return
+
+    # Respuesta con efecto de streaming visual
+    await _stream_response(text, actions_data)
 
 
 # ---------------------------------------------------------------------------
@@ -280,18 +333,35 @@ async def on_dislike(action: cl.Action):
 async def on_more(action: cl.Action):
     await action.remove()
 
-    thinking = cl.Message(content="🔄 Generando más recomendaciones...")
-    await thinking.send()
+    async with cl.Step(name="Buscando más recomendaciones", type="run") as step:
+        step.input = "more_recommendations"
+        try:
+            async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+                async with client.stream(
+                    "POST",
+                    f"{BACKEND_URL}/chat/stream",
+                    json={
+                        "user_id": _user_id(),
+                        "message": "Recomiéndame 5 canciones diferentes basándote en mis gustos",
+                    },
+                    headers=_HEADERS,
+                ) as resp:
+                    resp.raise_for_status()
+                    text, actions_data = "", []
+                    async for line in resp.aiter_lines():
+                        if not line.startswith("data: "):
+                            continue
+                        event = json.loads(line[6:])
+                        if event["type"] == "text":
+                            text = _html_to_md(event["content"])
+                        elif event["type"] == "done":
+                            actions_data = event.get("actions", [])
+                        elif event["type"] == "error":
+                            raise RuntimeError(event["message"])
+            step.output = "✓"
+        except Exception as e:
+            step.output = f"Error: {e}"
+            await cl.Message(content=f"❌ Error: {e}").send()
+            return
 
-    try:
-        data = await _call_chat("Recomiéndame 5 canciones diferentes basándote en mis gustos")
-    except Exception as e:
-        thinking.content = f"❌ Error: {e}"
-        await thinking.update()
-        return
-
-    text = _html_to_md(data.get("text", ""))
-    actions = _build_actions(data.get("actions", []))
-    thinking.content = text
-    thinking.actions = actions
-    await thinking.update()
+    await _stream_response(text, actions_data)

@@ -1,13 +1,18 @@
 """
-Endpoints de chat: POST /chat (síncrono) y WS /chat/stream (streaming).
+Endpoints de chat: POST /chat (síncrono) y POST /chat/stream (SSE).
 """
 import json
-from fastapi import APIRouter, Depends, Request, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, Request
+from fastapi.responses import StreamingResponse
 from api.auth import verify_api_key
 from api.models import ChatRequest, ChatResponse, ActionItem
 from core.music_assistant import MusicAssistant
 
 router = APIRouter()
+
+
+def _uid(raw: str) -> int:
+    return int(raw) if raw.isdigit() else hash(raw)
 
 
 @router.post("/", response_model=ChatResponse, dependencies=[Depends(verify_api_key)])
@@ -17,7 +22,7 @@ async def chat(body: ChatRequest, request: Request):
     El campo user_id es el identificador de sesión (puede ser cualquier string único por usuario).
     """
     assistant: MusicAssistant = request.app.state.assistant
-    response = await assistant.chat(int(body.user_id) if body.user_id.isdigit() else hash(body.user_id), body.message)
+    response = await assistant.chat(_uid(body.user_id), body.message)
     return ChatResponse(
         text=response.text,
         actions=[ActionItem(id=a.id, label=a.label) for a in response.actions],
@@ -25,51 +30,31 @@ async def chat(body: ChatRequest, request: Request):
     )
 
 
-@router.websocket("/stream")
-async def chat_stream(websocket: WebSocket):
+@router.post("/stream", dependencies=[Depends(verify_api_key)])
+async def chat_stream(body: ChatRequest, request: Request):
     """
-    WebSocket para chat con respuesta en streaming.
+    Server-Sent Events para chat con respuesta en streaming visual.
 
-    Protocolo:
-      Cliente → servidor: JSON { "user_id": "...", "message": "...", "api_key": "..." }
-      Servidor → cliente: chunks de texto plano, terminando con el JSON { "done": true }
+    Emite dos eventos SSE:
+      data: {"type": "text",  "content": "<respuesta completa>"}
+      data: {"type": "done",  "actions": [...], "success": true/false}
+
+    En el futuro, cuando MusicAgentService soporte streaming nativo de Gemini,
+    este endpoint emitirá múltiples eventos "token" en lugar de un único "text".
     """
-    await websocket.accept()
-    assistant: MusicAssistant = websocket.app.state.assistant
+    assistant: MusicAssistant = request.app.state.assistant
 
-    import os
-    expected_key = os.getenv("MUSICALO_API_KEY", "").strip()
-
-    try:
-        while True:
-            raw = await websocket.receive_text()
-            try:
-                data = json.loads(raw)
-            except json.JSONDecodeError:
-                await websocket.send_text(json.dumps({"error": "JSON inválido"}))
-                continue
-
-            # Autenticación por mensaje
-            if expected_key and data.get("api_key") != expected_key:
-                await websocket.send_text(json.dumps({"error": "API key inválida"}))
-                await websocket.close(code=4001)
-                return
-
-            user_id_raw = data.get("user_id", "anonymous")
-            user_id = int(user_id_raw) if str(user_id_raw).isdigit() else hash(user_id_raw)
-            message = data.get("message", "")
-
-            if not message:
-                await websocket.send_text(json.dumps({"error": "message vacío"}))
-                continue
-
-            # Por ahora enviamos la respuesta completa al terminar.
-            # Cuando MusicAgentService soporte streaming nativo, este endpoint
-            # enviará chunks a medida que lleguen del modelo.
-            response = await assistant.chat(user_id, message)
+    async def generate():
+        try:
+            response = await assistant.chat(_uid(body.user_id), body.message)
             actions = [{"id": a.id, "label": a.label} for a in response.actions]
-            await websocket.send_text(response.text)
-            await websocket.send_text(json.dumps({"done": True, "actions": actions, "success": response.success}))
+            yield f"data: {json.dumps({'type': 'text', 'content': response.text})}\n\n"
+            yield f"data: {json.dumps({'type': 'done', 'actions': actions, 'success': response.success})}\n\n"
+        except Exception as exc:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(exc)})}\n\n"
 
-    except WebSocketDisconnect:
-        pass
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
