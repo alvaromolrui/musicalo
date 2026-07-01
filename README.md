@@ -208,6 +208,7 @@ El archivo `.env` está completamente documentado con comentarios explicativos p
 - `NAVIDROME_URL`, `NAVIDROME_USERNAME`, `NAVIDROME_PASSWORD`: Credenciales de Navidrome
 - `LISTENBRAINZ_USERNAME`, `LISTENBRAINZ_TOKEN`: Para datos de escucha (REQUERIDO)
 - `ENABLE_MUSICBRAINZ`: Habilitar metadatos y descubrimiento avanzado (RECOMENDADO)
+- `SETLISTFM_API_KEY`: API key gratuita de setlist.fm (https://api.setlist.fm/) para crear playlists a partir de setlists de conciertos
 - `GEMINI_API_KEY`: API key de Google Gemini (REQUERIDO)
 - `TELEGRAM_BOT_TOKEN`: Token de tu bot de Telegram (solo si `START_MODE=telegram` o `both`)
 - `TELEGRAM_ALLOWED_USER_IDS`: IDs permitidos para bot privado (RECOMENDADO)

@@ -420,6 +420,13 @@ class EnhancedIntentDetector:
             "9. 'conversacion' - TODO LO DEMÁS (usar por defecto, 90% de los casos)",
             "   Incluye: preguntas, solicitudes generales, info, CUALQUIER conversación natural",
             "",
+            "10. 'setlist_playlist' - SOLO cuando pide crear playlist a partir de un concierto/setlist",
+            "   Palabras clave: 'setlist', 'setlist.fm', 'concierto de', 'tocó en', 'el concierto en'",
+            "   Ejemplos: 'hazme una playlist con el setlist de Radiohead en Madrid 2023',",
+            "             'https://www.setlist.fm/setlist/...'",
+            "   Params a extraer: 'artist' (obligatorio si no hay URL), 'city' (opcional),",
+            "   'event_date' (opcional, formato dd-MM-yyyy), 'setlist_url' (si el mensaje trae un enlace)",
+            "",
             "FACTORES DE CONTEXTO A CONSIDERAR:",
             "- Si el usuario está frustrado (sentiment: frustrated) → priorizar 'conversacion'",
             "- Si hay urgencia alta → ajustar confidence según la urgencia",
@@ -508,7 +515,10 @@ class EnhancedIntentDetector:
         text_lower = user_message.lower()
         
         # Detectar patrones básicos
-        if any(word in text_lower for word in ['playlist', 'lista']):
+        if any(word in text_lower for word in ['setlist', 'setlist.fm']):
+            intent = "setlist_playlist"
+            confidence = 0.7
+        elif any(word in text_lower for word in ['playlist', 'lista']):
             intent = "playlist"
             confidence = 0.6
         elif any(word in text_lower for word in ['busca', 'buscar']):
@@ -566,6 +576,7 @@ class EnhancedIntentDetector:
             "referencia": "Referencia a algo anterior",
             "buscar_mas": "Continuar búsqueda anterior",
             "releases": "Lanzamientos recientes y música nueva",
+            "setlist_playlist": "Crear playlist desde un setlist de setlist.fm",
             "conversacion": "Conversación general (maneja TODO lo demás)"
         }
         

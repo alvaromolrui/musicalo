@@ -7,12 +7,13 @@ Puede ser consumido por TelegramService, FastAPI, Chainlit o cualquier otro adap
 import os
 import random
 import logging
-from typing import Optional
+from typing import Optional, List
 
 from models.schemas import Recommendation, Track, UserProfile
 from models.responses import AssistantResponse, AssistantAction, RecommendParams, ShareResult
 from services.navidrome_service import NavidromeService
 from services.listenbrainz_service import ListenBrainzService
+from services.setlistfm_service import SetlistfmService
 from services.ai_service import MusicRecommendationService
 from services.playlist_service import PlaylistService
 from services.music_agent_service import MusicAgentService
@@ -35,6 +36,7 @@ class MusicAssistant:
     def __init__(self):
         self.navidrome = NavidromeService()
         self.listenbrainz = ListenBrainzService()
+        self.setlistfm = SetlistfmService()
         self.ai = MusicRecommendationService()
         self.playlist_service = PlaylistService()
         self.agent = MusicAgentService()
@@ -65,6 +67,12 @@ class MusicAssistant:
         """
         session = self.conversation_manager.get_session(user_id)
 
+        # Atajo determinista: si el mensaje trae un enlace de setlist.fm, no dependemos
+        # de que el LLM clasifique bien la intención.
+        setlist_id = self.setlistfm.parse_setlist_url(message)
+        if setlist_id:
+            return await self._build_setlist_playlist(setlist_id, user_id)
+
         user_stats = None
         if self.music_service:
             try:
@@ -91,6 +99,34 @@ class MusicAssistant:
             return await self._agent_query(
                 f"Crea una playlist de {description} con canciones de mi biblioteca", user_id
             )
+
+        if intent == "setlist_playlist":
+            artist = params.get("artist")
+            if not artist:
+                return AssistantResponse.error(
+                    "Dime el artista (y opcionalmente ciudad/fecha) del concierto, "
+                    "o pega el enlace del setlist de setlist.fm."
+                )
+            candidates = await self.setlistfm.search_setlists(
+                artist, params.get("city"), params.get("event_date")
+            )
+            if not candidates:
+                return AssistantResponse.error(
+                    f"No encontré setlists de {artist} en setlist.fm con esos datos."
+                )
+            if len(candidates) > 1:
+                listado = "\n".join(
+                    f"- {c.get('artist', {}).get('name', artist)} · "
+                    f"{c.get('venue', {}).get('name', '?')}, "
+                    f"{c.get('venue', {}).get('city', {}).get('name', '?')} "
+                    f"({c.get('eventDate', '?')})"
+                    for c in candidates[:5]
+                )
+                return AssistantResponse(
+                    text=f"Encontré varios conciertos, ¿cuál quieres?\n{listado}\n\n"
+                         "Puedes pegarme el enlace exacto de setlist.fm."
+                )
+            return await self._build_setlist_playlist(candidates[0]["id"], user_id)
 
         if intent == "buscar":
             search_term = params.get("search_query", "")
@@ -156,6 +192,84 @@ class MusicAssistant:
 
         # Default: conversación libre
         return await self._agent_query(message, user_id, context={"type": "conversational"})
+
+    # ------------------------------------------------------------------
+    # Setlist (setlist.fm) -> Playlist en Navidrome
+    # ------------------------------------------------------------------
+
+    async def _build_setlist_playlist(self, setlist_id: str, user_id: int) -> AssistantResponse:
+        """Crea una playlist en Navidrome a partir de un setlist de setlist.fm.
+
+        Flujo autocontenido (fetch -> match -> create): no reutiliza el pipeline
+        genérico de _agent_query/_extract_song_ids_from_context, que puntúa por
+        género/idioma/año y no sirve para emparejar título+artista exactos.
+        """
+        from rapidfuzz import fuzz
+
+        setlist = await self.setlistfm.get_setlist(setlist_id)
+        if not setlist:
+            return AssistantResponse.error("No pude encontrar ese setlist en setlist.fm.")
+
+        songs = self.setlistfm.extract_songs(setlist)
+        if not songs:
+            return AssistantResponse.error("El setlist no tiene canciones registradas.")
+
+        song_ids: List[str] = []
+        seen_ids = set()
+        unmatched: List[str] = []
+
+        for song in songs:
+            track = await self._find_best_track_match(song["artist"], song["title"], fuzz)
+            if not track and song.get("is_cover") and song.get("cover_artist"):
+                track = await self._find_best_track_match(song["cover_artist"], song["title"], fuzz)
+
+            if track:
+                if track.id not in seen_ids:
+                    seen_ids.add(track.id)
+                    song_ids.append(track.id)
+            else:
+                unmatched.append(song["title"])
+
+        if not song_ids:
+            return AssistantResponse.error(
+                "No encontré ninguna canción de ese setlist en tu biblioteca de Navidrome."
+            )
+
+        if len(song_ids) > 50:
+            song_ids = song_ids[:50]
+
+        artist_name = setlist.get("artist", {}).get("name", "")
+        venue_name = setlist.get("venue", {}).get("name", "")
+        event_date = setlist.get("eventDate", "")
+        playlist_name = f"{artist_name} - {venue_name} ({event_date})".strip(" -")
+
+        playlist_id = await self.navidrome.create_playlist(playlist_name, song_ids)
+        if not playlist_id:
+            return AssistantResponse.error("No pude crear la playlist en Navidrome.")
+
+        text = (
+            f"Playlist creada: \"{playlist_name}\"\n"
+            f"{len(song_ids)} de {len(songs)} canciones encontradas en tu biblioteca."
+        )
+        if unmatched:
+            text += "\n\nNo encontré en tu biblioteca:\n" + "\n".join(f"- {t}" for t in unmatched)
+
+        return AssistantResponse(text=text)
+
+    async def _find_best_track_match(self, artist: str, title: str, fuzz) -> Optional[Track]:
+        """Busca en Navidrome la mejor coincidencia de una canción por título+artista."""
+        results = await self.navidrome.search(f"{artist} {title}", limit=5)
+        tracks = results.get("tracks", [])
+        if not tracks:
+            return None
+
+        best_track, best_score = None, 0.0
+        for track in tracks:
+            score = fuzz.token_sort_ratio(title.lower(), track.title.lower())
+            if score > best_score:
+                best_track, best_score = track, score
+
+        return best_track if best_score >= 75 else None
 
     # ------------------------------------------------------------------
     # Recomendaciones
