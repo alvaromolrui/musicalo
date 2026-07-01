@@ -72,6 +72,9 @@ services:
       # --- Gemini AI ---
       - GEMINI_API_KEY=${GEMINI_API_KEY}
 
+      # --- setlist.fm (opcional: playlists a partir de setlists de conciertos) ---
+      - SETLISTFM_API_KEY=${SETLISTFM_API_KEY}
+
       # --- Telegram (solo necesario si START_MODE=telegram o both) ---
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - TELEGRAM_ALLOWED_USER_IDS=${TELEGRAM_ALLOWED_USER_IDS}

@@ -6,6 +6,7 @@ Puede ser consumido por TelegramService, FastAPI, Chainlit o cualquier otro adap
 """
 import os
 import random
+import re
 import logging
 from typing import Optional, List
 
@@ -256,20 +257,49 @@ class MusicAssistant:
 
         return AssistantResponse(text=text)
 
+    _TITLE_NOISE_RE = re.compile(
+        r"[\(\[][^\)\]]*[\)\]]"  # paréntesis/corchetes: "(En Directo)", "(Remastered 2009)"
+        r"|[-–]\s*(live|en directo|en vivo|remaster(ed)?|acoustic|acústic[oa]|demo|edit|versi[oó]n)\b.*$",
+        re.IGNORECASE,
+    )
+
+    @classmethod
+    def _normalize_title(cls, text: str) -> str:
+        cleaned = cls._TITLE_NOISE_RE.sub("", text.lower())
+        return re.sub(r"\s+", " ", cleaned).strip()
+
     async def _find_best_track_match(self, artist: str, title: str, fuzz) -> Optional[Track]:
-        """Busca en Navidrome la mejor coincidencia de una canción por título+artista."""
-        results = await self.navidrome.search(f"{artist} {title}", limit=5)
-        tracks = results.get("tracks", [])
-        if not tracks:
-            return None
+        """Busca en Navidrome la mejor coincidencia de una canción por título+artista.
 
-        best_track, best_score = None, 0.0
-        for track in tracks:
-            score = fuzz.token_sort_ratio(title.lower(), track.title.lower())
-            if score > best_score:
-                best_track, best_score = track, score
+        Prueba primero "artista + título" y, si no hay nada suficientemente
+        parecido, reintenta solo con el título (algunas búsquedas combinadas
+        no devuelven resultados aunque la canción exista en la biblioteca).
 
-        return best_track if best_score >= 75 else None
+        Antes de comparar se limpia ruido conocido del título de la biblioteca
+        (paréntesis, "- En Directo", remasters...) y se usa token_sort_ratio,
+        que sí penaliza palabras extra genuinas. Deliberadamente NO se usa
+        token_set_ratio: ese algoritmo da score ~100 cuando un título es un
+        subconjunto de palabras de otro (p.ej. "Jota" vs "Jota Final"),
+        produciendo falsos positivos con títulos parecidos pero distintos.
+        """
+        normalized_title = self._normalize_title(title)
+
+        for query in (f"{artist} {title}", title):
+            results = await self.navidrome.search(query, limit=10)
+            tracks = results.get("tracks", [])
+            if not tracks:
+                continue
+
+            best_track, best_score = None, 0.0
+            for track in tracks:
+                score = fuzz.token_sort_ratio(normalized_title, self._normalize_title(track.title))
+                if score > best_score:
+                    best_track, best_score = track, score
+
+            if best_track and best_score >= 75:
+                return best_track
+
+        return None
 
     # ------------------------------------------------------------------
     # Recomendaciones

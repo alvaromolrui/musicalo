@@ -101,6 +101,10 @@ class SetlistfmService:
 
         Se descartan las entradas marcadas como "tape" (grabación reproducida
         entre canciones, no interpretada en directo por la banda).
+
+        Algunas entradas del setlist son en realidad varias canciones enlazadas
+        sin pausa (p.ej. "Intro / 100 Amapolas"); se separan en canciones
+        independientes para poder buscarlas y emparejarlas por separado.
         """
         default_artist = setlist_json.get("artist", {}).get("name", "")
         songs: List[Dict[str, Any]] = []
@@ -117,17 +121,20 @@ class SetlistfmService:
             for song in set_songs:
                 if song.get("tape"):
                     continue
-                title = song.get("name", "").strip()
-                if not title:
+                raw_title = song.get("name", "").strip()
+                if not raw_title:
                     continue
 
                 cover = song.get("cover")
-                songs.append({
-                    "title": title,
-                    "artist": default_artist,
-                    "is_cover": bool(cover),
-                    "cover_artist": cover.get("name") if cover else None,
-                })
+                for title in [part.strip() for part in raw_title.split("/")]:
+                    if not title:
+                        continue
+                    songs.append({
+                        "title": title,
+                        "artist": default_artist,
+                        "is_cover": bool(cover),
+                        "cover_artist": cover.get("name") if cover else None,
+                    })
 
         return songs
 
