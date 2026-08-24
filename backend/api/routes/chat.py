@@ -5,14 +5,11 @@ import json
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 from api.auth import verify_api_key
+from api.user_id import resolve_uid as _uid
 from api.models import ChatRequest, ChatResponse, ActionItem
 from core.music_assistant import MusicAssistant
 
 router = APIRouter()
-
-
-def _uid(raw: str) -> int:
-    return int(raw) if raw.isdigit() else hash(raw)
 
 
 @router.post("/", response_model=ChatResponse, dependencies=[Depends(verify_api_key)])

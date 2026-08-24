@@ -3,6 +3,7 @@ Endpoints de sistema: estadísticas, salud, analytics, insights.
 """
 from fastapi import APIRouter, Depends, Request, Query
 from api.auth import verify_api_key
+from api.user_id import resolve_uid
 from api.models import StatsResponse, HealthResponse, ChatResponse
 from core.music_assistant import MusicAssistant
 from services import release_watcher
@@ -50,7 +51,7 @@ async def analytics(request: Request):
 async def insights(request: Request, user_id: str = Query("anonymous")):
     """Insights de aprendizaje personalizado del usuario."""
     assistant = _assistant(request)
-    uid = int(user_id) if user_id.isdigit() else hash(user_id)
+    uid = resolve_uid(user_id)
     return await assistant.get_insights(uid)
 
 
@@ -62,7 +63,7 @@ async def releases(
 ):
     """Lanzamientos recientes de artistas en la biblioteca."""
     assistant = _assistant(request)
-    uid = int(user_id) if user_id.isdigit() else hash(user_id)
+    uid = resolve_uid(user_id)
     query = (
         f"Muéstrame los lanzamientos recientes de {artist}"
         if artist

@@ -4,6 +4,7 @@ Endpoints de música: recomendaciones, búsqueda, compartir, reproducción actua
 from fastapi import APIRouter, Depends, Request, Query
 from typing import Optional
 from api.auth import verify_api_key
+from api.user_id import resolve_uid
 from api.models import (
     RecommendRequest, RecommendResponse, RecommendationItem,
     ShareRequest, ShareResponse,
@@ -32,7 +33,7 @@ async def recommend(body: RecommendRequest, request: Request):
         custom_prompt=body.custom_prompt,
         from_library_only=body.from_library_only,
     )
-    user_id = int(body.user_id) if body.user_id.isdigit() else hash(body.user_id)
+    user_id = resolve_uid(body.user_id)
     recommendations = await assistant.get_recommendations(user_id, params)
 
     response = assistant._format_recommendations(
@@ -73,7 +74,7 @@ async def search(
 ):
     """Busca en la biblioteca musical."""
     assistant = _assistant(request)
-    uid = int(user_id) if user_id.isdigit() else hash(user_id)
+    uid = resolve_uid(user_id)
     response = await assistant._agent_query(
         f"Busca '{q}' en mi biblioteca y dime qué tengo", uid
     )
@@ -102,7 +103,7 @@ async def share(body: ShareRequest, request: Request):
 async def nowplaying(request: Request, user_id: str = Query("anonymous")):
     """Devuelve lo que se está reproduciendo actualmente."""
     assistant = _assistant(request)
-    uid = int(user_id) if user_id.isdigit() else hash(user_id)
+    uid = resolve_uid(user_id)
     response = await assistant._agent_query("¿Qué estoy escuchando ahora?", uid)
     return ChatResponse(text=response.text, success=response.success)
 
@@ -123,6 +124,6 @@ async def library(
 async def feedback(body: FeedbackRequest, request: Request):
     """Registra feedback (like/dislike) sobre una recomendación."""
     assistant = _assistant(request)
-    uid = int(body.user_id) if body.user_id.isdigit() else hash(body.user_id)
+    uid = resolve_uid(body.user_id)
     await assistant.process_feedback(uid, body.track_id, body.feedback_type)
     return {"ok": True}

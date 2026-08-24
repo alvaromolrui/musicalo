@@ -142,10 +142,19 @@ async def set_starters() -> list[cl.Starter]:
 # ---------------------------------------------------------------------------
 
 def _user_id() -> str:
+    """Identificador de sesión para el backend: identidad real + hilo de conversación.
+
+    Sin reverse proxy con auth, todos los accesos comparten la misma identidad
+    (CHAINLIT_DEFAULT_USER) - si solo se usara esa identidad, dos conversaciones
+    distintas de Chainlit (dos "New Chat") acabarían compartiendo la misma
+    memoria/playlist activa en el backend, que es justo lo que no queremos.
+    thread_id es estable por conversación (sobrevive a reconexiones/recargas de
+    la página), a diferencia de session.id que cambia en cada reconexión.
+    """
     user = cl.user_session.get("user")
-    if user and hasattr(user, "identifier"):
-        return user.identifier
-    return cl.context.session.id
+    identity = user.identifier if user and hasattr(user, "identifier") else "anon"
+    thread_id = getattr(cl.context.session, "thread_id", None) or cl.context.session.id
+    return f"{identity}:{thread_id}"
 
 
 async def _patch_thread_author(user_identifier: str) -> None:
