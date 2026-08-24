@@ -573,9 +573,12 @@ Selecciona {count} canciones ahora:"""
             "biblioteca, elige tú mismo la selección final (no le devuelvas una lista para que elija "
             "salvo que te lo pida) y llama a crear_playlist con esos ids exactos - es una conversación, "
             "no un formulario de una sola pasada, así que si después te piden cambios ('quita esta', "
-            "'más de los 90', 'menos lenta'), vuelve a buscar lo que haga falta y llama a "
-            "actualizar_playlist con la lista final completa, NUNCA a crear_playlist otra vez - crear "
-            "una segunda playlist con el mismo nombre para un simple ajuste es un fallo, no una opción.",
+            "'más de los 90', 'menos lenta'), llama PRIMERO a ver_playlist_actual para saber qué tiene "
+            "de verdad ahora mismo, parte de ESA lista (quita/añade solo lo que te pidieron, no la "
+            "regeneres entera desde cero) y llama a actualizar_playlist con la lista resultante - "
+            "NUNCA a crear_playlist otra vez, crear una segunda playlist con el mismo nombre para un "
+            "simple ajuste es un fallo, no una opción. Si te saltas ver_playlist_actual y generas una "
+            "lista nueva sin mirar la actual, vas a cambiar la playlist entera en vez de solo lo pedido.",
             "",
             "⚠️ NUNCA digas que has creado o modificado una playlist si no has llamado de verdad a "
             "crear_playlist/actualizar_playlist en este mismo turno - eso es inventarte el resultado, "

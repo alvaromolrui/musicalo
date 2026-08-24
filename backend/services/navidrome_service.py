@@ -632,6 +632,47 @@ class NavidromeService:
             print(f"❌ Error obteniendo tracks del álbum: {e}")
             return []
     
+    async def get_playlist_tracks(self, playlist_id: str) -> List[Track]:
+        """Obtener las canciones actuales de una playlist, en orden.
+
+        Necesario para poder REFINAR una playlist ya creada: sin esto, quien
+        pide un cambio ("quita esa, añade esta otra") no tiene forma de saber
+        qué hay de verdad en la playlist ahora mismo.
+
+        Args:
+            playlist_id: ID de la playlist
+
+        Returns:
+            Lista de tracks en el orden en que están en la playlist
+        """
+        try:
+            data = await self._make_request("getPlaylist", {"id": playlist_id})
+            entries = data.get("playlist", {}).get("entry", [])
+            if isinstance(entries, dict):
+                entries = [entries]
+
+            tracks = []
+            for song in entries:
+                track = Track(
+                    id=song.get("id", ""),
+                    title=song.get("title", ""),
+                    artist=song.get("artist", ""),
+                    album=song.get("album", ""),
+                    duration=song.get("duration"),
+                    year=song.get("year"),
+                    genre=song.get("genre"),
+                    play_count=song.get("playCount"),
+                    path=song.get("path"),
+                    cover_url=None
+                )
+                tracks.append(track)
+
+            return tracks
+
+        except Exception as e:
+            print(f"❌ Error obteniendo canciones de la playlist: {e}")
+            return []
+
     async def get_now_playing(self) -> List[Dict[str, Any]]:
         """Obtener información de lo que se está reproduciendo actualmente
         

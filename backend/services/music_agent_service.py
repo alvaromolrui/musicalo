@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 MODEL_NAME = "gemini-2.5-flash"
 MAX_TOOL_TURNS = 6            # tope de seguridad al bucle de tool-calling
-QUERY_TIMEOUT_SECONDS = 30.0  # cubre varios turnos de LLM + tools, no solo recolección de datos
+QUERY_TIMEOUT_SECONDS = 60.0  # cubre varios turnos de LLM + tools reales (red incluida), no solo recolección de datos
 
 
 class MusicAgentService:
@@ -181,11 +181,24 @@ class MusicAgentService:
             self._tool_crear_playlist,
         )
         add(
+            "ver_playlist_actual",
+            "Muestra las canciones que tiene AHORA MISMO la playlist activa de esta conversación (la "
+            "que creaste con crear_playlist), con sus ids. Llama a esta tool SIEMPRE antes de "
+            "actualizar_playlist para un refinamiento ('quita esa canción', 'añade otra de X') - la "
+            "lista que le pases a actualizar_playlist tiene que partir de lo que esta tool te devuelva "
+            "(quitando/añadiendo lo que corresponda), no una lista nueva generada desde cero, o "
+            "cambiarás la playlist entera en vez de solo lo que te pidieron.",
+            {},
+            [],
+            self._tool_ver_playlist_actual,
+        )
+        add(
             "actualizar_playlist",
             "Reemplaza el contenido de la playlist que ya creaste en ESTA conversación (con "
             "crear_playlist) por una nueva lista de canciones - úsala para refinamientos "
             "('quita esa canción', 'pon algo más movido', 'menos lenta') en vez de crear_playlist, "
-            "así no se duplica la playlist. Pásale la lista completa final, no solo lo que cambia. "
+            "así no se duplica la playlist. Pásale la lista completa final (llama antes a "
+            "ver_playlist_actual y parte de esa lista, no la inventes de cero) no solo lo que cambia. "
             "Si no has creado ninguna playlist todavía en esta conversación, esta tool falla - usa "
             "crear_playlist primero.",
             {
@@ -379,6 +392,24 @@ class MusicAgentService:
             return {"success": True, "playlist_id": playlist_id, "name": nombre, "track_count": len(ids_canciones)}
         except Exception as e:
             logger.warning(f"crear_playlist falló: {e}")
+            return {"error": str(e)}
+
+    async def _tool_ver_playlist_actual(self) -> Dict[str, Any]:
+        try:
+            active = self._current_session.last_playlist if self._current_session else None
+            if not active:
+                return {
+                    "error": "No hay ninguna playlist activa en esta conversación todavía. "
+                             "Usa crear_playlist para crear la primera."
+                }
+            tracks = await self.navidrome.get_playlist_tracks(active["id"])
+            return {
+                "name": active["name"],
+                "playlist_id": active["id"],
+                "tracks": [t.model_dump(mode="json") for t in tracks],
+            }
+        except Exception as e:
+            logger.warning(f"ver_playlist_actual falló: {e}")
             return {"error": str(e)}
 
     async def _tool_actualizar_playlist(self, ids_canciones: List[str]) -> Dict[str, Any]:
