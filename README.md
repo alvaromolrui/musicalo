@@ -21,6 +21,7 @@ Asistente musical con IA que combina un bot de Telegram y una interfaz web (Chai
 - **📊 Historial de escucha (Koito o ListenBrainz)**: Análisis de tus hábitos y patrones, open-source y sin límites. Koito tiene prioridad si lo configuras (`KOITO_URL`); si no, se usa ListenBrainz
 - **🎶 MusicBrainz**: Metadatos detallados y descubrimiento basado en relaciones entre artistas
 - **🎤 Playlists desde conciertos reales**: pide un setlist de setlist.fm por artista/ciudad o pega el enlace, y te la arma emparejando canciones contra tu biblioteca
+- **🔔 Aviso de lanzamientos nuevos**: comprueba periódicamente si hay álbumes/EPs/singles nuevos de artistas de tu biblioteca y te avisa por [ntfy](https://ntfy.sh) y/o Telegram (opcional, manda por los canales que tengas configurados)
 - **🔄 Variedad**: Diferentes recomendaciones cada vez
 - **🎧 Now Playing**: Consulta qué se está reproduciendo actualmente en todos tus reproductores
 - **📱 Acceso móvil**: Optimizado para usar desde tu smartphone
@@ -132,6 +133,7 @@ frontend:
   - `MusicBrainzService`: Metadatos detallados, relaciones entre artistas, lanzamientos y búsqueda inversa por género/país/época
   - `SetlistfmService`: Playlists a partir de conciertos reales (setlist.fm)
   - `MusicRecommendationService`: motor de recomendaciones "avanzado" (perfil, filtrado híbrido) usado por comandos específicos como `/hybrid` y `/discover`
+  - `ReleaseWatcher` + `NotificationService`: tarea de fondo que comprueba lanzamientos nuevos de tu biblioteca y avisa por ntfy - independiente de `START_MODE`, arranca tanto en modo `api` como `telegram`/`both`
   - `TelegramService`: Manejo de interacciones del bot en modo polling
 
 ### Frontend web (Chainlit)
@@ -207,6 +209,9 @@ El archivo `.env` está completamente documentado con comentarios explicativos p
 - `LISTENBRAINZ_USERNAME`, `LISTENBRAINZ_TOKEN`: Para datos de escucha vía ListenBrainz (REQUERIDO uno de los dos, Koito o ListenBrainz)
 - `ENABLE_MUSICBRAINZ`: Habilitar metadatos y descubrimiento avanzado (RECOMENDADO)
 - `SETLISTFM_API_KEY`: API key gratuita de setlist.fm (https://api.setlist.fm/) para crear playlists a partir de setlists de conciertos
+- `NTFY_URL`, `NTFY_TOPIC`, `NTFY_TOKEN`: Aviso de lanzamientos nuevos por ntfy (OPCIONAL)
+- `TELEGRAM_NOTIFY_CHAT_ID`: Aviso de lanzamientos nuevos por Telegram, reutilizando `TELEGRAM_BOT_TOKEN` (OPCIONAL - por defecto usa el primer ID de `TELEGRAM_ALLOWED_USER_IDS`)
+- `RELEASES_CHECK_INTERVAL_HOURS`, `RELEASES_LOOKBACK_DAYS`: Frecuencia y ventana de la comprobación de lanzamientos (default 24h / 30 días)
 - `GEMINI_API_KEY`: API key de Google Gemini (REQUERIDO)
 - `TELEGRAM_BOT_TOKEN`: Token de tu bot de Telegram (solo si `START_MODE=telegram` o `both`)
 - `TELEGRAM_ALLOWED_USER_IDS`: IDs permitidos para bot privado (RECOMENDADO)
@@ -276,6 +281,17 @@ MusicBrainz es completamente **gratuito y open source**. No requiere API key, so
 - ✅ Cache persistente (evita consultas repetidas)
 - ✅ Búsqueda incremental con "busca más"
 - ✅ Totalmente gratuito y sin límites estrictos
+
+#### ntfy (opcional, para el aviso de lanzamientos nuevos)
+1. Elige un nombre de topic único y difícil de adivinar (cualquiera que lo sepa puede suscribirse) - no hace falta crear cuenta
+2. Instala la app de [ntfy](https://ntfy.sh/) (Android/iOS/web) y suscríbete a ese topic
+3. Configura en tu `.env`:
+   - `NTFY_TOPIC=tu-topic-elegido`
+   - `NTFY_URL=https://ntfy.sh` (o la URL de tu propia instancia auto-hospedada)
+   - `NTFY_TOKEN` solo si tu instancia requiere autenticación
+4. Sin `NTFY_TOPIC` configurado, esta comprobación queda inactiva sin más - no es necesaria para el resto de la app
+
+Alternativa/complemento: si ya tienes `TELEGRAM_BOT_TOKEN` configurado (aunque corras en `START_MODE=api` sin el bot interactivo), basta con eso - el aviso se manda directo por la Bot API al primer ID de `TELEGRAM_ALLOWED_USER_IDS`. Se puede tener ntfy y Telegram a la vez; se manda por los dos.
 
 #### Google Gemini API
 1. Ve a [Google AI Studio](https://makersuite.google.com/app/apikey)

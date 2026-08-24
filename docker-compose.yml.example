@@ -79,6 +79,14 @@ services:
       # --- setlist.fm (opcional: playlists a partir de setlists de conciertos) ---
       - SETLISTFM_API_KEY=${SETLISTFM_API_KEY}
 
+      # --- Aviso de lanzamientos nuevos (opcional: sin NTFY_TOPIC/TELEGRAM_NOTIFY_CHAT_ID queda inactivo) ---
+      - NTFY_URL=${NTFY_URL:-https://ntfy.sh}
+      - NTFY_TOPIC=${NTFY_TOPIC}
+      - NTFY_TOKEN=${NTFY_TOKEN}
+      - TELEGRAM_NOTIFY_CHAT_ID=${TELEGRAM_NOTIFY_CHAT_ID}
+      - RELEASES_CHECK_INTERVAL_HOURS=${RELEASES_CHECK_INTERVAL_HOURS:-24}
+      - RELEASES_LOOKBACK_DAYS=${RELEASES_LOOKBACK_DAYS:-30}
+
       # --- Telegram (solo necesario si START_MODE=telegram o both) ---
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - TELEGRAM_ALLOWED_USER_IDS=${TELEGRAM_ALLOWED_USER_IDS}

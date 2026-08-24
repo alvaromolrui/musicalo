@@ -5,6 +5,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQu
 from dotenv import load_dotenv
 
 from services.telegram_service import TelegramService
+from services import release_watcher
 
 # Configurar logging
 logging.basicConfig(
@@ -77,6 +78,7 @@ class MusicAgentBot:
             logger.info("✅ Sistemas de monitoreo inicializados")
         except Exception as e:
             logger.warning(f"⚠️ Error inicializando monitoreo: {e}")
+        release_watcher.start_background_task()
     
     def run_polling(self):
         """Ejecutar bot en modo polling"""

@@ -715,7 +715,7 @@ class MusicBrainzService:
                 query = (
                     f'firstreleasedate:[{start_date.strftime("%Y-%m-%d")} TO {end_date.strftime("%Y-%m-%d")}] '
                     f'AND status:official '
-                    f'AND (type:album OR type:ep) '
+                    f'AND (type:album OR type:ep OR type:single) '
                     f'AND ({artist_queries})'
                 )
                 

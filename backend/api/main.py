@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from core.music_assistant import MusicAssistant
 from api.routes import chat, music, system
+from services import release_watcher
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +23,7 @@ async def lifespan(app: FastAPI):
     await assistant.initialize()
     app.state.assistant = assistant
     logger.info("MusicAssistant listo")
+    release_watcher.start_background_task()
     yield
     logger.info("API detenida")
 
