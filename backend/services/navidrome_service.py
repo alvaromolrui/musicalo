@@ -180,6 +180,40 @@ class NavidromeService:
             print(f"❌ Error en petición Navidrome ({endpoint}): {e}")
             raise
     
+    async def get_genres(self) -> List[Dict[str, Any]]:
+        """Obtener los géneros que existen de verdad en la biblioteca, con cuántas
+        canciones/álbumes tiene cada uno.
+
+        Necesario para que quien pida música "por estilo" pueda filtrar por un
+        género que exista de verdad (get_tracks(genre=...) via getRandomSongs)
+        en vez de adivinar un nombre de género a ciegas.
+
+        Returns:
+            Lista de {"name", "song_count", "album_count"}, ordenada de más a
+            menos canciones.
+        """
+        try:
+            data = await self._make_request("getGenres")
+            entries = data.get("genres", {}).get("genre", [])
+            if isinstance(entries, dict):
+                entries = [entries]
+
+            genres = [
+                {
+                    "name": g.get("value", ""),
+                    "song_count": g.get("songCount", 0),
+                    "album_count": g.get("albumCount", 0),
+                }
+                for g in entries
+                if g.get("value")
+            ]
+            genres.sort(key=lambda g: g["song_count"], reverse=True)
+            return genres
+
+        except Exception as e:
+            print(f"❌ Error obteniendo géneros: {e}")
+            return []
+
     async def get_tracks(self, limit: int = 50, offset: int = 0, **filters) -> List[Track]:
         """Obtener canciones aleatorias de la biblioteca"""
         try:

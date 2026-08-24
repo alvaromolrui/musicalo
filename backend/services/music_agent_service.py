@@ -130,8 +130,11 @@ class MusicAgentService:
         # Biblioteca (Navidrome) - siempre disponible
         add(
             "buscar_biblioteca",
-            "Busca canciones, álbumes y artistas en la biblioteca musical del usuario (Navidrome) "
-            "por texto libre (título, artista o álbum). Úsalo para saber qué tiene el usuario.",
+            "Busca canciones, álbumes y artistas en la biblioteca musical del usuario (Navidrome) por "
+            "TEXTO LITERAL (título, artista o álbum) - solo encuentra algo si ese texto aparece de "
+            "verdad en un nombre. NO sirve para pedir un estilo/género/mood ('indie rock español', "
+            "'música para estudiar') - eso nunca va a coincidir con ningún título/artista/álbum real. "
+            "Para estilo/género usa listar_generos + filtrar_biblioteca en su lugar.",
             {
                 "consulta": types.Schema(type=types.Type.STRING, description="Texto a buscar"),
                 "limite": types.Schema(type=types.Type.INTEGER, description="Máx. resultados por categoría (default 20)"),
@@ -140,12 +143,25 @@ class MusicAgentService:
             self._tool_buscar_biblioteca,
         )
         add(
+            "listar_generos",
+            "Lista los géneros que existen DE VERDAD en la biblioteca del usuario, con cuántas "
+            "canciones tiene cada uno (ordenados de más a menos). Llama a esta tool ANTES de "
+            "filtrar_biblioteca por género cuando te pidan un estilo - así filtras por un género que "
+            "realmente existe en vez de adivinar un nombre (p.ej. el usuario puede pedir 'indie rock' "
+            "y en su biblioteca estar etiquetado solo como 'Alternative' o 'Rock').",
+            {},
+            [],
+            self._tool_listar_generos,
+        )
+        add(
             "filtrar_biblioteca",
             "Obtiene una muestra de canciones de la biblioteca del usuario filtrada por género y/o "
-            "rango de años. Es una muestra, no la lista exhaustiva - útil para explorar qué tiene el "
-            "usuario de un estilo/época, o para elegir candidatas para una playlist.",
+            "rango de años - el género tiene que ser uno de los que devuelve listar_generos (llámala "
+            "primero si no lo sabes ya), no un nombre de estilo inventado. Es una muestra, no la lista "
+            "exhaustiva - útil para explorar qué tiene el usuario de un estilo/época, o para elegir "
+            "candidatas para una playlist.",
             {
-                "genero": types.Schema(type=types.Type.STRING, description="Género a filtrar (opcional)"),
+                "genero": types.Schema(type=types.Type.STRING, description="Género a filtrar (opcional) - debe ser uno real, de listar_generos"),
                 "desde_anio": types.Schema(type=types.Type.INTEGER, description="Año mínimo (opcional)"),
                 "hasta_anio": types.Schema(type=types.Type.INTEGER, description="Año máximo (opcional)"),
                 "limite": types.Schema(type=types.Type.INTEGER, description="Máx. canciones a devolver (default 50)"),
@@ -331,6 +347,14 @@ class MusicAgentService:
             }
         except Exception as e:
             logger.warning(f"buscar_biblioteca falló: {e}")
+            return {"error": str(e)}
+
+    async def _tool_listar_generos(self) -> Dict[str, Any]:
+        try:
+            genres = await self.navidrome.get_genres()
+            return {"generos": genres}
+        except Exception as e:
+            logger.warning(f"listar_generos falló: {e}")
             return {"error": str(e)}
 
     async def _tool_filtrar_biblioteca(

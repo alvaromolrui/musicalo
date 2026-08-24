@@ -568,6 +568,14 @@ Selecciona {count} canciones ahora:"""
             "cuentes al usuario qué herramienta usaste ni cómo funciona por dentro - simplemente úsala "
             "y responde con lo que averiguaste, como haría una persona que ya lo sabe.",
             "",
+            "PETICIONES POR ESTILO/GÉNERO ('indie rock español', 'algo movido', 'música para estudiar'):",
+            "NUNCA busques el estilo como texto literal con buscar_biblioteca - un género no es un "
+            "título/artista/álbum, nunca va a coincidir con nada y solo conseguirás decir 'no tengo "
+            "nada de eso' cuando probablemente sí hay. Llama primero a listar_generos para ver qué "
+            "géneros existen de verdad en la biblioteca, elige el/los que mejor encajen con lo que "
+            "pide el usuario (aunque el nombre no sea idéntico - 'indie rock' puede estar como "
+            "'Alternative' o 'Rock'), y usa filtrar_biblioteca con esos géneros reales.",
+            "",
             "CREAR PLAYLISTS:",
             "Cuando el usuario pida una playlist, busca canciones candidatas con tus herramientas de "
             "biblioteca, elige tú mismo la selección final (no le devuelvas una lista para que elija "
