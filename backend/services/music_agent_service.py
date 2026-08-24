@@ -225,8 +225,10 @@ class MusicAgentService:
                 "Artistas similares a uno dado, para descubrir música nueva. Combina el historial del "
                 "usuario, MusicBrainz e IA como último recurso - este último no sabe qué tiene el "
                 "usuario en su biblioteca, así que cada resultado incluye 'en_biblioteca' (true/false, "
-                "comprobado de verdad contra Navidrome). Si te piden algo que NO tengan, descarta o "
-                "avisa de los que salgan en_biblioteca=true en vez de dar por hecho que son nuevos.",
+                "comprobado de verdad contra Navidrome) SALVO que la comprobación fallase, en cuyo caso "
+                "el campo no aparece - en ese caso no sabes si lo tiene o no, dilo así en vez de asumir "
+                "que sí o que no. Si te piden algo que NO tengan, descarta o avisa de los que salgan "
+                "en_biblioteca=true en vez de dar por hecho que son nuevos.",
                 {
                     "artista": types.Schema(type=types.Type.STRING, description="Nombre del artista de referencia"),
                     "limite": types.Schema(type=types.Type.INTEGER, description="Máx. artistas (default 10)"),
@@ -381,16 +383,25 @@ class MusicAgentService:
             result = []
             for a in artists:
                 item = a.model_dump(mode="json")
-                item["en_biblioteca"] = await self._artist_in_library(a.name)
+                en_biblioteca = await self._artist_in_library(a.name)
+                # None = no se pudo comprobar (p.ej. fallo de red hacia Navidrome) -
+                # se omite el campo en vez de afirmar False, para que el modelo no
+                # diga con confianza "no lo tienes" cuando en realidad no lo sabemos.
+                if en_biblioteca is not None:
+                    item["en_biblioteca"] = en_biblioteca
                 result.append(item)
             return {"artists": result}
         except Exception as e:
             logger.warning(f"artistas_similares falló: {e}")
             return {"error": str(e)}
 
-    async def _artist_in_library(self, artist_name: str) -> bool:
-        """Comprueba si un artista ya está en la biblioteca de Navidrome (best-effort:
-        si la búsqueda falla, se asume que no está para no bloquear la respuesta)."""
+    async def _artist_in_library(self, artist_name: str) -> Optional[bool]:
+        """Comprueba si un artista ya está en la biblioteca de Navidrome.
+
+        Devuelve None (no bool) si la comprobación falla - por ejemplo, un fallo
+        transitorio de red hacia Navidrome no debe traducirse en un "no lo
+        tienes" dicho con confianza (falso negativo peor que no decir nada).
+        """
         try:
             results = await self.navidrome.search(artist_name, limit=5)
             name_lower = artist_name.lower().strip()
@@ -398,8 +409,9 @@ class MusicAgentService:
                 name_lower in art.name.lower() or art.name.lower() in name_lower
                 for art in results.get("artists", [])
             )
-        except Exception:
-            return False
+        except Exception as e:
+            logger.warning(f"No se pudo comprobar si '{artist_name}' está en la biblioteca: {e}")
+            return None
 
     async def _tool_lanzamientos_artista(self, artista: str, dias: int = 90) -> Dict[str, Any]:
         try:
