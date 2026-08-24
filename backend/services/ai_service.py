@@ -12,6 +12,7 @@ from services.musicbrainz_service import MusicBrainzService
 from services.cache_manager import cache_manager, cached
 from services.analytics_system import analytics_system
 from services.adaptive_learning_system import adaptive_learning_system
+from services.koito_service import KoitoService
 from services.hybrid_recommendation_engine import HybridRecommendationEngine, RecommendationStrategy
 from services.advanced_personalization_system import advanced_personalization_system
 from services.error_recovery_system import error_recovery_system
@@ -24,8 +25,27 @@ class MusicRecommendationService:
         genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
         self.model = genai.GenerativeModel('gemini-2.5-flash')
         self.navidrome = NavidromeService()
-        self.listenbrainz = ListenBrainzService()
-        
+
+        # Koito tiene prioridad si está configurado (KOITO_URL), si no ListenBrainz -
+        # mismo criterio que MusicAssistant/MusicAgentService. self.discovery_service
+        # es el que usan los métodos de este archivo; self.listenbrainz se mantiene
+        # por compatibilidad con quien lo lea directamente desde fuera de la clase.
+        self.koito = None
+        self.listenbrainz = None
+        if os.getenv("KOITO_URL"):
+            try:
+                self.koito = KoitoService()
+            except Exception as e:
+                print(f"⚠️ Error inicializando Koito: {e}")
+        if not self.koito and os.getenv("LISTENBRAINZ_USERNAME"):
+            try:
+                self.listenbrainz = ListenBrainzService()
+            except Exception as e:
+                print(f"⚠️ Error inicializando ListenBrainz: {e}")
+
+        self.discovery_service = self.koito or self.listenbrainz
+        discovery_service_name = "Koito" if self.koito else ("ListenBrainz" if self.listenbrainz else "Ninguno")
+
         # Inicializar MusicBrainz para metadatos y descubrimiento
         self.musicbrainz = None
         if os.getenv("ENABLE_MUSICBRAINZ", "true").lower() == "true":
@@ -34,13 +54,13 @@ class MusicRecommendationService:
                 print("✅ MusicBrainz habilitado para metadatos y descubrimiento")
             except Exception as e:
                 print(f"⚠️ Error inicializando MusicBrainz: {e}")
-        
+
         # Cache simple para optimizar rendimiento
         self._library_artists_cache = None
         self._library_artists_cache_time = 0
         self._cache_ttl = 300  # 5 minutos
-        
-        print("✅ Servicio de recomendaciones usando ListenBrainz + MusicBrainz + Aprendizaje Adaptativo + Motor Híbrido + Características Avanzadas")
+
+        print(f"✅ Servicio de recomendaciones usando {discovery_service_name} + MusicBrainz + Aprendizaje Adaptativo + Motor Híbrido + Características Avanzadas")
         
         # Inicializar motor híbrido
         self.hybrid_engine = HybridRecommendationEngine(self)
@@ -314,8 +334,10 @@ class MusicRecommendationService:
                 print(f"🎤 Buscando artistas similares a: {top_artist.name}")
                 # Obtener más artistas similares y seleccionar aleatoriamente
                 # OPTIMIZACIÓN: Reducido de 10 a 7 para ser más rápido
-                similar_artists = await self.listenbrainz.get_similar_artists_from_recording(
-                    top_artist.name, 
+                if not self.discovery_service:
+                    break
+                similar_artists = await self.discovery_service.get_similar_artists_from_recording(
+                    top_artist.name,
                     limit=7,
                     musicbrainz_service=self.musicbrainz
                 )

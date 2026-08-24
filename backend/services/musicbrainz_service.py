@@ -1302,67 +1302,54 @@ class MusicBrainzService:
         artist_name: str,
         limit: int = 5
     ) -> List[Dict[str, Any]]:
-        """Obtener álbumes top de un artista con más detalles
-        
-        Similar a get_artist_top_albums pero con información adicional
-        para recomendaciones.
-        
+        """Obtener álbumes destacados de un artista
+
+        NOTA (fix): antes llamaba a un método `get_artist_top_albums` que no
+        existe en esta clase (AttributeError silenciado por el except).
+        MusicBrainz no tiene datos de popularidad, así que "top" aquí es una
+        aproximación honesta: los releases más recientes/notables del
+        artista, vía `get_latest_releases_by_artist` (ya funciona).
+
         Args:
             artist_name: Nombre del artista
             limit: Número de álbumes a obtener
-        
+
         Returns:
-            Lista de álbumes con metadata completa
+            Lista de álbumes con metadata (incluye "name" además de "title"
+            por compatibilidad con quien ya esperaba esa clave)
         """
         try:
-            # Reutilizar el método existente pero agregar más información
-            albums = await self.get_artist_top_albums(artist_name, limit)
-            
-            # Agregar información adicional si está disponible
+            releases = await self.get_latest_releases_by_artist(artist_name, limit)
+
             enhanced_albums = []
-            for album in albums:
-                enhanced = {
-                    **album,
-                    "recommendation_score": album.get("playcount", 0) / 1000,  # Normalizar
-                    "source": "musicbrainz"
-                }
-                enhanced_albums.append(enhanced)
-            
+            for release in releases:
+                enhanced_albums.append({
+                    **release,
+                    "name": release.get("title"),
+                    "source": "musicbrainz",
+                })
+
             return enhanced_albums
-            
+
         except Exception as e:
             print(f"❌ Error obteniendo álbumes: {e}")
             return []
-    
+
     async def get_artist_top_tracks_enhanced(
         self,
         artist_name: str,
         limit: int = 5
     ) -> List[Dict[str, Any]]:
-        """Obtener canciones top de un artista con más detalles
-        
-        Similar a get_artist_top_tracks pero preparado para recomendaciones.
+        """Obtener canciones top de un artista
+
+        NOTA (fix): igual que arriba, llamaba a un método inexistente. A
+        diferencia de los álbumes, MusicBrainz no expone aquí ninguna fuente
+        real de popularidad a nivel de canción (eso requeriría datos de
+        escucha, no de metadatos), así que devolvemos lista vacía en vez de
+        fingir un ranking que no existe. El llamador ya tiene fallback para
+        este caso (usa el nombre del artista sin canción específica).
         """
-        try:
-            tracks = await self.get_artist_top_tracks(artist_name, limit)
-            
-            enhanced_tracks = []
-            for track in tracks:
-                enhanced = {
-                    "name": track.name,
-                    "artist": track.artist,
-                    "playcount": track.playcount or 0,
-                    "url": track.url,
-                    "image_url": track.image_url,
-                    "source": "musicbrainz"
-                }
-                enhanced_tracks.append(enhanced)
-            
-            return enhanced_tracks
-            
-        except Exception as e:
-            print(f"❌ Error obteniendo tracks: {e}")
-            return []
+        return []
     
     async def close(self):
         """Cerrar conexión y guardar cache"""

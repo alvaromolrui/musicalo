@@ -6,7 +6,6 @@ Puede ser consumido por TelegramService, FastAPI, Chainlit o cualquier otro adap
 """
 import os
 import random
-import re
 import logging
 from typing import Optional, List
 
@@ -14,12 +13,12 @@ from models.schemas import Recommendation, Track, UserProfile
 from models.responses import AssistantResponse, AssistantAction, RecommendParams, ShareResult
 from services.navidrome_service import NavidromeService
 from services.listenbrainz_service import ListenBrainzService
+from services.koito_service import KoitoService
 from services.setlistfm_service import SetlistfmService
 from services.ai_service import MusicRecommendationService
 from services.playlist_service import PlaylistService
 from services.music_agent_service import MusicAgentService
 from services.conversation_manager import ConversationManager
-from services.enhanced_intent_detector import EnhancedIntentDetector
 from services.analytics_system import analytics_system
 
 logger = logging.getLogger(__name__)
@@ -37,14 +36,21 @@ class MusicAssistant:
     def __init__(self):
         self.navidrome = NavidromeService()
         self.listenbrainz = ListenBrainzService()
+        self.koito = KoitoService()
         self.setlistfm = SetlistfmService()
         self.ai = MusicRecommendationService()
         self.playlist_service = PlaylistService()
         self.agent = MusicAgentService()
         self.conversation_manager = ConversationManager()
-        self.enhanced_intent_detector = EnhancedIntentDetector()
 
-        if os.getenv("LISTENBRAINZ_USERNAME"):
+        # Koito tiene prioridad si está configurado (KOITO_URL); si no, ListenBrainz
+        # (LISTENBRAINZ_USERNAME). Mismo shape de datos en ambos - el resto de la
+        # clase solo usa self.music_service, no le importa cuál sea.
+        if os.getenv("KOITO_URL"):
+            self.music_service = self.koito
+            self.music_service_name = "Koito"
+            logger.info("Usando Koito como servicio de escucha")
+        elif os.getenv("LISTENBRAINZ_USERNAME"):
             self.music_service = self.listenbrainz
             self.music_service_name = "ListenBrainz"
             logger.info("Usando ListenBrainz como servicio de escucha")
@@ -64,135 +70,18 @@ class MusicAssistant:
     async def chat(self, user_id: int, message: str) -> AssistantResponse:
         """
         Procesa un mensaje en lenguaje natural y devuelve una respuesta.
-        Detecta la intención y enruta al método adecuado.
-        """
-        session = self.conversation_manager.get_session(user_id)
 
-        # Atajo determinista: si el mensaje trae un enlace de setlist.fm, no dependemos
-        # de que el LLM clasifique bien la intención.
+        Ya no hay un clasificador de intents previo: el agente conversacional
+        (`self.agent`, con tool-calling sobre Navidrome/ListenBrainz/MusicBrainz)
+        decide él mismo qué hacer con el mensaje y redacta la respuesta. Se
+        conserva únicamente el atajo determinista de setlist.fm, porque es un
+        match de URL sin ambigüedad (no una clasificación de lenguaje natural).
+        """
         setlist_id = self.setlistfm.parse_setlist_url(message)
         if setlist_id:
             return await self._build_setlist_playlist(setlist_id, user_id)
 
-        user_stats = None
-        if self.music_service:
-            try:
-                top_artists = await self.music_service.get_top_artists(limit=5)
-                if top_artists:
-                    user_stats = {"top_artists": [a.name for a in top_artists]}
-            except Exception:
-                pass
-
-        intent_data = await self.enhanced_intent_detector.detect_intent(
-            message,
-            session_context=session.get_context_for_ai(),
-            user_stats=user_stats,
-        )
-
-        intent = intent_data.get("intent")
-        params = intent_data.get("params", {})
-        logger.info(f"Intent detectado para usuario {user_id}: '{intent}' (conf={intent_data.get('confidence', 0):.2f})")
-
-        session.set_last_action(intent, params)
-
-        if intent == "playlist":
-            description = params.get("description", message)
-            return await self._agent_query(
-                f"Crea una playlist de {description} con canciones de mi biblioteca", user_id
-            )
-
-        if intent == "setlist_playlist":
-            artist = params.get("artist")
-            if not artist:
-                return AssistantResponse.error(
-                    "Dime el artista (y opcionalmente ciudad/fecha) del concierto, "
-                    "o pega el enlace del setlist de setlist.fm."
-                )
-            candidates = await self.setlistfm.search_setlists(
-                artist, params.get("city"), params.get("event_date")
-            )
-            if not candidates:
-                return AssistantResponse.error(
-                    f"No encontré setlists de {artist} en setlist.fm con esos datos."
-                )
-            if len(candidates) > 1:
-                listado = "\n".join(
-                    f"- {c.get('artist', {}).get('name', artist)} · "
-                    f"{c.get('venue', {}).get('name', '?')}, "
-                    f"{c.get('venue', {}).get('city', {}).get('name', '?')} "
-                    f"({c.get('eventDate', '?')})"
-                    for c in candidates[:5]
-                )
-                return AssistantResponse(
-                    text=f"Encontré varios conciertos, ¿cuál quieres?\n{listado}\n\n"
-                         "Puedes pegarme el enlace exacto de setlist.fm."
-                )
-            return await self._build_setlist_playlist(candidates[0]["id"], user_id)
-
-        if intent == "buscar":
-            search_term = params.get("search_query", "")
-            if not search_term:
-                return AssistantResponse.error("No especificaste qué buscar.")
-            return await self._agent_query(
-                f"Busca '{search_term}' en mi biblioteca y dime qué tengo", user_id
-            )
-
-        if intent == "recomendar":
-            similar_to = params.get("similar_to")
-            if similar_to:
-                recs = await self.get_recommendations(
-                    user_id, RecommendParams(similar_to=similar_to)
-                )
-                response = self._format_recommendations(recs, similar_to=similar_to)
-                if recs:
-                    session.set_last_recommendations(recs)
-                return response
-            return await self._agent_query(message, user_id)
-
-        if intent == "consulta_informativa":
-            return await self._agent_query(message, user_id, context={"type": "informational"})
-
-        if intent == "recomendar_biblioteca":
-            genre = params.get("genre") or (params.get("genres", [""])[0] if "genres" in params else "")
-            rec_type = params.get("type", "general")
-            recs = await self.get_recommendations(
-                user_id,
-                RecommendParams(
-                    rec_type=rec_type,
-                    genre_filter=genre or None,
-                    from_library_only=True,
-                ),
-            )
-            response = self._format_recommendations(recs, rec_type=rec_type, genre_filter=genre or None, from_library=True)
-            if recs:
-                session.set_last_recommendations(recs)
-            return response
-
-        if intent == "referencia":
-            last_artists = session.get_last_artists()
-            if last_artists:
-                recs = await self.get_recommendations(
-                    user_id, RecommendParams(similar_to=last_artists[0])
-                )
-                response = self._format_recommendations(recs, similar_to=last_artists[0])
-                if recs:
-                    session.set_last_recommendations(recs)
-                return response
-            return AssistantResponse(
-                text="No tengo referencia de qué música te gustó antes. ¿Puedes ser más específico?"
-            )
-
-        if intent == "releases":
-            artist = params.get("artist", "")
-            query = (
-                f"Muéstrame los lanzamientos recientes de {artist}"
-                if artist
-                else "Muéstrame los lanzamientos recientes de esta semana de artistas de mi biblioteca"
-            )
-            return await self._agent_query(query, user_id)
-
-        # Default: conversación libre
-        return await self._agent_query(message, user_id, context={"type": "conversational"})
+        return await self._agent_query(message, user_id)
 
     # ------------------------------------------------------------------
     # Setlist (setlist.fm) -> Playlist en Navidrome
@@ -201,105 +90,26 @@ class MusicAssistant:
     async def _build_setlist_playlist(self, setlist_id: str, user_id: int) -> AssistantResponse:
         """Crea una playlist en Navidrome a partir de un setlist de setlist.fm.
 
-        Flujo autocontenido (fetch -> match -> create): no reutiliza el pipeline
-        genérico de _agent_query/_extract_song_ids_from_context, que puntúa por
-        género/idioma/año y no sirve para emparejar título+artista exactos.
+        El fetch + emparejado + creación vive en `SetlistfmService.build_playlist_from_setlist`,
+        compartido con la tool `crear_playlist_desde_setlist` del agente (búsqueda de
+        conciertos por nombre) para no mantener dos copias de la misma lógica de matching.
         """
-        from rapidfuzz import fuzz
-
         setlist = await self.setlistfm.get_setlist(setlist_id)
         if not setlist:
             return AssistantResponse.error("No pude encontrar ese setlist en setlist.fm.")
 
-        songs = self.setlistfm.extract_songs(setlist)
-        if not songs:
-            return AssistantResponse.error("El setlist no tiene canciones registradas.")
-
-        song_ids: List[str] = []
-        seen_ids = set()
-        unmatched: List[str] = []
-
-        for song in songs:
-            track = await self._find_best_track_match(song["artist"], song["title"], fuzz)
-            if not track and song.get("is_cover") and song.get("cover_artist"):
-                track = await self._find_best_track_match(song["cover_artist"], song["title"], fuzz)
-
-            if track:
-                if track.id not in seen_ids:
-                    seen_ids.add(track.id)
-                    song_ids.append(track.id)
-            else:
-                unmatched.append(song["title"])
-
-        if not song_ids:
-            return AssistantResponse.error(
-                "No encontré ninguna canción de ese setlist en tu biblioteca de Navidrome."
-            )
-
-        if len(song_ids) > 50:
-            song_ids = song_ids[:50]
-
-        artist_name = setlist.get("artist", {}).get("name", "")
-        venue_name = setlist.get("venue", {}).get("name", "")
-        event_date = setlist.get("eventDate", "")
-        playlist_name = f"{artist_name} - {venue_name} ({event_date})".strip(" -")
-
-        playlist_id = await self.navidrome.create_playlist(playlist_name, song_ids)
-        if not playlist_id:
-            return AssistantResponse.error("No pude crear la playlist en Navidrome.")
+        result = await self.setlistfm.build_playlist_from_setlist(self.navidrome, setlist)
+        if not result.get("success"):
+            return AssistantResponse.error(result.get("error", "No pude crear la playlist."))
 
         text = (
-            f"Playlist creada: \"{playlist_name}\"\n"
-            f"{len(song_ids)} de {len(songs)} canciones encontradas en tu biblioteca."
+            f"Playlist creada: \"{result['playlist_name']}\"\n"
+            f"{result['matched_count']} de {result['total_songs']} canciones encontradas en tu biblioteca."
         )
-        if unmatched:
-            text += "\n\nNo encontré en tu biblioteca:\n" + "\n".join(f"- {t}" for t in unmatched)
+        if result["unmatched"]:
+            text += "\n\nNo encontré en tu biblioteca:\n" + "\n".join(f"- {t}" for t in result["unmatched"])
 
         return AssistantResponse(text=text)
-
-    _TITLE_NOISE_RE = re.compile(
-        r"[\(\[][^\)\]]*[\)\]]"  # paréntesis/corchetes: "(En Directo)", "(Remastered 2009)"
-        r"|[-–]\s*(live|en directo|en vivo|remaster(ed)?|acoustic|acústic[oa]|demo|edit|versi[oó]n)\b.*$",
-        re.IGNORECASE,
-    )
-
-    @classmethod
-    def _normalize_title(cls, text: str) -> str:
-        cleaned = cls._TITLE_NOISE_RE.sub("", text.lower())
-        return re.sub(r"\s+", " ", cleaned).strip()
-
-    async def _find_best_track_match(self, artist: str, title: str, fuzz) -> Optional[Track]:
-        """Busca en Navidrome la mejor coincidencia de una canción por título+artista.
-
-        Prueba primero "artista + título" y, si no hay nada suficientemente
-        parecido, reintenta solo con el título (algunas búsquedas combinadas
-        no devuelven resultados aunque la canción exista en la biblioteca).
-
-        Antes de comparar se limpia ruido conocido del título de la biblioteca
-        (paréntesis, "- En Directo", remasters...) y se usa token_sort_ratio,
-        que sí penaliza palabras extra genuinas. Deliberadamente NO se usa
-        token_set_ratio: ese algoritmo da score ~100 cuando un título es un
-        subconjunto de palabras de otro (p.ej. "Jota" vs "Jota Final"),
-        produciendo falsos positivos con títulos parecidos pero distintos.
-        """
-        normalized_title = self._normalize_title(title)
-
-        for query in (f"{artist} {title}", title):
-            results = await self.navidrome.search(query, limit=10)
-            tracks = results.get("tracks", [])
-            if not tracks:
-                continue
-
-            best_track, best_score = None, 0.0
-            for track in tracks:
-                score = fuzz.token_sort_ratio(normalized_title, self._normalize_title(track.title))
-                if score > best_score:
-                    best_track, best_score = track, score
-
-            if best_track and best_score >= 75:
-                return best_track
-
-        return None
 
     # ------------------------------------------------------------------
     # Recomendaciones
@@ -312,8 +122,11 @@ class MusicAssistant:
         return await self._get_profile_recommendations(params)
 
     async def _get_similar_recommendations(self, params: RecommendParams) -> list:
+        if not self.music_service:
+            return []
+
         search_limit = max(30, params.limit * 5)
-        similar_artists = await self.listenbrainz.get_similar_artists_from_recording(
+        similar_artists = await self.music_service.get_similar_artists_from_recording(
             params.similar_to,
             limit=search_limit,
             musicbrainz_service=self.agent.musicbrainz,
@@ -338,7 +151,7 @@ class MusicAssistant:
 
             if params.rec_type == "album":
                 top_albums = (
-                    await self.agent.musicbrainz.get_artist_top_albums(artist.name, limit=1)
+                    await self.agent.musicbrainz.get_artist_top_albums_enhanced(artist.name, limit=1)
                     if self.agent.musicbrainz
                     else []
                 )
@@ -352,7 +165,7 @@ class MusicAssistant:
 
             elif params.rec_type == "track":
                 top_tracks = (
-                    await self.agent.musicbrainz.get_artist_top_tracks(artist.name, limit=1)
+                    await self.agent.musicbrainz.get_artist_top_tracks_enhanced(artist.name, limit=1)
                     if self.agent.musicbrainz
                     else []
                 )
