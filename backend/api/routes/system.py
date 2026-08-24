@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Request, Query
 from api.auth import verify_api_key
 from api.models import StatsResponse, HealthResponse, ChatResponse
 from core.music_assistant import MusicAssistant
+from services import release_watcher
 
 router = APIRouter(dependencies=[Depends(verify_api_key)])
 
@@ -69,3 +70,13 @@ async def releases(
     )
     response = await assistant._agent_query(query, uid)
     return ChatResponse(text=response.text, success=response.success)
+
+
+@router.post("/check-releases")
+async def check_releases_now():
+    """Dispara una comprobación de lanzamientos nuevos ya mismo (no espera al
+    intervalo periódico ni al retraso inicial tras arrancar). Útil para
+    probar la config de ntfy/Telegram sin esperar. Devuelve cuántos avisos
+    se mandaron - 0 no es un error, significa que no había nada nuevo."""
+    sent = await release_watcher.trigger_check_now()
+    return {"notifications_sent": sent}

@@ -721,48 +721,58 @@ class MusicBrainzService:
                 
                 logger.info(f"   🔍 Chunk {chunk_num}/{total_chunks}: Buscando releases de {len(chunk)} artistas...")
                 logger.info(f"   📝 Artistas en este chunk: {chunk}")
-                
-                # Hacer request a MusicBrainz
-                await self._rate_limit()
-                
-                data = await self._make_request(
-                    "release-group",
-                    {
-                        "query": query,
-                        "limit": 100  # Suficiente para 10 artistas en un período corto
-                    }
-                )
-                
-                release_groups = data.get("release-groups", [])
-                
-                # Parsear releases
-                for rg in release_groups:
-                    # Extraer información del artista
-                    artist_credit = rg.get("artist-credit", [])
-                    artist_name = None
-                    artist_mbid = None
-                    
-                    if artist_credit and len(artist_credit) > 0:
-                        artist_info = artist_credit[0].get("artist", {})
-                        artist_name = artist_info.get("name")
-                        artist_mbid = artist_info.get("id")
-                    
-                    # Solo agregar si tiene artista Y coincide exactamente con uno de la biblioteca
-                    if artist_name and artist_name in chunk:
-                        logger.info(f"      ✅ Release válido: {artist_name} - {rg.get('title')}")
-                        all_releases.append({
-                            "title": rg.get("title"),
-                            "artist": artist_name,
-                            "artist_mbid": artist_mbid,
-                            "date": rg.get("first-release-date"),
-                            "type": rg.get("primary-type"),
-                            "mbid": rg.get("id"),
-                            "url": f"https://musicbrainz.org/release-group/{rg.get('id')}"
-                        })
-                    elif artist_name:
-                        logger.info(f"      ❌ Release filtrado (artista no en biblioteca): {artist_name} - {rg.get('title')}")
-                
-                logger.info(f"      ✅ {len(release_groups)} releases encontrados en este chunk")
+
+                # Un chunk fallido (p.ej. 503 de MusicBrainz por sobrecarga) no debe
+                # tirar todo el escaneo por la borda - se salta ese chunk (se
+                # reintentará en la siguiente pasada) y se sigue con el resto,
+                # para no perder los releases de los demás artistas.
+                try:
+                    await self._rate_limit()
+
+                    data = await self._make_request(
+                        "release-group",
+                        {
+                            "query": query,
+                            "limit": 100  # Suficiente para 10 artistas en un período corto
+                        }
+                    )
+
+                    release_groups = data.get("release-groups", [])
+
+                    # Parsear releases
+                    for rg in release_groups:
+                        # Extraer información del artista
+                        artist_credit = rg.get("artist-credit", [])
+                        artist_name = None
+                        artist_mbid = None
+
+                        if artist_credit and len(artist_credit) > 0:
+                            artist_info = artist_credit[0].get("artist", {})
+                            artist_name = artist_info.get("name")
+                            artist_mbid = artist_info.get("id")
+
+                        # Solo agregar si tiene artista Y coincide exactamente con uno de la biblioteca
+                        if artist_name and artist_name in chunk:
+                            logger.info(f"      ✅ Release válido: {artist_name} - {rg.get('title')}")
+                            all_releases.append({
+                                "title": rg.get("title"),
+                                "artist": artist_name,
+                                "artist_mbid": artist_mbid,
+                                "date": rg.get("first-release-date"),
+                                "type": rg.get("primary-type"),
+                                "mbid": rg.get("id"),
+                                "url": f"https://musicbrainz.org/release-group/{rg.get('id')}"
+                            })
+                        elif artist_name:
+                            logger.info(f"      ❌ Release filtrado (artista no en biblioteca): {artist_name} - {rg.get('title')}")
+
+                    logger.info(f"      ✅ {len(release_groups)} releases encontrados en este chunk")
+                except Exception as chunk_error:
+                    logger.warning(
+                        f"   ⚠️ Chunk {chunk_num}/{total_chunks} falló ({chunk_error}) - "
+                        f"se salta y se sigue con el resto"
+                    )
+                    continue
             
             logger.info(f"✅ Total de releases encontrados: {len(all_releases)}")
             
