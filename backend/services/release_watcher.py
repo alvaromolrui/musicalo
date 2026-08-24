@@ -33,6 +33,9 @@ _LOOKBACK_DAYS = int(os.getenv("RELEASES_LOOKBACK_DAYS", "30"))
 # producción: 559 artistas escaneados a la vez que una conversación en curso,
 # MusicBrainz devolviendo 503 y la conversación acabando en timeout).
 _INITIAL_DELAY_SECONDS = max(0, int(os.getenv("RELEASES_INITIAL_DELAY_MINUTES", "10"))) * 60
+# Tamaño máximo (caracteres) de cada mensaje de notificación agrupado - por
+# debajo de los límites típicos de ntfy/Telegram (~4096), con margen para tildes/emoji.
+_BATCH_MAX_CHARS = 3000
 
 # "Artistas" que en realidad son un cajón de sastre de recopilatorios, no un
 # artista real cuyos lanzamientos tenga sentido avisar. Ampliable vía env si
@@ -93,29 +96,54 @@ async def check_once(
     notified = _load_notified()
     new_releases = [r for r in releases if r.get("mbid") and r["mbid"] not in notified]
 
+    if not new_releases:
+        logger.info(f"Sin lanzamientos nuevos ({len(releases)} encontrados en total, ya notificados)")
+        return 0
+
+    # Agrupados en pocos mensajes en vez de uno por lanzamiento - con 40+
+    # lanzamientos nuevos de golpe (típico en la primera pasada, sin historial
+    # de notificados todavía) mandar uno por uno satura el rate limit de ntfy
+    # (visto en producción: 429 Too Many Requests en cadena).
     sent = 0
+    batch_lines: List[str] = []
+    batch_mbids: List[str] = []
+    batch_len = 0
+
+    async def flush_batch():
+        nonlocal sent, batch_lines, batch_mbids, batch_len
+        if not batch_lines:
+            return
+        message = f"🎵 {len(batch_lines)} lanzamiento(s) nuevo(s):\n\n" + "\n".join(batch_lines)
+        # Con Click header solo tiene sentido si el lote es un único lanzamiento
+        url = new_releases[0].get("url") if len(batch_mbids) == 1 else None
+        ok = await notifier.send(message=message, url=url, tags="musical_note,new")
+        if ok:
+            notified.update(batch_mbids)
+            sent += len(batch_mbids)
+        else:
+            # Si falló el envío, no se marca como notificado - se reintenta en la próxima pasada
+            logger.warning(f"No se pudo notificar un lote de {len(batch_mbids)} lanzamiento(s)")
+        batch_lines, batch_mbids, batch_len = [], [], 0
+
     for release in new_releases:
         artist = release.get("artist", "?")
         title = release.get("title", "?")
         date = release.get("date", "?")
         rel_type = (release.get("type") or "álbum").lower()
-        ok = await notifier.send(
-            message=f"🎵 Nuevo lanzamiento: {artist} - {title} ({rel_type}, {date})",
-            url=release.get("url"),
-            tags="musical_note,new",
-        )
-        if ok:
-            notified.add(release["mbid"])
-            sent += 1
-        else:
-            # Si falló el envío, no lo marcamos como notificado - se reintenta en la próxima pasada
-            logger.warning(f"No se pudo notificar el lanzamiento de {artist} - {title}")
+        line = f"• {artist} - {title} ({rel_type}, {date})"
+
+        if batch_lines and batch_len + len(line) > _BATCH_MAX_CHARS:
+            await flush_batch()
+
+        batch_lines.append(line)
+        batch_mbids.append(release["mbid"])
+        batch_len += len(line) + 1
+
+    await flush_batch()
 
     if sent:
         _save_notified(notified)
-        logger.info(f"📢 {sent} lanzamiento(s) nuevo(s) notificado(s) por ntfy")
-    else:
-        logger.info(f"Sin lanzamientos nuevos ({len(releases)} encontrados en total, ya notificados)")
+        logger.info(f"📢 {sent} lanzamiento(s) nuevo(s) notificado(s)")
 
     return sent
 

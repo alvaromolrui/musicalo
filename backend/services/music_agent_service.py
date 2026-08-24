@@ -352,6 +352,19 @@ class MusicAgentService:
         try:
             if not ids_canciones:
                 return {"error": "No se pasó ninguna canción"}
+            # Guardarraíl determinista: si ya hay una playlist activa en esta
+            # conversación, NO se crea una segunda aunque el modelo lo intente -
+            # se le devuelve el error con los datos que necesita para corregirse
+            # y llamar a actualizar_playlist en su lugar, en el mismo turno.
+            if self._current_session and self._current_session.last_playlist:
+                active = self._current_session.last_playlist
+                return {
+                    "error": (
+                        f"Ya hay una playlist activa en esta conversación: '{active['name']}' "
+                        f"(id={active['id']}). No crees una segunda - llama a actualizar_playlist "
+                        f"con la lista completa de canciones que debería tener ahora."
+                    )
+                }
             playlist_id = await self.navidrome.create_playlist(nombre, ids_canciones)
             if not playlist_id:
                 return {"error": "Navidrome no pudo crear la playlist"}

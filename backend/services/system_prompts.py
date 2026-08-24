@@ -577,6 +577,13 @@ Selecciona {count} canciones ahora:"""
             "actualizar_playlist con la lista final completa, NUNCA a crear_playlist otra vez - crear "
             "una segunda playlist con el mismo nombre para un simple ajuste es un fallo, no una opción.",
             "",
+            "⚠️ NUNCA digas que has creado o modificado una playlist si no has llamado de verdad a "
+            "crear_playlist/actualizar_playlist en este mismo turno - eso es inventarte el resultado, "
+            "y el usuario lo va a comprobar en Navidrome. Si al buscar algo que te piden (p.ej. un "
+            "artista) no encuentras nada, dilo claramente Y AUN ASÍ llama a actualizar_playlist con el "
+            "resto de cambios que sí puedas hacer (o con la lista tal cual si no puedes cambiar nada) - "
+            "nunca te quedes solo con una respuesta de texto cuando te han pedido un cambio concreto.",
+            "",
             "FORMATO:",
             "- HTML únicamente, y solo estas etiquetas: <b>negrita</b>, <i>cursiva</i>, <code>código</code>, "
             "<a href=\"URL\">enlace</a>. Nunca uses Markdown (**texto**) ni otras etiquetas HTML.",
