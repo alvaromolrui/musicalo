@@ -83,6 +83,52 @@ class NavidromeService:
             print(f"❌ Error creando playlist en Navidrome: {e}")
             return None
     
+    async def update_playlist_songs(self, playlist_id: str, song_ids: List[str]) -> bool:
+        """Reemplazar por completo el contenido de una playlist existente.
+
+        La API de Subsonic no tiene un "reemplazar todo" directo: hay que
+        pedir el nº de canciones actuales (getPlaylist) y, en la misma
+        llamada a updatePlaylist, quitar todos esos índices (songIndexToRemove)
+        mientras se añaden las nuevas (songIdToAdd).
+
+        Args:
+            playlist_id: ID de la playlist a actualizar
+            song_ids: Lista de IDs de canción que sustituye el contenido actual
+
+        Returns:
+            True si se actualizó correctamente
+        """
+        try:
+            params = self._get_auth_params()
+            params["id"] = playlist_id
+            data = await self._make_request("getPlaylist", params)
+            entries = data.get("playlist", {}).get("entry", [])
+            if isinstance(entries, dict):
+                entries = [entries]
+            current_count = len(entries)
+
+            print(f"🎵 Actualizando playlist {playlist_id}: quitando {current_count} canciones, añadiendo {len(song_ids)}...")
+
+            params = self._get_auth_params()
+            params["playlistId"] = playlist_id
+            url = f"{self.base_url}/rest/updatePlaylist.view"
+            url_params = "&".join([f"{k}={v}" for k, v in params.items()])
+            remove_params = "&".join([f"songIndexToRemove={i}" for i in range(current_count)])
+            add_params = "&".join([f"songIdToAdd={sid}" for sid in song_ids])
+            full_url = "&".join(p for p in [f"{url}?{url_params}", remove_params, add_params] if p)
+
+            response = await self.client.get(full_url)
+            if response.status_code != 200:
+                print(f"❌ Error actualizando playlist: {response.status_code}")
+                return False
+
+            print(f"✅ Playlist {playlist_id} actualizada")
+            return True
+
+        except Exception as e:
+            print(f"❌ Error actualizando playlist en Navidrome: {e}")
+            return False
+
     async def test_connection(self):
         """Probar conexión con Navidrome"""
         try:

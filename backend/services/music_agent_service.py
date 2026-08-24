@@ -104,6 +104,8 @@ class MusicAgentService:
         logger.info(f"📊 Servicio de historial: {self.history_service_name or 'No disponible'}")
 
         self._last_playlist_created: Optional[Dict[str, Any]] = None
+        self._current_session = None  # sesión de la consulta en curso (ver query()), para que
+        # _tool_crear_playlist/_tool_actualizar_playlist compartan la "playlist activa"
 
         # Registro de tools disponibles según qué servicios están configurados
         self._tool_impl: Dict[str, Any] = {}
@@ -160,10 +162,13 @@ class MusicAgentService:
         )
         add(
             "crear_playlist",
-            "Crea una playlist real en Navidrome con los ids de canción exactos que le pases. Úsala "
+            "Crea una playlist NUEVA en Navidrome con los ids de canción exactos que le pases. Úsala "
             "solo después de haber buscado/elegido las canciones con buscar_biblioteca o "
-            "filtrar_biblioteca. Tú decides qué canciones van - no se lo devuelvas al usuario para que "
-            "elija salvo que te lo pida explícitamente.",
+            "filtrar_biblioteca, y solo la primera vez en la conversación. Tú decides qué canciones "
+            "van - no se lo devuelvas al usuario para que elija salvo que te lo pida explícitamente. "
+            "Si el usuario pide cambios sobre una playlist que ya creaste en este mismo chat (quitar "
+            "una canción, añadir más, cambiar el rollo), usa actualizar_playlist en su lugar - NO "
+            "vuelvas a llamar a esta, o acabarás con playlists duplicadas.",
             {
                 "nombre": types.Schema(type=types.Type.STRING, description="Nombre de la playlist"),
                 "ids_canciones": types.Schema(
@@ -174,6 +179,24 @@ class MusicAgentService:
             },
             ["nombre", "ids_canciones"],
             self._tool_crear_playlist,
+        )
+        add(
+            "actualizar_playlist",
+            "Reemplaza el contenido de la playlist que ya creaste en ESTA conversación (con "
+            "crear_playlist) por una nueva lista de canciones - úsala para refinamientos "
+            "('quita esa canción', 'pon algo más movido', 'menos lenta') en vez de crear_playlist, "
+            "así no se duplica la playlist. Pásale la lista completa final, no solo lo que cambia. "
+            "Si no has creado ninguna playlist todavía en esta conversación, esta tool falla - usa "
+            "crear_playlist primero.",
+            {
+                "ids_canciones": types.Schema(
+                    type=types.Type.ARRAY,
+                    items=types.Schema(type=types.Type.STRING),
+                    description="Lista COMPLETA de ids de canción que debe tener la playlist tras el cambio",
+                ),
+            },
+            ["ids_canciones"],
+            self._tool_actualizar_playlist,
         )
 
         # Historial de escucha - solo si hay servicio configurado (ListenBrainz hoy, Koito mañana)
@@ -338,9 +361,40 @@ class MusicAgentService:
                 "track_count": len(ids_canciones),
                 "song_ids": ids_canciones,
             }
+            if self._current_session:
+                self._current_session.set_last_playlist(playlist_id, nombre)
             return {"success": True, "playlist_id": playlist_id, "name": nombre, "track_count": len(ids_canciones)}
         except Exception as e:
             logger.warning(f"crear_playlist falló: {e}")
+            return {"error": str(e)}
+
+    async def _tool_actualizar_playlist(self, ids_canciones: List[str]) -> Dict[str, Any]:
+        try:
+            if not ids_canciones:
+                return {"error": "No se pasó ninguna canción"}
+            active = self._current_session.last_playlist if self._current_session else None
+            if not active:
+                return {
+                    "error": "No hay ninguna playlist activa en esta conversación todavía. "
+                             "Usa crear_playlist para crear la primera."
+                }
+            ok = await self.navidrome.update_playlist_songs(active["id"], ids_canciones)
+            if not ok:
+                return {"error": "Navidrome no pudo actualizar la playlist"}
+            self._last_playlist_created = {
+                "id": active["id"],
+                "name": active["name"],
+                "track_count": len(ids_canciones),
+                "song_ids": ids_canciones,
+            }
+            return {
+                "success": True,
+                "playlist_id": active["id"],
+                "name": active["name"],
+                "track_count": len(ids_canciones),
+            }
+        except Exception as e:
+            logger.warning(f"actualizar_playlist falló: {e}")
             return {"error": str(e)}
 
     async def _tool_top_artistas(self, periodo: str = "this_month", limite: int = 10) -> Dict[str, Any]:
@@ -472,6 +526,7 @@ class MusicAgentService:
         que consume `MusicAssistant._agent_query()`.
         """
         session = self.conversation_manager.get_session(user_id)
+        self._current_session = session
         self._last_playlist_created = None
         informational = bool(context and context.get("type") == "informational")
 

@@ -21,6 +21,14 @@ class ConversationSession:
         self.last_action: Optional[str] = None  # Última acción realizada
         self.action_params: Dict = {}  # Parámetros de la última acción
         self.context: Dict = {}  # Contexto general (para MusicBrainz, etc.)
+        self.last_playlist: Optional[Dict] = None  # {"id", "name"} de la última playlist creada en esta conversación
+
+    def set_last_playlist(self, playlist_id: str, name: str):
+        """Recordar la última playlist creada en esta conversación, para que un
+        refinamiento posterior ("quita esa canción", "pon algo más movido") la
+        actualice en vez de crear una playlist duplicada."""
+        self.last_playlist = {"id": playlist_id, "name": name}
+        logger.debug(f"Playlist activa '{name}' ({playlist_id}) guardada en sesión {self.user_id}")
     
     def add_message(self, role: str, content: str):
         """Agregar mensaje al historial
@@ -132,6 +140,7 @@ class ConversationSession:
         self.last_action = None
         self.action_params = {}
         self.context = {}
+        self.last_playlist = None
         logger.info(f"Sesión {self.user_id} limpiada completamente")
 
 

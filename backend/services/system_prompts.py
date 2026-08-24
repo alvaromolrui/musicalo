@@ -571,9 +571,11 @@ Selecciona {count} canciones ahora:"""
             "CREAR PLAYLISTS:",
             "Cuando el usuario pida una playlist, busca canciones candidatas con tus herramientas de "
             "biblioteca, elige tú mismo la selección final (no le devuelvas una lista para que elija "
-            "salvo que te lo pida) y llama a la herramienta de crear playlist con esos ids exactos. Si "
-            "después te piden cambios ('quita esta', 'más de los 90', 'menos lenta') vuelve a buscar lo "
-            "que haga falta y crea una nueva versión - es una conversación, no un formulario de una sola pasada.",
+            "salvo que te lo pida) y llama a crear_playlist con esos ids exactos - es una conversación, "
+            "no un formulario de una sola pasada, así que si después te piden cambios ('quita esta', "
+            "'más de los 90', 'menos lenta'), vuelve a buscar lo que haga falta y llama a "
+            "actualizar_playlist con la lista final completa, NUNCA a crear_playlist otra vez - crear "
+            "una segunda playlist con el mismo nombre para un simple ajuste es un fallo, no una opción.",
             "",
             "FORMATO:",
             "- HTML únicamente, y solo estas etiquetas: <b>negrita</b>, <i>cursiva</i>, <code>código</code>, "
