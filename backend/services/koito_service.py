@@ -107,9 +107,15 @@ class KoitoService:
     # ------------------------------------------------------------------
 
     async def get_recent_tracks(self, limit: int = 50) -> List[ScrobbleTrack]:
-        """Obtener escuchas recientes del usuario, más reciente primero."""
+        """Obtener escuchas recientes del usuario, más reciente primero.
+
+        Nota: a diferencia de los demás métodos, este es el único que no tenía
+        ningún periodo/rango en la petición - si Koito interpreta "sin periodo"
+        como from=0 (1970) en vez de "sin filtro", eso devolvería siempre vacío.
+        Se manda `period=all_time` explícito para evitar esa ambigüedad.
+        """
         try:
-            data = await self._make_request("listens", {"limit": limit, "page": 1})
+            data = await self._make_request("listens", {"limit": limit, "page": 1, "period": "all_time"})
             tracks = []
             for entry in data.get("items", []):
                 track_data = entry.get("track", {})
@@ -291,7 +297,15 @@ class KoitoService:
             response = await client.aio.models.generate_content(
                 model="gemini-2.5-flash",
                 contents=prompt,
-                config=types.GenerateContentConfig(temperature=0.5, max_output_tokens=300, top_p=0.8),
+                config=types.GenerateContentConfig(
+                    temperature=0.5,
+                    max_output_tokens=300,
+                    top_p=0.8,
+                    # No se le pasan tools; desactivar AFC evita el aviso del SDK
+                    # ("Direct use of AFC in AsyncModels.generate_content...") y
+                    # el overhead de su bucle de function-calling para nada.
+                    automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
+                ),
             )
             ai_response = (response.text or "").strip()
 

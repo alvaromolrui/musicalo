@@ -222,8 +222,11 @@ class MusicAgentService:
             )
             add(
                 "artistas_similares",
-                "Artistas similares a uno dado, para descubrir música nueva que el usuario probablemente "
-                "no tiene en su biblioteca. Combina el historial del usuario y MusicBrainz.",
+                "Artistas similares a uno dado, para descubrir música nueva. Combina el historial del "
+                "usuario, MusicBrainz e IA como último recurso - este último no sabe qué tiene el "
+                "usuario en su biblioteca, así que cada resultado incluye 'en_biblioteca' (true/false, "
+                "comprobado de verdad contra Navidrome). Si te piden algo que NO tengan, descarta o "
+                "avisa de los que salgan en_biblioteca=true en vez de dar por hecho que son nuevos.",
                 {
                     "artista": types.Schema(type=types.Type.STRING, description="Nombre del artista de referencia"),
                     "limite": types.Schema(type=types.Type.INTEGER, description="Máx. artistas (default 10)"),
@@ -375,10 +378,28 @@ class MusicAgentService:
             artists = await self.discovery_service.get_similar_artists_from_recording(
                 artista, limit=limite, musicbrainz_service=self.musicbrainz,
             )
-            return {"artists": [a.model_dump(mode="json") for a in artists]}
+            result = []
+            for a in artists:
+                item = a.model_dump(mode="json")
+                item["en_biblioteca"] = await self._artist_in_library(a.name)
+                result.append(item)
+            return {"artists": result}
         except Exception as e:
             logger.warning(f"artistas_similares falló: {e}")
             return {"error": str(e)}
+
+    async def _artist_in_library(self, artist_name: str) -> bool:
+        """Comprueba si un artista ya está en la biblioteca de Navidrome (best-effort:
+        si la búsqueda falla, se asume que no está para no bloquear la respuesta)."""
+        try:
+            results = await self.navidrome.search(artist_name, limit=5)
+            name_lower = artist_name.lower().strip()
+            return any(
+                name_lower in art.name.lower() or art.name.lower() in name_lower
+                for art in results.get("artists", [])
+            )
+        except Exception:
+            return False
 
     async def _tool_lanzamientos_artista(self, artista: str, dias: int = 90) -> Dict[str, Any]:
         try:
