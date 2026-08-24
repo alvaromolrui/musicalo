@@ -9,18 +9,18 @@
 [![Telegram](https://img.shields.io/badge/Telegram-Bot-blue?logo=telegram)](https://telegram.org)
 [![Chainlit](https://img.shields.io/badge/Web%20UI-Chainlit-orange)](https://chainlit.io)
 
-Asistente musical con IA que combina un bot de Telegram y una interfaz web (Chainlit). Genera recomendaciones personalizadas basadas en tu biblioteca de Navidrome y tus scrobbles de ListenBrainz.
+Asistente musical con IA que combina un bot de Telegram y una interfaz web (Chainlit). Genera recomendaciones personalizadas basadas en tu biblioteca de Navidrome y tus escuchas de Koito o ListenBrainz.
 
 ## ✨ Características
 
 - **🤖 Lenguaje Natural**: Habla directamente con el bot sin necesidad de comandos
 - **🎨 Peticiones Específicas**: Describe exactamente lo que buscas con todos los detalles
-- **🧠 Contexto Adaptativo en 3 Niveles** ⭐ **NUEVO**: El bot SIEMPRE conoce tus gustos y se adapta automáticamente
+- **🛠️ Agente con herramientas**: un único agente conversacional (Gemini con function calling) decide qué consultar - biblioteca, historial, similares, lanzamientos - y redacta la respuesta con su propia voz, sin plantillas fijas ni clasificador previo
 - **🎯 IA Contextual**: Gemini AI entiende intenciones y responde con tus datos reales
 - **🎵 Integración con Navidrome**: Acceso completo a tu biblioteca musical autoalojada
-- **📊 Scrobbles de ListenBrainz**: Análisis de tus hábitos de escucha y patrones (open-source, sin límites)
+- **📊 Historial de escucha (Koito o ListenBrainz)**: Análisis de tus hábitos y patrones, open-source y sin límites. Koito tiene prioridad si lo configuras (`KOITO_URL`); si no, se usa ListenBrainz
 - **🎶 MusicBrainz**: Metadatos detallados y descubrimiento basado en relaciones entre artistas
-- **⚡ Respuestas Ultrarrápidas**: Caché inteligente - 92% más rápido en consultas repetidas
+- **🎤 Playlists desde conciertos reales**: pide un setlist de setlist.fm por artista/ciudad o pega el enlace, y te la arma emparejando canciones contra tu biblioteca
 - **🔄 Variedad**: Diferentes recomendaciones cada vez
 - **🎧 Now Playing**: Consulta qué se está reproduciendo actualmente en todos tus reproductores
 - **📱 Acceso móvil**: Optimizado para usar desde tu smartphone
@@ -41,46 +41,41 @@ Ahora puedes ser todo lo específico que quieras en tus peticiones:
 
 La IA entiende múltiples criterios y genera recomendaciones precisas que cumplen **todos** tus requisitos.
 
-### 🧠 Sistema de Contexto Adaptativo en 3 Niveles
+### 🤖 Un agente con herramientas, no un árbol de decisiones
 
-**¡Nueva característica v4.2.0!** El bot ahora **SIEMPRE** conoce tus gustos musicales, adaptándose inteligentemente según lo que preguntes:
+Musicalo no clasifica tu mensaje en categorías fijas para decidir qué hacer. Cada mensaje lo recibe un único agente conversacional (Gemini con *function calling*) que decide por sí mismo qué necesita consultar, llama directamente a las herramientas que le hacen falta - encadenando varias si hace falta - y redacta la respuesta final con su propia voz. No hay plantillas de texto ni un clasificador de intenciones decidiendo por él antes de que responda.
 
-#### **Nivel 1: Contexto Mínimo** ⚡⚡⚡ (SIEMPRE activo)
-- Se ejecuta en **todas las consultas** sin excepción
-- Mantiene tus **top 3 artistas** en memoria
-- **Caché de 1 hora** para máxima velocidad
-- Respuestas en **~50ms** (instantáneo)
+**Herramientas disponibles para el agente:**
 
-#### **Nivel 2: Contexto Enriquecido** ⚡⚡ (Recomendaciones)
-- Se activa automáticamente cuando pides recomendaciones
-- Obtiene **top 10 artistas + últimas 5 escuchas**
-- **Caché de 10 minutos** (se actualiza dinámicamente)
-- Primera consulta: ~500ms, repetidas: ~50ms
+| Herramienta | Para qué |
+|---|---|
+| `buscar_biblioteca` | Buscar canciones/álbumes/artistas por texto libre en Navidrome |
+| `filtrar_biblioteca` | Explorar la biblioteca por género y/o año |
+| `top_artistas` / `top_tracks` / `top_albumes` | Lo más escuchado en un periodo (Koito o ListenBrainz) |
+| `escuchas_recientes` | Últimas canciones escuchadas, en orden cronológico |
+| `artistas_similares` | Descubrimiento de música nueva (historial + MusicBrainz + IA como último recurso) |
+| `lanzamientos_artista` | Últimos álbumes/EPs de un artista (MusicBrainz) |
+| `now_playing` | Qué se está reproduciendo ahora en Navidrome |
+| `crear_playlist` | Crea la playlist real en Navidrome con las canciones que el propio agente eligió |
+| `buscar_setlist_concierto` / `crear_playlist_desde_setlist` | Playlist a partir de un concierto real, buscando por artista/ciudad/fecha o a partir de un enlace de setlist.fm |
 
-#### **Nivel 3: Contexto Completo** ⚡ (Estadísticas)
-- Se activa cuando preguntas por tu perfil o estadísticas
-- Obtiene **top 15 artistas + últimas 20 escuchas + estadísticas completas**
-- **Caché de 5 minutos** (información fresca)
-- Primera consulta: ~700ms, repetidas: ~50ms
+Las herramientas de historial y setlist.fm solo se activan si tienes esos servicios configurados (Koito/ListenBrainz, `SETLISTFM_API_KEY`).
 
-**Resultado:** El bot te conoce desde el primer mensaje y responde **92% más rápido** en consultas repetidas.
+**Memoria real de la conversación:** el historial se le pasa al modelo como turnos nativos, no como un resumen de texto reinyectado en cada mensaje - así que "quita esa canción", "más de eso" o "cámbiame la última" funcionan de forma natural, sin depender de frases mágicas predefinidas.
 
 ```
 Ejemplo de conversación:
-Tú: "Hola"
-Bot: "¡Hola! Veo que escuchas Extremoduro, Los Suaves y Barricada 🎸"
-     [Contexto nivel 1 - sabe tus gustos]
+Tú: "recomiéndame un disco de algún grupo similar a Extremoduro"
+Bot: [llama a artistas_similares y filtrar_biblioteca, y responde con 2-3 discos
+      concretos y por qué, mezclando biblioteca y descubrimiento]
 
-Tú: "Recomiéndame algo"
-Bot: "Basándome en que últimamente escuchas rock español..."
-     [Contexto nivel 2 - conoce tus escuchas recientes]
+Tú: "hazme una playlist con eso"
+Bot: [busca las canciones y llama a crear_playlist - la playlist aparece de
+      verdad en tu Navidrome]
 
-Tú: "¿Cuánto he escuchado este mes?"
-Bot: "Has escuchado 523 canciones este mes, tu artista top es..."
-     [Contexto nivel 3 - estadísticas completas]
+Tú: "quita la última y pon algo más movido"
+Bot: [vuelve a buscar y llama a crear_playlist otra vez con la lista ajustada]
 ```
-
-**Todos los comandos aprovechan el contexto:** `/recommend`, `/stats`, `/playlist`, `/library`, `/releases`, `/search`, `/nowplaying`
 
 ## 🖥️ Modos de uso (`START_MODE`)
 
@@ -131,10 +126,12 @@ frontend:
 ### Backend (FastAPI + Telegram Bot API)
 - **API REST** en `POST /chat/` — consume el frontend web y cualquier cliente externo
 - **Servicios integrados**:
+  - `MusicAgentService`: el agente conversacional - bucle de *function calling* sobre Gemini (SDK `google-genai`) con las herramientas descritas más arriba. Es el motor detrás de la conversación en lenguaje natural y de la mayoría de comandos
   - `NavidromeService`: Conexión con tu servidor Navidrome
-  - `ListenBrainzService`: Datos de escucha y recomendaciones colaborativas (open source, sin límites)
-  - `MusicBrainzService`: Metadatos detallados, relaciones entre artistas y búsqueda inversa por género/país/época
-  - `MusicRecommendationService`: IA con Google Gemini para recomendaciones personalizadas
+  - `KoitoService` / `ListenBrainzService`: Datos de escucha (Koito auto-hospedado tiene prioridad si está configurado; si no, ListenBrainz)
+  - `MusicBrainzService`: Metadatos detallados, relaciones entre artistas, lanzamientos y búsqueda inversa por género/país/época
+  - `SetlistfmService`: Playlists a partir de conciertos reales (setlist.fm)
+  - `MusicRecommendationService`: motor de recomendaciones "avanzado" (perfil, filtrado híbrido) usado por comandos específicos como `/hybrid` y `/discover`
   - `TelegramService`: Manejo de interacciones del bot en modo polling
 
 ### Frontend web (Chainlit)
@@ -143,7 +140,7 @@ frontend:
 - Autenticación sin formulario vía `@cl.header_auth_callback`; compatible con reverse proxy (Traefik + Authelia) para multiusuario
 
 **Stack completamente open-source:**
-- ✅ **ListenBrainz** para datos de escucha y recomendaciones basadas en usuarios similares
+- ✅ **Koito** (auto-hospedado) o **ListenBrainz** para datos de escucha - Koito además te da control total de tus datos al vivir en tu propia infraestructura
 - ✅ **MusicBrainz** para metadatos precisos, descubrimiento por relaciones entre artistas y búsquedas avanzadas
 - ✅ Ambos servicios son gratuitos, open-source y sin límites estrictos de API
 - ✅ Cache persistente para minimizar llamadas a las APIs
@@ -154,7 +151,7 @@ frontend:
 ### Prerrequisitos
 - **Docker y Docker Compose** instalados en tu sistema
 - Servidor **Navidrome** funcionando
-- Cuenta de **ListenBrainz** (open-source, gratuita)
+- Instancia de **Koito** auto-hospedada, o cuenta de **ListenBrainz** (open-source, gratuita) - uno de los dos
 - **API key de Google Gemini** (gratuita)
 - **Token de bot de Telegram**
 
@@ -206,7 +203,8 @@ El archivo `.env` está completamente documentado con comentarios explicativos p
 **Variables principales del backend:**
 - `START_MODE`: `telegram` (default) / `api` / `both`
 - `NAVIDROME_URL`, `NAVIDROME_USERNAME`, `NAVIDROME_PASSWORD`: Credenciales de Navidrome
-- `LISTENBRAINZ_USERNAME`, `LISTENBRAINZ_TOKEN`: Para datos de escucha (REQUERIDO)
+- `KOITO_URL`, `KOITO_API_KEY`: Para datos de escucha vía Koito auto-hospedado (tiene prioridad si está seteado)
+- `LISTENBRAINZ_USERNAME`, `LISTENBRAINZ_TOKEN`: Para datos de escucha vía ListenBrainz (REQUERIDO uno de los dos, Koito o ListenBrainz)
 - `ENABLE_MUSICBRAINZ`: Habilitar metadatos y descubrimiento avanzado (RECOMENDADO)
 - `SETLISTFM_API_KEY`: API key gratuita de setlist.fm (https://api.setlist.fm/) para crear playlists a partir de setlists de conciertos
 - `GEMINI_API_KEY`: API key de Google Gemini (REQUERIDO)
@@ -220,7 +218,7 @@ El archivo `.env` está completamente documentado con comentarios explicativos p
 - `CHAINLIT_DB_PATH`: Ruta al SQLite de historial (default: `/app/data/chainlit.db`)
 - `BACKEND_URL`: URL del backend desde el contenedor frontend (default: `http://musicalo:8000`)
 
-**Stack completamente open-source:** ListenBrainz + MusicBrainz + Navidrome = Sin dependencias de servicios comerciales.
+**Stack completamente open-source:** (Koito o ListenBrainz) + MusicBrainz + Navidrome = Sin dependencias de servicios comerciales.
 
 ### Obtener Credenciales
 
@@ -236,18 +234,29 @@ El archivo `.env` está completamente documentado con comentarios explicativos p
 3. Copia el número de ID y agrégalo a `TELEGRAM_ALLOWED_USER_IDS` en tu archivo `.env`
 4. Puedes agregar múltiples IDs separados por comas (ej: `123456789,987654321`)
 
-#### ListenBrainz
+#### Koito (recomendado si quieres auto-hospedar tus escuchas)
+1. Despliega tu propia instancia de [Koito](https://koito.io/) (compatible con la API de scrobbling de ListenBrainz)
+2. Apunta tu scrobbler favorito (Navidrome, Plex, etc.) al endpoint compatible con ListenBrainz de tu Koito, en vez de a listenbrainz.org
+3. Genera una API key desde tu perfil de Koito (Settings → API Keys)
+4. Configura `KOITO_URL` (la URL base de tu instancia) y `KOITO_API_KEY` en tu `.env`
+
+**¿Por qué usar Koito?**
+- ✅ Totalmente auto-hospedado: tus datos de escucha no salen de tu infraestructura
+- ✅ Compatible con la API de ListenBrainz para scrobbling, así que cualquier cliente que ya sepa hablar con ListenBrainz funciona igual
+- ✅ Import de historial desde ListenBrainz, Last.fm, Maloja y Spotify si vienes de otro servicio
+- ⚠️ Al ser de un solo usuario no tiene recomendaciones colaborativas (no hay otros usuarios con los que comparar) - Musicalo usa MusicBrainz/IA como alternativa en ese caso
+
+#### ListenBrainz (alternativa si no quieres auto-hospedar)
 1. Ve a [ListenBrainz](https://listenbrainz.org/)
 2. Regístrate con tu cuenta de MusicBrainz (o crea una nueva)
 3. Opcional: Obtén un token de API en Settings → User Token
 4. Conecta tu scrobbler favorito (Maloja, Navidrome, Plex, etc.)
 
 **¿Por qué usar ListenBrainz?**
-- ✅ Totalmente open-source y gratuito
+- ✅ Totalmente open-source y gratuito, sin nada que auto-hospedar
 - ✅ Sin límites de API
 - ✅ Recomendaciones colaborativas basadas en usuarios similares
 - ✅ Compatible con múltiples plataformas de scrobbling
-- ✅ Privacidad y control total de tus datos
 
 #### MusicBrainz (Recomendado)
 MusicBrainz es completamente **gratuito y open source**. No requiere API key, solo información de contacto:
@@ -340,7 +349,7 @@ del bot y proporciona tu ID de usuario.
 "¿qué es el jazz?" (preguntas generales sobre música)
 ```
 
-La IA entiende tu intención y responde usando tus datos reales de ListenBrainz y MusicBrainz.
+La IA entiende tu intención y responde usando tus datos reales de Koito/ListenBrainz y MusicBrainz.
 
 ### 🗣️ Comandos con Lenguaje Natural
 
@@ -364,7 +373,7 @@ Casi todos los comandos pueden usarse con lenguaje natural sin necesidad de reco
 - **`/playlist`** - Crear playlist M3U • Ej: /playlist jazz suave
 - **`/nowplaying`** - Ver qué se está reproduciendo ahora • Muestra todos los reproductores activos
 - **`/library`** - Explorar biblioteca
-- **`/stats`** - Estadísticas en Listenbrainz • Ej: /stats week
+- **`/stats`** - Estadísticas de escucha • Ej: /stats week
 - **`/search`** - Buscar música en la biblioteca • Ej: /search queen
 - **`/releases`** - Consultar nuevos lanzamientos de artistas de la biblioteca • Ej: /releases week
 - **`/share`** - Crear enlace para compartir música • Ej: /share The dark side of the moon
@@ -378,7 +387,7 @@ recommend - Recomendaciones musicales • Ej: /recommend rock
 playlist - Crear playlist M3U • Ej: /playlist jazz suave
 nowplaying - Ver qué se está reproduciendo ahora • Muestra todos los reproductores activos
 library - Explorar biblioteca
-stats - Estadísticas en Listenbrainz • Ej: /stats week
+stats - Estadísticas de escucha • Ej: /stats week
 search - Buscar música en la biblioteca • Ej: /search queen
 releases - Consultar nuevos lanzamientos de artistas de la biblioteca • Ej: /releases week
 share - Crear enlace para compartir música • Ej: /share The dark side of the moon
@@ -405,20 +414,20 @@ help - Mostrar ayuda completa
 
 ## 🤖 Comandos del Bot
 
-> 🧠 **Todos los comandos de música** ahora usan el **sistema de contexto adaptativo** - el bot siempre conoce tus gustos y responde de forma personalizada.
+> 🛠️ **La mayoría de comandos de música** pasan por el mismo agente con herramientas descrito arriba - el bot decide qué consultar y responde con datos reales, no con una plantilla fija por comando.
 
 ### Comandos Básicos
 - **`/start`** - Iniciar bot y mostrar bienvenida
 - **`/help`** - Ayuda detallada con ejemplos
 
-### Comandos de Música (🧠 con contexto adaptativo)
-- **`/recommend`** - Recomendaciones personalizadas con IA (Nivel 2)
-- **`/stats [periodo]`** - Análisis inteligente de tus estadísticas (Nivel 3)
-- **`/playlist <descripción>`** - Crear playlist personalizada (Nivel 2)
-- **`/library`** - Resumen inteligente de tu biblioteca (Nivel 3)
-- **`/releases [periodo]`** - Lanzamientos filtrados por tus gustos (Nivel 2)
-- **`/search <término>`** - Buscar con sugerencias contextuales (Nivel 1)
-- **`/nowplaying`** - Ver reproducción actual con contexto (Nivel 1)
+### Comandos de Música
+- **`/recommend`** - Recomendaciones personalizadas con IA
+- **`/stats [periodo]`** - Análisis de tus estadísticas de escucha
+- **`/playlist <descripción>`** - Crear playlist personalizada (el agente elige las canciones y la crea de verdad en Navidrome)
+- **`/library`** - Resumen de tu biblioteca
+- **`/releases [periodo]`** - Lanzamientos recientes de tus artistas
+- **`/search <término>`** - Buscar en tu biblioteca
+- **`/nowplaying`** - Ver reproducción actual
 - **`/share <nombre>`** - Compartir música con enlace público
 
 ### Interacciones
@@ -428,22 +437,19 @@ help - Mostrar ayuda completa
 
 ## 🧠 Algoritmo de Recomendaciones
 
-El sistema utiliza múltiples enfoques con **contexto adaptativo**:
+El sistema combina varios enfoques:
 
-1. **Contexto en 3 Niveles** ⭐ **NUEVO**: Sistema inteligente que siempre conoce tus gustos
-   - Nivel 1 (Mínimo): Top 3 artistas - caché 1h
-   - Nivel 2 (Enriquecido): Top 10 + últimas 5 escuchas - caché 10min
-   - Nivel 3 (Completo): Top 15 + últimas 20 + estadísticas - caché 5min
+1. **Consultas dirigidas por el propio agente**: en vez de precalcular un "contexto" fijo en cada mensaje, el agente pide justo lo que necesita en cada caso (top artistas, escuchas recientes, filtrado por género...) llamando a sus herramientas
 2. **Análisis de perfil**: Patrones de escucha, géneros favoritos, diversidad
 3. **IA generativa**: Google Gemini para sugerencias contextuales
-4. **Similitud musical**: Artistas y géneros relacionados
-5. **Filtrado colaborativo**: Basado en usuarios con gustos similares (ListenBrainz)
+4. **Similitud musical**: Artistas y géneros relacionados (historial + MusicBrainz)
+5. **Filtrado colaborativo**: Basado en usuarios con gustos similares (solo disponible con ListenBrainz - Koito, al ser de un solo usuario, no tiene otros usuarios con quien comparar, así que usa MusicBrainz/IA en su lugar)
 
 ## 🎨 Tecnologías
 
 ### Backend
 - **FastAPI**: API REST + python-telegram-bot 20.7
-- **Google Gemini**: IA para recomendaciones contextuales
+- **Google Gemini** (SDK `google-genai`): function calling para el agente conversacional
 - **httpx**: Cliente HTTP asíncrono para APIs
 - **Pydantic**: Validación de datos
 
@@ -461,10 +467,8 @@ El sistema utiliza múltiples enfoques con **contexto adaptativo**:
 
 ## 📊 Características de la IA
 
-- **🧠 Contexto Adaptativo** ⭐ **NUEVO**: Sistema de 3 niveles que siempre conoce tus gustos
-  - Respuestas **92% más rápidas** en consultas repetidas
-  - Caché inteligente (1h/10min/5min según el tipo de dato)
-  - Se actualiza automáticamente con tus nuevas escuchas
+- **🛠️ Agente con herramientas**: consulta biblioteca/historial/similares bajo demanda en vez de precalcular un contexto fijo, y encadena varias herramientas si una consulta lo requiere
+- **💬 Memoria de conversación real**: recuerda lo hablado en el mismo turno de Gemini, no como texto resumido reinyectado
 - **Análisis de género**: Identificación automática de preferencias
 - **Patrones temporales**: Horarios de escucha preferidos
 - **Diversidad musical**: Medición de amplitud de gustos
@@ -479,6 +483,7 @@ Este proyecto está bajo la Licencia MIT. Ver `LICENSE` para más detalles.
 ## 🙏 Agradecimientos
 
 - [Navidrome](https://github.com/navidrome/navidrome) por el excelente servidor de música
+- [Koito](https://koito.io/) por el scrobbler auto-hospedado y compatible con ListenBrainz
 - [ListenBrainz](https://listenbrainz.org/) por la API de scrobbling open source
 - [MusicBrainz](https://musicbrainz.org/) por la base de datos de metadatos musicales open source
 - [Google Gemini](https://ai.google.dev/) por las capacidades de IA

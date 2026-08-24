@@ -58,6 +58,10 @@ services:
       - NAVIDROME_USERNAME=${NAVIDROME_USERNAME}
       - NAVIDROME_PASSWORD=${NAVIDROME_PASSWORD}
 
+      # --- Koito (prioridad sobre ListenBrainz si KOITO_URL está seteado) ---
+      - KOITO_URL=${KOITO_URL}
+      - KOITO_API_KEY=${KOITO_API_KEY}
+
       # --- ListenBrainz ---
       - LISTENBRAINZ_USERNAME=${LISTENBRAINZ_USERNAME}
       - LISTENBRAINZ_TOKEN=${LISTENBRAINZ_TOKEN}

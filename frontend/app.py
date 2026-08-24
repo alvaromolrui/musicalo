@@ -243,7 +243,7 @@ async def on_message(message: cl.Message):
     text = ""
     actions_data = []
 
-    # Step visible mientras el backend procesa (Navidrome, ListenBrainz, Gemini…)
+    # Step visible mientras el backend procesa (Navidrome, Koito/ListenBrainz, Gemini…)
     async with cl.Step(name="Procesando tu consulta", type="run") as step:
         step.input = message.content
         try:

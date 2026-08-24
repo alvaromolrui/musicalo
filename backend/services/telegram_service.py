@@ -8,7 +8,7 @@ Responsabilidades de este módulo:
 
 Lo que NO hace este módulo:
   - Lógica de negocio (recomendaciones, búsqueda, playlists, etc.)
-  - Llamadas directas a Navidrome/ListenBrainz/IA
+  - Llamadas directas a Navidrome/Koito/ListenBrainz/IA
 """
 from telegram import (
     Update,
@@ -160,7 +160,8 @@ Soy tu asistente personal de música con IA que entiende lenguaje natural. Puede
 
     @_check_authorization
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        help_text = """🎵 <b>Musicalo - Guía de Comandos</b>
+        listening_service = self.assistant.music_service_name or "ListenBrainz/Koito"
+        help_text = f"""🎵 <b>Musicalo - Guía de Comandos</b>
 
 <b>✨ Lenguaje Natural:</b>
 Escríbeme directamente sin usar comandos:
@@ -187,7 +188,7 @@ Escríbeme directamente sin usar comandos:
 • /search &lt;término&gt; - Buscar en tu biblioteca
 
 <b>Servicios:</b>
-• ListenBrainz: Análisis de escucha y recomendaciones
+• {listening_service}: Análisis de escucha y recomendaciones
 • MusicBrainz: Metadatos detallados
 • Navidrome: Tu biblioteca musical
 • Gemini AI: Recomendaciones inteligentes
@@ -272,8 +273,8 @@ Escríbeme directamente sin usar comandos:
             if not params.similar_to and not self.assistant.music_service:
                 await update.message.reply_text(
                     "⚠️ No hay servicio de scrobbling configurado.\n\n"
-                    "Por favor configura ListenBrainz (LISTENBRAINZ_USERNAME en .env) "
-                    "para recibir recomendaciones personalizadas."
+                    "Por favor configura Koito (KOITO_URL en .env) o ListenBrainz "
+                    "(LISTENBRAINZ_USERNAME en .env) para recibir recomendaciones personalizadas."
                 )
                 return
 

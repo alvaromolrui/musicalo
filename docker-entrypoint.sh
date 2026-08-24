@@ -27,15 +27,19 @@ if [ "$MODE" = "telegram" ] || [ "$MODE" = "both" ]; then
     fi
 fi
 
-if [ -z "$LISTENBRAINZ_USERNAME" ]; then
-    log "⚠️  WARNING: LISTENBRAINZ_USERNAME no está configurado"
+if [ -z "$KOITO_URL" ] && [ -z "$LISTENBRAINZ_USERNAME" ]; then
+    log "⚠️  WARNING: ni KOITO_URL ni LISTENBRAINZ_USERNAME están configurados (sin datos de escucha)"
 fi
 
 log "✅ Configuración verificada"
 log "📋 Configuración:"
 log "   - Modo: $MODE"
 log "   - Navidrome URL: ${NAVIDROME_URL:-http://host.docker.internal:4533}"
-log "   - ListenBrainz User: ${LISTENBRAINZ_USERNAME:-No configurado}"
+if [ -n "$KOITO_URL" ]; then
+    log "   - Servicio de escuchas: Koito ($KOITO_URL)"
+else
+    log "   - Servicio de escuchas: ListenBrainz (${LISTENBRAINZ_USERNAME:-No configurado})"
+fi
 log "   - MusicBrainz: ${ENABLE_MUSICBRAINZ:-false}"
 log "   - Host: ${HOST:-0.0.0.0} | Port: ${PORT:-8000}"
 
