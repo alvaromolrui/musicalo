@@ -213,6 +213,8 @@ El archivo `.env` está completamente documentado con comentarios explicativos p
 - `TELEGRAM_NOTIFY_CHAT_ID`: Aviso de lanzamientos nuevos por Telegram, reutilizando `TELEGRAM_BOT_TOKEN` (OPCIONAL - por defecto usa el primer ID de `TELEGRAM_ALLOWED_USER_IDS`)
 - `RELEASES_CHECK_INTERVAL_HOURS`, `RELEASES_LOOKBACK_DAYS`: Frecuencia y ventana de la comprobación de lanzamientos (default 24h / 30 días)
 - `GEMINI_API_KEY`: API key de Google Gemini (REQUERIDO)
+- `GEMINI_MODEL`: Modelo de Gemini para todo el backend (default `gemini-2.5-flash`). Antes de cambiar a uno nuevo, comprueba que el SDK `google-genai` lo soporta
+- `GEMINI_THINKING_LEVEL`: Nivel de razonamiento (`minimal`, `low`, `medium`, `high`; OPCIONAL, vacío = el default del modelo). Solo para modelos Gemini 3 en adelante: los 2.5 no lo aceptan
 - `TELEGRAM_BOT_TOKEN`: Token de tu bot de Telegram (solo si `START_MODE=telegram` o `both`)
 - `TELEGRAM_ALLOWED_USER_IDS`: IDs permitidos para bot privado (RECOMENDADO)
 - `MUSICALO_API_KEY`: Clave de acceso a la API REST (vacía = sin auth)

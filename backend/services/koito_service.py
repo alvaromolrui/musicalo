@@ -280,10 +280,8 @@ class KoitoService:
                 print(f"⚠️ Error buscando similares por tags en MusicBrainz: {e}")
 
         try:
-            from google import genai
-            from google.genai import types
+            from services.gemini_client import generate_text
 
-            client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
             prompt = (
                 f"Eres un experto en música. Genera una lista de {limit} artistas similares a "
                 f'"{artist_name}".\n\n'
@@ -294,20 +292,7 @@ class KoitoService:
                 "- Artistas musicalmente similares en estilo, género o época\n\n"
                 f"Genera {limit} artistas similares a {artist_name}:"
             )
-            response = await client.aio.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    temperature=0.5,
-                    max_output_tokens=300,
-                    top_p=0.8,
-                    # No se le pasan tools; desactivar AFC evita el aviso del SDK
-                    # ("Direct use of AFC in AsyncModels.generate_content...") y
-                    # el overhead de su bucle de function-calling para nada.
-                    automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
-                ),
-            )
-            ai_response = (response.text or "").strip()
+            ai_response = await generate_text(prompt)
 
             for line in ai_response.split("\n"):
                 if len(similar_artists) >= limit:

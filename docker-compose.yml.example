@@ -75,6 +75,8 @@ services:
 
       # --- Gemini AI ---
       - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
+      - GEMINI_THINKING_LEVEL=${GEMINI_THINKING_LEVEL:-}
 
       # --- setlist.fm (opcional: playlists a partir de setlists de conciertos) ---
       - SETLISTFM_API_KEY=${SETLISTFM_API_KEY}

@@ -1,4 +1,3 @@
-import google.generativeai as genai
 import os
 from typing import List, Dict, Any, Optional
 import numpy as np
@@ -18,12 +17,10 @@ from services.advanced_personalization_system import advanced_personalization_sy
 from services.error_recovery_system import error_recovery_system
 from services.advanced_monitoring_system import advanced_monitoring_system
 from services.user_features_system import user_features_system
+from services.gemini_client import generate_text, generate_text_sync
 
 class MusicRecommendationService:
     def __init__(self):
-        # Configurar Gemini
-        genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-        self.model = genai.GenerativeModel('gemini-2.5-flash')
         self.navidrome = NavidromeService()
 
         # Koito tiene prioridad si está configurado (KOITO_URL), si no ListenBrainz -
@@ -513,24 +510,10 @@ Aphex Twin - Selected Ambient Works | Electrónica ambient pionera con texturas 
 ✅ EMPIEZA DIRECTAMENTE:
 """
 
-            # Generar con Gemini con configuración para respuestas más predecibles y rápidas
-            # OPTIMIZACIÓN: Reducido max_output_tokens para respuestas más rápidas
-            generation_config = {
-                'temperature': 0.7,
-                'top_p': 0.9,
-                'top_k': 40,
-                'max_output_tokens': 800,  # Suficiente para 5-10 recomendaciones
-            }
-            
-            response = self.model.generate_content(
-                ai_prompt,
-                generation_config=generation_config
-            )
-            
-            # Manejar errores de seguridad de Gemini
-            try:
-                ai_response = response.text.strip()
-            except ValueError as e:
+            ai_response = await generate_text(ai_prompt)
+
+            # Respuesta vacía = bloqueada por los filtros de seguridad de Gemini
+            if not ai_response:
                 # Si la respuesta fue bloqueada por seguridad, intentar sin lista de biblioteca
                 print(f"⚠️ Respuesta bloqueada por filtros de seguridad de Gemini")
                 print(f"   Reintentando sin lista detallada de biblioteca...")
@@ -548,10 +531,8 @@ FORMATO (cada línea):
 NO generes análisis. EMPIEZA DIRECTAMENTE:
 """
                 
-                response = self.model.generate_content(ai_prompt_simple, generation_config=generation_config)
-                try:
-                    ai_response = response.text.strip()
-                except ValueError:
+                ai_response = await generate_text(ai_prompt_simple)
+                if not ai_response:
                     print(f"❌ IA bloqueada por seguridad incluso con prompt simple")
                     return []
             
@@ -791,16 +772,7 @@ The Beatles - Hey Jude | Clásico del rock con melodías memorables y letras emo
 ✅ EMPIEZA DIRECTAMENTE CON LA PRIMERA RECOMENDACIÓN:
 """
             
-            # Generar con Gemini con configuración para respuestas predecibles
-            generation_config = {
-                'temperature': 0.7,
-                'top_p': 0.9,
-                'top_k': 40,
-                'max_output_tokens': 600,
-            }
-            
-            response = self.model.generate_content(prompt, generation_config=generation_config)
-            ai_suggestions = response.text.strip()
+            ai_suggestions = await generate_text(prompt)
             
             print(f"📝 Respuesta de IA para biblioteca (longitud: {len(ai_suggestions)})")
             
@@ -1055,53 +1027,40 @@ Pink Floyd - Wish You Were Here | Rock progresivo atmosférico con guitarras emo
 ✅ EMPIEZA DIRECTAMENTE:
 """
             
-            # Generar con Gemini
-            generation_config = {
-                'temperature': 0.8,
-                'top_p': 0.9,
-                'top_k': 40,
-                'max_output_tokens': 800,
-            }
-            
-            # Intentar generar respuesta con manejo de bloqueo de seguridad
-            try:
-                response = self.model.generate_content(prompt, generation_config=generation_config)
-                ai_response = response.text.strip()
-                print(f"📝 Respuesta de IA recibida (longitud: {len(ai_response)})")
-            except ValueError as e:
-                # Si fue bloqueado por seguridad, intentar con prompt más simple
-                if "finish_reason" in str(e) or "response.text" in str(e):
-                    print(f"⚠️ Respuesta bloqueada por filtros de seguridad de Gemini")
-                    print(f"   Reintentando con prompt simplificado...")
-                    
-                    # Prompt mucho más simple sin listas largas
-                    simple_prompt = f"""Recomienda {limit} {item_type} de música para redescubrir.
+            # Respuesta vacía = bloqueada por los filtros de seguridad de Gemini
+            ai_response = await generate_text(prompt)
+            print(f"📝 Respuesta de IA recibida (longitud: {len(ai_response)})")
+            if not ai_response:
+                print(f"⚠️ Respuesta bloqueada por filtros de seguridad de Gemini")
+                print(f"   Reintentando con prompt simplificado...")
+
+                # Prompt mucho más simple sin listas largas
+                simple_prompt = f"""Recomienda {limit} {item_type} de música para redescubrir.
 
 PERFIL: Escucha {', '.join(top_artists[:3])}
 CRITERIO: {criteria}
 TIPO: {item_type}
 
 FORMATO (cada línea):"""
-                    
-                    if recommendation_type == "artist":
-                        simple_prompt += "\n[Artista] | [Razón corta]"
-                    else:
-                        simple_prompt += "\n[Artista] - [Nombre] | [Razón corta]"
-                    
-                    simple_prompt += "\n\nEMPIEZA DIRECTAMENTE:"
-                    
-                    try:
-                        response = self.model.generate_content(simple_prompt, generation_config=generation_config)
-                        ai_response = response.text.strip()
-                        print(f"📝 Respuesta de IA recibida con prompt simple (longitud: {len(ai_response)})")
-                    except:
-                        print(f"❌ Fallo también con prompt simple, usando fallback básico")
-                        # Fallback: recomendar aleatoriamente de los candidatos
-                        return await self._generate_random_library_recommendations(
-                            candidate_items, limit, recommendation_type
-                        )
+
+                if recommendation_type == "artist":
+                    simple_prompt += "\n[Artista] | [Razón corta]"
                 else:
-                    raise
+                    simple_prompt += "\n[Artista] - [Nombre] | [Razón corta]"
+
+                simple_prompt += "\n\nEMPIEZA DIRECTAMENTE:"
+
+                try:
+                    ai_response = await generate_text(simple_prompt)
+                except Exception:
+                    ai_response = ""
+                if not ai_response:
+                    print(f"❌ Fallo también con prompt simple, usando fallback básico")
+                    # Fallback: recomendar aleatoriamente de los candidatos
+                    return await self._generate_random_library_recommendations(
+                        candidate_items, limit, recommendation_type
+                    )
+                print(f"📝 Respuesta de IA recibida con prompt simple (longitud: {len(ai_response)})")
             
             # Parsear recomendaciones
             recommendations = []
@@ -2043,8 +2002,8 @@ INSTRUCCIONES:
 
 Selecciona ahora (máximo {min(target_count, sample_size)} canciones):"""
 
-            response = self.model.generate_content(prompt)
-            selected_indices = self._parse_selection(response.text)
+            response_text = generate_text_sync(prompt)
+            selected_indices = self._parse_selection(response_text)
             
             # Construir lista de canciones seleccionadas
             filtered = []
@@ -2482,8 +2441,8 @@ EJEMPLO: 5,12,23,34,45,67,89
 Números de artistas que coinciden:"""
 
             # Generar con IA
-            response = self.model.generate_content(prompt)
-            selected_indices = self._parse_selection(response.text)
+            response_text = await generate_text(prompt)
+            selected_indices = self._parse_selection(response_text)
             
             # Construir lista de tracks de los artistas seleccionados
             matched_tracks = []
@@ -2549,8 +2508,8 @@ Ejemplo: 1,5,8,12,23,34,56,78,90
 
 Números de artistas en {language_name}:"""
 
-            response = self.model.generate_content(prompt)
-            selected_indices = self._parse_selection(response.text)
+            response_text = generate_text_sync(prompt)
+            selected_indices = self._parse_selection(response_text)
             
             # Crear set de artistas válidos
             valid_artists = set()

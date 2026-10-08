@@ -471,12 +471,9 @@ class ListenBrainzService:
                 print(f"   📊 Estrategia 3: Usando IA para generar similares basándose en conocimiento musical general...")
                 try:
                     # Importar aquí para evitar dependencias circulares
-                    import google.generativeai as genai
-                    
+                    from services.gemini_client import generate_text
+
                     # Usar IA para generar artistas similares
-                    # OPTIMIZACIÓN: Usar modelo flash más rápido
-                    model = genai.GenerativeModel('gemini-2.5-flash')
-                    
                     prompt = f"""Eres un experto en música. Genera una lista de {limit} artistas similares a "{artist_name}".
 
 IMPORTANTE:
@@ -495,15 +492,7 @@ Yo La Tengo
 
 Genera {limit} artistas similares a {artist_name}:"""
                     
-                    # OPTIMIZACIÓN: Configuración para respuesta más rápida
-                    generation_config = {
-                        'temperature': 0.5,  # Más determinista
-                        'max_output_tokens': 300,  # Solo necesitamos nombres
-                        'top_p': 0.8
-                    }
-                    
-                    response = model.generate_content(prompt, generation_config=generation_config)
-                    ai_response = response.text.strip()
+                    ai_response = await generate_text(prompt)
                     
                     # Parsear respuesta
                     for line in ai_response.split('\n'):
