@@ -40,7 +40,3 @@ docker exec musicalo rm -rf /tmp/musicalo-next
 ```
 
 `ONLY=playlist,memoria` (otro `-e`) limita los escenarios. El script corre en su propio proceso: no comparte sesiones con el servidor en marcha ni deja nada en Navidrome. Crear, editar y renombrar playlists y compartir se simulan en memoria; las lecturas (biblioteca, playlists, historial) sí son reales.
-
-## Script antiguo
-
-[test_playlist_creation.py](../test_playlist_creation.py), en la raíz, es de antes del agente actual: **no arranca** (`ModuleNotFoundError: No module named 'models'`, por cómo importa el backend) y, si arrancara, **crearía tres playlists reales** en Navidrome. Lo sustituyen los dos scripts de esta carpeta.

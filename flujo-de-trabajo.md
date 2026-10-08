@@ -24,7 +24,7 @@ No son excluyentes: un mismo commit de fix suele tocar dos sitios (el código + 
 1. Commit en `main` (no hay evidencia de flujo de PR/review en el historial — ver [convenciones.md](convenciones.md#ramas); las dos ramas `feature/*` remotas no parecen estar activas, confírmalo antes de asumir lo contrario).
 2. [.github/workflows/docker-publish.yml](.github/workflows/docker-publish.yml) reconstruye automáticamente la imagen Docker cuyo directorio cambió (`backend/`+ficheros raíz relevantes, o `frontend/`) y la publica en Docker Hub con el tag `:main`.
 3. Un tag `vX.Y.Z` (coincidiendo con el contenido de [VERSION](VERSION)) publica además el tag `:latest` de ambas imágenes — es el paso de "release" real, no un merge a `main` cualquiera.
-4. No hay pipeline de tests automatizado en CI. Las pruebas del agente son dos scripts manuales en [tests/](tests/README.md): `tests/check_agent_loop.py` (simulado, sin red ni claves: pásalo antes de cada commit que toque el agente) y `tests/check_agent_live.py` (Gemini, Navidrome y Koito reales con las escrituras simuladas, dentro del contenedor: pásalo antes de desplegar un cambio de comportamiento del agente). El antiguo [test_playlist_creation.py](test_playlist_creation.py) no arranca y crearía playlists reales: no lo uses.
+4. No hay pipeline de tests automatizado en CI. Las pruebas del agente son dos scripts manuales en [tests/](tests/README.md): `tests/check_agent_loop.py` (simulado, sin red ni claves: pásalo antes de cada commit que toque el agente) y `tests/check_agent_live.py` (Gemini, Navidrome y Koito reales con las escrituras simuladas, dentro del contenedor: pásalo antes de desplegar un cambio de comportamiento del agente).
 
 ## Al diagnosticar un bug en producción
 
