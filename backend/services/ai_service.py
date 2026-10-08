@@ -1,4 +1,5 @@
 import os
+import logging
 from typing import List, Dict, Any, Optional
 import numpy as np
 from collections import Counter
@@ -18,6 +19,8 @@ from services.error_recovery_system import error_recovery_system
 from services.advanced_monitoring_system import advanced_monitoring_system
 from services.user_features_system import user_features_system
 from services.gemini_client import generate_text, generate_text_sync
+
+logger = logging.getLogger(__name__)
 
 class MusicRecommendationService:
     def __init__(self):
