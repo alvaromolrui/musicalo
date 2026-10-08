@@ -51,16 +51,23 @@ Musicalo no clasifica tu mensaje en categorías fijas para decidir qué hacer. C
 | Herramienta | Para qué |
 |---|---|
 | `buscar_biblioteca` | Buscar canciones/álbumes/artistas por texto libre en Navidrome |
-| `filtrar_biblioteca` | Explorar la biblioteca por género y/o año |
+| `listar_generos` / `filtrar_biblioteca` | Géneros reales de la biblioteca y canciones filtradas por género y/o año |
+| `explorar_albumes` | Álbumes por criterio: añadidos recientemente, más reproducidos, favoritos, mejor valorados, por año o género, al azar |
+| `albumes_artista` / `canciones_album` | Discografía de un artista en la biblioteca y canciones de un álbum |
 | `top_artistas` / `top_tracks` / `top_albumes` | Lo más escuchado en un periodo (Koito o ListenBrainz) |
 | `escuchas_recientes` | Últimas canciones escuchadas, en orden cronológico |
+| `estadisticas_escucha` / `actividad_escucha` | Resumen numérico de un periodo (escuchas, minutos, novedades) y escuchas por día |
 | `artistas_similares` | Descubrimiento de música nueva (historial + MusicBrainz + IA como último recurso) |
 | `lanzamientos_artista` | Últimos álbumes/EPs de un artista (MusicBrainz) |
 | `now_playing` | Qué se está reproduciendo ahora en Navidrome |
 | `crear_playlist` | Crea la playlist real en Navidrome con las canciones que el propio agente eligió |
+| `listar_playlists` / `ver_playlist` / `actualizar_playlist` | Ver y editar cualquier playlist del usuario, la creada en el chat o una que ya tenía |
+| `crear_enlace_compartir` | Enlace público de Navidrome para compartir canciones o álbumes |
 | `buscar_setlist_concierto` / `crear_playlist_desde_setlist` | Playlist a partir de un concierto real, buscando por artista/ciudad/fecha o a partir de un enlace de setlist.fm |
 
 Las herramientas de historial y setlist.fm solo se activan si tienes esos servicios configurados (Koito/ListenBrainz, `SETLISTFM_API_KEY`).
+
+Además de sus herramientas, el agente usa su propio conocimiento musical: puedes preguntarle por la historia de un disco, por dónde empezar con un género o qué influencias tiene un grupo, y solo consultará tu biblioteca o historial si eso mejora la respuesta.
 
 **Memoria real de la conversación:** el historial se le pasa al modelo como turnos nativos, no como un resumen de texto reinyectado en cada mensaje - así que "quita esa canción", "más de eso" o "cámbiame la última" funcionan de forma natural, sin depender de frases mágicas predefinidas.
 

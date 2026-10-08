@@ -270,17 +270,32 @@ class NavidromeService:
             return []
     
     async def get_albums(self, limit: int = 50, offset: int = 0, **filters) -> List[Album]:
-        """Obtener álbumes de la biblioteca"""
+        """Obtener álbumes de la biblioteca
+
+        Filtros opcionales (getAlbumList2 de Subsonic):
+            list_type: random (default), newest (añadidos recientemente), recent
+                (escuchados recientemente), frequent (más escuchados), starred
+                (favoritos), highest (mejor valorados), alphabeticalByName,
+                alphabeticalByArtist, byYear, byGenre
+            fromYear/toYear: obligatorios con byYear (si solo llega uno, se
+                completa con el otro extremo)
+            genre: obligatorio con byGenre
+        """
         try:
             print(f"📀 Obteniendo {limit} álbumes de Navidrome...")
-            
-            # Usar getAlbumList2 (tipo: random, newest, frequent, recent, etc)
+
+            list_type = filters.get("list_type") or "random"
             params = {
-                "type": "random",
+                "type": list_type,
                 "size": min(limit, 500),
                 "offset": offset
             }
-            
+            if list_type == "byYear":
+                params["fromYear"] = filters.get("fromYear") or 0
+                params["toYear"] = filters.get("toYear") or 9999
+            if list_type == "byGenre":
+                params["genre"] = filters.get("genre", "")
+
             data = await self._make_request("getAlbumList2", params)
             albums = []
             
@@ -665,7 +680,56 @@ class NavidromeService:
         except Exception as e:
             print(f"❌ Error obteniendo tracks del álbum: {e}")
             return []
-    
+
+    async def get_artist_albums(self, artist_id: str) -> List[Album]:
+        """Discografía de un artista en la biblioteca (getArtist).
+
+        A diferencia de los métodos más antiguos de este servicio, un fallo de
+        red se propaga en vez de devolver []: así el agente no confunde "no se
+        pudo consultar" con "no tienes nada de este artista".
+        """
+        data = await self._make_request("getArtist", {"id": artist_id})
+        items = data.get("artist", {}).get("album", [])
+        if isinstance(items, dict):
+            items = [items]
+        albums = [
+            Album(
+                id=item.get("id", ""),
+                name=item.get("name", ""),
+                artist=item.get("artist", ""),
+                year=item.get("year"),
+                genre=item.get("genre"),
+                track_count=item.get("songCount"),
+                duration=item.get("duration"),
+                cover_url=None,
+                play_count=item.get("playCount"),
+            )
+            for item in items
+        ]
+        albums.sort(key=lambda a: a.year or 0)
+        return albums
+
+    async def get_playlists(self) -> List[Dict[str, Any]]:
+        """Playlists del usuario en Navidrome (getPlaylists), sin sus canciones.
+
+        Igual que get_artist_albums, propaga los errores en vez de devolver [].
+        """
+        data = await self._make_request("getPlaylists")
+        items = data.get("playlists", {}).get("playlist", [])
+        if isinstance(items, dict):
+            items = [items]
+        return [
+            {
+                "id": p.get("id", ""),
+                "name": p.get("name", ""),
+                "song_count": p.get("songCount", 0),
+                "duration": p.get("duration"),
+                "changed": p.get("changed"),
+                "comment": p.get("comment"),
+            }
+            for p in items
+        ]
+
     async def get_playlist_tracks(self, playlist_id: str) -> List[Track]:
         """Obtener las canciones actuales de una playlist, en orden.
 

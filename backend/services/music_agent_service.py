@@ -10,19 +10,22 @@ playlist) y redacta él mismo toda la respuesta final, con una sola
 personalidad y memoria de conversación nativa.
 
 Nota SDK: usa `google-genai` (no `google-generativeai`, descontinuado el
-30-nov-2025). El *automatic function calling* de `google-genai` solo
-soporta funciones síncronas; como toda la app es async (`httpx.AsyncClient`
-en cada servicio), aquí se implementa un bucle manual de tool-calling con
-`client.aio.models.generate_content`.
+30-nov-2025) a través de `services.gemini_client`, que fija modelo y
+`thinking_level` por variable de entorno. El *automatic function calling* de
+`google-genai` solo soporta funciones síncronas; como toda la app es async
+(`httpx.AsyncClient` en cada servicio), aquí se implementa un bucle manual de
+tool-calling con `client.aio.models.generate_content`.
 """
 import os
 import asyncio
 import logging
+from contextvars import ContextVar
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
-from google import genai
 from google.genai import types
 
+from services.gemini_client import MODEL_NAME, build_config, get_client
 from services.navidrome_service import NavidromeService
 from services.listenbrainz_service import ListenBrainzService
 from services.koito_service import KoitoService
@@ -33,9 +36,28 @@ from services.system_prompts import SystemPrompts
 
 logger = logging.getLogger(__name__)
 
-MODEL_NAME = "gemini-2.5-flash"
-MAX_TOOL_TURNS = 6            # tope de seguridad al bucle de tool-calling
-QUERY_TIMEOUT_SECONDS = 60.0  # cubre varios turnos de LLM + tools reales (red incluida), no solo recolección de datos
+MAX_TOOL_TURNS = 12           # tope de seguridad al bucle de tool-calling (una playlist por estilo ya gasta 4-5)
+QUERY_TIMEOUT_SECONDS = 90.0  # cubre varios turnos de LLM + tools reales (red incluida), no solo recolección de datos
+
+# Tools que modifican algo en Navidrome. Si el modelo pide varias tools en el
+# mismo turno y alguna es de estas, se ejecutan en orden y no en paralelo: dos
+# crear_playlist simultáneos se saltarían el guardarraíl de playlist duplicada.
+WRITE_TOOLS = {"crear_playlist", "actualizar_playlist", "crear_playlist_desde_setlist", "crear_enlace_compartir"}
+
+
+@dataclass
+class _RequestState:
+    """Estado de UNA consulta en curso (sesión y playlist creada en este turno)."""
+    session: Any = None
+    last_playlist_created: Optional[Dict[str, Any]] = None
+
+
+# Hay una sola instancia de MusicAgentService para todo el backend (Telegram y
+# API a la vez), así que el estado de la consulta no puede vivir en atributos de
+# instancia: dos consultas concurrentes se pisarían la "playlist activa". Cada
+# consulta fija aquí su propio _RequestState, y las tareas que crea asyncio
+# (wait_for, gather) heredan la referencia al mismo objeto.
+_request_state: ContextVar[Optional[_RequestState]] = ContextVar("musicalo_agent_request", default=None)
 
 
 class MusicAgentService:
@@ -44,8 +66,24 @@ class MusicAgentService:
     Navidrome/ListenBrainz(o Koito)/MusicBrainz, y memoria de conversación nativa.
     """
 
+    @property
+    def _current_session(self):
+        state = _request_state.get()
+        return state.session if state else None
+
+    @property
+    def _last_playlist_created(self) -> Optional[Dict[str, Any]]:
+        state = _request_state.get()
+        return state.last_playlist_created if state else None
+
+    @_last_playlist_created.setter
+    def _last_playlist_created(self, value: Optional[Dict[str, Any]]):
+        state = _request_state.get()
+        if state:
+            state.last_playlist_created = value
+
     def __init__(self):
-        self.client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+        self.client = get_client()
 
         self.conversation_manager = ConversationManager()
 
@@ -103,10 +141,6 @@ class MusicAgentService:
 
         logger.info(f"📊 Servicio de historial: {self.history_service_name or 'No disponible'}")
 
-        self._last_playlist_created: Optional[Dict[str, Any]] = None
-        self._current_session = None  # sesión de la consulta en curso (ver query()), para que
-        # _tool_crear_playlist/_tool_actualizar_playlist compartan la "playlist activa"
-
         # Registro de tools disponibles según qué servicios están configurados
         self._tool_impl: Dict[str, Any] = {}
         self._tool_declarations: List[types.FunctionDeclaration] = []
@@ -134,7 +168,8 @@ class MusicAgentService:
             "TEXTO LITERAL (título, artista o álbum) - solo encuentra algo si ese texto aparece de "
             "verdad en un nombre. NO sirve para pedir un estilo/género/mood ('indie rock español', "
             "'música para estudiar') - eso nunca va a coincidir con ningún título/artista/álbum real. "
-            "Para estilo/género usa listar_generos + filtrar_biblioteca en su lugar.",
+            "Para estilo/género usa listar_generos + filtrar_biblioteca en su lugar. Los ids que "
+            "devuelve sirven para albumes_artista, canciones_album, crear_playlist y crear_enlace_compartir.",
             {
                 "consulta": types.Schema(type=types.Type.STRING, description="Texto a buscar"),
                 "limite": types.Schema(type=types.Type.INTEGER, description="Máx. resultados por categoría (default 20)"),
@@ -170,6 +205,57 @@ class MusicAgentService:
             self._tool_filtrar_biblioteca,
         )
         add(
+            "explorar_albumes",
+            "Lista álbumes de la biblioteca según un criterio: 'newest' (añadidos recientemente), "
+            "'recent' (escuchados hace poco en Navidrome), 'frequent' (más reproducidos en Navidrome), "
+            "'starred' (marcados como favoritos), 'highest' (mejor valorados), 'random', "
+            "'alphabeticalByName', 'alphabeticalByArtist', 'byYear' (usa desde_anio/hasta_anio) o "
+            "'byGenre' (usa genero, uno real de listar_generos). Úsala para preguntas sobre la "
+            "biblioteca a nivel de disco: 'qué he añadido últimamente', 'discos de los 80 que tengo', "
+            "'mis favoritos', 'un disco al azar para hoy'.",
+            {
+                "tipo": types.Schema(type=types.Type.STRING, description="Criterio de la lista (default 'random')"),
+                "genero": types.Schema(type=types.Type.STRING, description="Solo con tipo 'byGenre'"),
+                "desde_anio": types.Schema(type=types.Type.INTEGER, description="Solo con tipo 'byYear'"),
+                "hasta_anio": types.Schema(type=types.Type.INTEGER, description="Solo con tipo 'byYear'"),
+                "limite": types.Schema(type=types.Type.INTEGER, description="Máx. álbumes (default 20)"),
+            },
+            [],
+            self._tool_explorar_albumes,
+        )
+        add(
+            "albumes_artista",
+            "Todos los álbumes que tiene el usuario de un artista, ordenados por año. Necesita el id "
+            "del artista (sale en buscar_biblioteca). Úsala para 'qué tengo de X', 'discografía de X', "
+            "o antes de elegir canciones de un artista concreto.",
+            {"artista_id": types.Schema(type=types.Type.STRING, description="Id del artista en Navidrome")},
+            ["artista_id"],
+            self._tool_albumes_artista,
+        )
+        add(
+            "canciones_album",
+            "Lista de canciones de un álbum de la biblioteca, en orden, con sus ids. Necesita el id "
+            "del álbum (sale en buscar_biblioteca, explorar_albumes o albumes_artista).",
+            {"album_id": types.Schema(type=types.Type.STRING, description="Id del álbum en Navidrome")},
+            ["album_id"],
+            self._tool_canciones_album,
+        )
+        add(
+            "crear_enlace_compartir",
+            "Crea un enlace público de Navidrome para compartir canciones o álbumes con otra persona. "
+            "Úsala solo cuando el usuario pida compartir algo.",
+            {
+                "ids": types.Schema(
+                    type=types.Type.ARRAY,
+                    items=types.Schema(type=types.Type.STRING),
+                    description="Ids de canciones o álbumes a compartir",
+                ),
+                "descripcion": types.Schema(type=types.Type.STRING, description="Descripción opcional del enlace"),
+            },
+            ["ids"],
+            self._tool_crear_enlace_compartir,
+        )
+        add(
             "now_playing",
             "Consulta qué se está reproduciendo ahora mismo en el servidor Navidrome.",
             {},
@@ -183,8 +269,9 @@ class MusicAgentService:
             "filtrar_biblioteca, y solo la primera vez en la conversación. Tú decides qué canciones "
             "van - no se lo devuelvas al usuario para que elija salvo que te lo pida explícitamente. "
             "Si el usuario pide cambios sobre una playlist que ya creaste en este mismo chat (quitar "
-            "una canción, añadir más, cambiar el rollo), usa actualizar_playlist en su lugar - NO "
-            "vuelvas a llamar a esta, o acabarás con playlists duplicadas.",
+            "una canción, añadir más, cambiar el rollo) o sobre una suya que ya existía, usa "
+            "actualizar_playlist en su lugar - NO vuelvas a llamar a esta, o acabarás con playlists "
+            "duplicadas.",
             {
                 "nombre": types.Schema(type=types.Type.STRING, description="Nombre de la playlist"),
                 "ids_canciones": types.Schema(
@@ -197,32 +284,42 @@ class MusicAgentService:
             self._tool_crear_playlist,
         )
         add(
-            "ver_playlist_actual",
-            "Muestra las canciones que tiene AHORA MISMO la playlist activa de esta conversación (la "
-            "que creaste con crear_playlist), con sus ids. Llama a esta tool SIEMPRE antes de "
+            "listar_playlists",
+            "Lista las playlists que ya tiene el usuario en Navidrome (nombre, id, nº de canciones). "
+            "Úsala cuando hable de una playlist suya que no has creado tú en este chat ('mi playlist "
+            "de correr', 'qué playlists tengo').",
+            {},
+            [],
+            self._tool_listar_playlists,
+        )
+        add(
+            "ver_playlist",
+            "Muestra las canciones que tiene AHORA MISMO una playlist, con sus ids. Sin playlist_id "
+            "muestra la playlist activa de esta conversación (la última que creaste o editaste); con "
+            "playlist_id (de listar_playlists) muestra esa. Llama a esta tool SIEMPRE antes de "
             "actualizar_playlist para un refinamiento ('quita esa canción', 'añade otra de X') - la "
             "lista que le pases a actualizar_playlist tiene que partir de lo que esta tool te devuelva "
             "(quitando/añadiendo lo que corresponda), no una lista nueva generada desde cero, o "
             "cambiarás la playlist entera en vez de solo lo que te pidieron.",
-            {},
+            {"playlist_id": types.Schema(type=types.Type.STRING, description="Id de la playlist (opcional)")},
             [],
-            self._tool_ver_playlist_actual,
+            self._tool_ver_playlist,
         )
         add(
             "actualizar_playlist",
-            "Reemplaza el contenido de la playlist que ya creaste en ESTA conversación (con "
-            "crear_playlist) por una nueva lista de canciones - úsala para refinamientos "
-            "('quita esa canción', 'pon algo más movido', 'menos lenta') en vez de crear_playlist, "
-            "así no se duplica la playlist. Pásale la lista completa final (llama antes a "
-            "ver_playlist_actual y parte de esa lista, no la inventes de cero) no solo lo que cambia. "
-            "Si no has creado ninguna playlist todavía en esta conversación, esta tool falla - usa "
-            "crear_playlist primero.",
+            "Reemplaza el contenido de una playlist existente por una nueva lista de canciones - úsala "
+            "para refinamientos ('quita esa canción', 'pon algo más movido', 'menos lenta') en vez de "
+            "crear_playlist, así no se duplica la playlist. Sin playlist_id actúa sobre la playlist "
+            "activa de esta conversación; con playlist_id (de listar_playlists) actúa sobre esa y pasa "
+            "a ser la activa. Pásale la lista completa final (llama antes a ver_playlist y parte de esa "
+            "lista, no la inventes de cero) no solo lo que cambia.",
             {
                 "ids_canciones": types.Schema(
                     type=types.Type.ARRAY,
                     items=types.Schema(type=types.Type.STRING),
                     description="Lista COMPLETA de ids de canción que debe tener la playlist tras el cambio",
                 ),
+                "playlist_id": types.Schema(type=types.Type.STRING, description="Id de la playlist (opcional)"),
             },
             ["ids_canciones"],
             self._tool_actualizar_playlist,
@@ -271,6 +368,24 @@ class MusicAgentService:
                 {"limite": types.Schema(type=types.Type.INTEGER, description="Máx. canciones (default 20)")},
                 [],
                 self._tool_escuchas_recientes,
+            )
+            add(
+                "estadisticas_escucha",
+                "Resumen numérico del historial de escucha en un periodo: total de escuchas, "
+                "artistas/álbumes/canciones distintos, minutos escuchados, novedades descubiertas... "
+                "(los campos exactos dependen del servicio de historial). Úsalo para '¿cuánto he "
+                "escuchado este año?', '¿cuántos artistas nuevos he descubierto?'.",
+                {"periodo": types.Schema(type=types.Type.STRING, description="Igual que en top_artistas (default all_time)")},
+                [],
+                self._tool_estadisticas_escucha,
+            )
+            add(
+                "actividad_escucha",
+                "Escuchas por día en los últimos N días, para ver rachas, días de más actividad o "
+                "comparar semanas.",
+                {"dias": types.Schema(type=types.Type.INTEGER, description="Días hacia atrás (default 30)")},
+                [],
+                self._tool_actividad_escucha,
             )
             add(
                 "artistas_similares",
@@ -385,6 +500,51 @@ class MusicAgentService:
             logger.warning(f"now_playing falló: {e}")
             return {"error": str(e)}
 
+    async def _tool_explorar_albumes(
+        self,
+        tipo: str = "random",
+        genero: Optional[str] = None,
+        desde_anio: Optional[int] = None,
+        hasta_anio: Optional[int] = None,
+        limite: int = 20,
+    ) -> Dict[str, Any]:
+        try:
+            albums = await self.navidrome.get_albums(
+                limit=limite, list_type=tipo, genre=genero, fromYear=desde_anio, toYear=hasta_anio,
+            )
+            return {"albums": [a.model_dump(mode="json") for a in albums]}
+        except Exception as e:
+            logger.warning(f"explorar_albumes falló: {e}")
+            return {"error": str(e)}
+
+    async def _tool_albumes_artista(self, artista_id: str) -> Dict[str, Any]:
+        try:
+            albums = await self.navidrome.get_artist_albums(artista_id)
+            return {"albums": [a.model_dump(mode="json") for a in albums]}
+        except Exception as e:
+            logger.warning(f"albumes_artista falló: {e}")
+            return {"error": str(e)}
+
+    async def _tool_canciones_album(self, album_id: str) -> Dict[str, Any]:
+        try:
+            tracks = await self.navidrome.get_album_tracks(album_id)
+            return {"tracks": [t.model_dump(mode="json") for t in tracks]}
+        except Exception as e:
+            logger.warning(f"canciones_album falló: {e}")
+            return {"error": str(e)}
+
+    async def _tool_crear_enlace_compartir(self, ids: List[str], descripcion: Optional[str] = None) -> Dict[str, Any]:
+        try:
+            if not ids:
+                return {"error": "No se pasó ningún id"}
+            share = await self.navidrome.create_share(ids, description=descripcion)
+            if not share:
+                return {"error": "Navidrome no pudo crear el enlace"}
+            return share
+        except Exception as e:
+            logger.warning(f"crear_enlace_compartir falló: {e}")
+            return {"error": str(e)}
+
     async def _tool_crear_playlist(self, nombre: str, ids_canciones: List[str]) -> Dict[str, Any]:
         try:
             if not ids_canciones:
@@ -418,37 +578,59 @@ class MusicAgentService:
             logger.warning(f"crear_playlist falló: {e}")
             return {"error": str(e)}
 
-    async def _tool_ver_playlist_actual(self) -> Dict[str, Any]:
+    async def _tool_listar_playlists(self) -> Dict[str, Any]:
         try:
-            active = self._current_session.last_playlist if self._current_session else None
-            if not active:
+            return {"playlists": await self.navidrome.get_playlists()}
+        except Exception as e:
+            logger.warning(f"listar_playlists falló: {e}")
+            return {"error": str(e)}
+
+    async def _resolve_playlist(self, playlist_id: Optional[str]) -> Optional[Dict[str, Any]]:
+        """{"id", "name"} de la playlist pedida, o de la activa de la conversación si no se indica."""
+        if not playlist_id:
+            return self._current_session.last_playlist if self._current_session else None
+        for p in await self.navidrome.get_playlists():
+            if p["id"] == playlist_id:
+                return {"id": p["id"], "name": p["name"]}
+        return None
+
+    async def _tool_ver_playlist(self, playlist_id: Optional[str] = None) -> Dict[str, Any]:
+        try:
+            target = await self._resolve_playlist(playlist_id)
+            if not target:
                 return {
-                    "error": "No hay ninguna playlist activa en esta conversación todavía. "
-                             "Usa crear_playlist para crear la primera."
+                    "error": "No hay ninguna playlist activa en esta conversación y no se indicó "
+                             "ninguna existente. Usa listar_playlists para ver las del usuario o "
+                             "crear_playlist para crear una nueva."
                 }
-            tracks = await self.navidrome.get_playlist_tracks(active["id"])
+            tracks = await self.navidrome.get_playlist_tracks(target["id"])
             return {
-                "name": active["name"],
-                "playlist_id": active["id"],
+                "name": target["name"],
+                "playlist_id": target["id"],
                 "tracks": [t.model_dump(mode="json") for t in tracks],
             }
         except Exception as e:
-            logger.warning(f"ver_playlist_actual falló: {e}")
+            logger.warning(f"ver_playlist falló: {e}")
             return {"error": str(e)}
 
-    async def _tool_actualizar_playlist(self, ids_canciones: List[str]) -> Dict[str, Any]:
+    async def _tool_actualizar_playlist(self, ids_canciones: List[str], playlist_id: Optional[str] = None) -> Dict[str, Any]:
         try:
             if not ids_canciones:
                 return {"error": "No se pasó ninguna canción"}
-            active = self._current_session.last_playlist if self._current_session else None
+            active = await self._resolve_playlist(playlist_id)
             if not active:
                 return {
-                    "error": "No hay ninguna playlist activa en esta conversación todavía. "
-                             "Usa crear_playlist para crear la primera."
+                    "error": "No hay ninguna playlist activa en esta conversación y no se indicó "
+                             "ninguna existente. Usa listar_playlists para ver las del usuario o "
+                             "crear_playlist para crear una nueva."
                 }
             ok = await self.navidrome.update_playlist_songs(active["id"], ids_canciones)
             if not ok:
                 return {"error": "Navidrome no pudo actualizar la playlist"}
+            # Editar una playlist existente la convierte en la activa: los siguientes
+            # "quita esa" de la conversación van sobre ella sin repetir el id.
+            if self._current_session:
+                self._current_session.set_last_playlist(active["id"], active["name"])
             self._last_playlist_created = {
                 "id": active["id"],
                 "name": active["name"],
@@ -495,6 +677,23 @@ class MusicAgentService:
             return {"tracks": [t.model_dump(mode="json") for t in tracks]}
         except Exception as e:
             logger.warning(f"escuchas_recientes falló: {e}")
+            return {"error": str(e)}
+
+    async def _tool_estadisticas_escucha(self, periodo: str = "all_time") -> Dict[str, Any]:
+        try:
+            stats = await self.history_service.get_user_stats(period=periodo)
+            # Los servicios devuelven {} cuando fallan: no es "cero escuchas", es "no se sabe"
+            return {"stats": stats} if stats else {"error": f"{self.history_service_name} no devolvió estadísticas"}
+        except Exception as e:
+            logger.warning(f"estadisticas_escucha falló: {e}")
+            return {"error": str(e)}
+
+    async def _tool_actividad_escucha(self, dias: int = 30) -> Dict[str, Any]:
+        try:
+            activity = await self.history_service.get_listening_activity(days=dias)
+            return {"actividad": activity} if activity else {"error": f"{self.history_service_name} no devolvió actividad"}
+        except Exception as e:
+            logger.warning(f"actividad_escucha falló: {e}")
             return {"error": str(e)}
 
     async def _tool_artistas_similares(self, artista: str, limite: int = 10) -> Dict[str, Any]:
@@ -594,8 +793,8 @@ class MusicAgentService:
         que consume `MusicAssistant._agent_query()`.
         """
         session = self.conversation_manager.get_session(user_id)
-        self._current_session = session
-        self._last_playlist_created = None
+        state = _RequestState(session=session)
+        _request_state.set(state)
         informational = bool(context and context.get("type") == "informational")
 
         try:
@@ -613,7 +812,7 @@ class MusicAgentService:
                 "links": links,
                 "success": True,
                 "session_id": user_id,
-                "playlist_created": self._last_playlist_created,
+                "playlist_created": state.last_playlist_created,
             }
         except asyncio.TimeoutError:
             logger.warning(f"Timeout procesando consulta de usuario {user_id}")
@@ -648,11 +847,8 @@ class MusicAgentService:
             contents.append(types.Content(role=role, parts=[types.Part(text=msg["content"])]))
         contents.append(types.Content(role="user", parts=[types.Part(text=user_question)]))
 
-        config = types.GenerateContentConfig(
-            system_instruction=persona,
-            tools=[types.Tool(function_declarations=self._tool_declarations)],
-            automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
-        )
+        tools = [types.Tool(function_declarations=self._tool_declarations)]
+        config = build_config(system_instruction=persona, tools=tools)
 
         tools_used: List[Dict[str, Any]] = []
         links: List[str] = []
@@ -671,20 +867,46 @@ class MusicAgentService:
 
             contents.append(response.candidates[0].content)
 
-            response_parts = []
             for call in calls:
-                args = dict(call.args or {})
-                tools_used.append({"tool": call.name, "args": args})
-                impl = self._tool_impl.get(call.name)
-                result = {"error": f"Herramienta desconocida: {call.name}"} if impl is None else await impl(**args)
+                tools_used.append({"tool": call.name, "args": dict(call.args or {})})
+            if any(call.name in WRITE_TOOLS for call in calls):
+                results = [await self._execute_tool(call) for call in calls]
+            else:
+                # Solo lecturas: en paralelo (p.ej. filtrar por tres géneros a la vez)
+                results = await asyncio.gather(*(self._execute_tool(call) for call in calls))
+
+            response_parts = []
+            for call, result in zip(calls, results):
                 self._collect_links(result, links)
                 response_parts.append(types.Part.from_function_response(name=call.name, response={"result": result}))
-
             contents.append(types.Content(role="user", parts=response_parts))
 
-        # Se agotaron los turnos de herramientas sin que el modelo diera una respuesta final
+        # Se agotaron los turnos de herramientas: en vez de un error genérico, una
+        # última llamada con las tools desactivadas para que responda con lo que ya tiene.
         logger.warning(f"MAX_TOOL_TURNS alcanzado para: {user_question!r}")
-        return SystemPrompts.get_error_message("api_error"), tools_used, links[:5]
+        final_config = build_config(
+            system_instruction=persona,
+            tools=tools,
+            tool_config=types.ToolConfig(
+                function_calling_config=types.FunctionCallingConfig(mode=types.FunctionCallingConfigMode.NONE),
+            ),
+        )
+        response = await self.client.aio.models.generate_content(
+            model=MODEL_NAME, contents=contents, config=final_config,
+        )
+        answer = (response.text or "").strip() if response.candidates else ""
+        return answer or SystemPrompts.get_error_message("api_error"), tools_used, links[:5]
+
+    async def _execute_tool(self, call) -> Any:
+        """Ejecuta una tool pedida por el modelo; los errores vuelven al modelo como resultado."""
+        impl = self._tool_impl.get(call.name)
+        if impl is None:
+            return {"error": f"Herramienta desconocida: {call.name}"}
+        try:
+            return await impl(**dict(call.args or {}))
+        except TypeError as e:
+            # Argumento inventado o que falta: se le devuelve al modelo para que corrija la llamada
+            return {"error": f"Argumentos no válidos para {call.name}: {e}"}
 
     @staticmethod
     def _collect_links(result: Any, links: List[str], _depth: int = 0):
