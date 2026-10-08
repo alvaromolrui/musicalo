@@ -17,6 +17,7 @@ Nota SDK: usa `google-genai` (no `google-generativeai`, descontinuado el
 tool-calling con `client.aio.models.generate_content`.
 """
 import os
+import re
 import asyncio
 import logging
 from contextvars import ContextVar
@@ -42,7 +43,61 @@ QUERY_TIMEOUT_SECONDS = 90.0  # cubre varios turnos de LLM + tools reales (red i
 # Tools que modifican algo en Navidrome. Si el modelo pide varias tools en el
 # mismo turno y alguna es de estas, se ejecutan en orden y no en paralelo: dos
 # crear_playlist simultáneos se saltarían el guardarraíl de playlist duplicada.
-WRITE_TOOLS = {"crear_playlist", "actualizar_playlist", "crear_playlist_desde_setlist", "crear_enlace_compartir"}
+WRITE_TOOLS = {"crear_playlist", "actualizar_playlist", "renombrar_playlist", "crear_playlist_desde_setlist", "crear_enlace_compartir"}
+PLAYLIST_WRITE_TOOLS = WRITE_TOOLS - {"crear_enlace_compartir"}
+
+# Memoria entre turnos: los últimos TOOL_MEMORY_TURNS turnos se guardan completos
+# (llamadas a tools y sus resultados, con los ids de canciones/álbumes), así "quita
+# la tercera de antes" no obliga a buscar otra vez. Los anteriores, hasta
+# MEMORY_TURNS, solo como texto (pregunta y respuesta) para no disparar los tokens.
+MEMORY_TURNS = 5
+TOOL_MEMORY_TURNS = 3
+
+# Campos de los modelos de datos que no aportan nada al modelo y engordan cada
+# resultado (rutas de fichero en el servidor, urls de portada que no se muestran)
+_DROP_KEYS = {"path", "cover_url", "image_url"}
+
+# Afirmaciones de haber cambiado una playlist en ESTE turno ("he creado", "ya he
+# quitado", "playlist actualizada"). Se usa el pretérito perfecto a propósito: para
+# algo hecho en un turno anterior el aviso al modelo le pide pasado simple ("creé").
+_PLAYLIST_CLAIM_RE = re.compile(
+    r"\b(?:he|hemos|ya)\s+(?:creado|actualizado|modificado|cambiado|añadido|agregado|metido|"
+    r"quitado|eliminado|sacado|borrado|reemplazado|sustituido|renombrado|reordenado|guardado)\b"
+    r"|\bplaylist\b[^.\n]{0,40}\b(?:creada|actualizada|modificada|renombrada)\b",
+    re.IGNORECASE,
+)
+_PLAYLIST_CLAIM_NUDGE = (
+    "[Comprobación automática, no la ha escrito el usuario] Tu respuesta dice que has creado o "
+    "cambiado una playlist, pero en este turno no se ha llamado con éxito a crear_playlist, "
+    "actualizar_playlist ni crear_playlist_desde_setlist. Si el usuario pidió ese cambio, hazlo "
+    "ahora con la herramienta. Si no se puede hacer (falta una herramienta, no hay canciones...), "
+    "dilo claramente. Si te refieres a algo hecho en un turno anterior, usa pasado simple ('creé', "
+    "'añadí') y deja claro que fue antes. No menciones esta comprobación."
+)
+_PLAYLIST_CLAIM_WARNING = (
+    "\n\n⚠️ <i>Ojo: no he podido confirmar ese cambio en Navidrome, compruébalo antes de darlo por hecho.</i>"
+)
+
+
+def _claims_playlist_change(text: str) -> bool:
+    return "playlist" in text.lower() and bool(_PLAYLIST_CLAIM_RE.search(text))
+
+
+def _compact(value: Any) -> Any:
+    """Quita nulos, vacíos y campos inútiles de un resultado de tool (recursivo)."""
+    if isinstance(value, dict):
+        out = {}
+        for k, v in value.items():
+            if k in _DROP_KEYS:
+                continue
+            v = _compact(v)
+            if v is None or v == "" or v == [] or v == {}:
+                continue
+            out[k] = v
+        return out
+    if isinstance(value, list):
+        return [_compact(v) for v in value]
+    return value
 
 
 @dataclass
@@ -324,6 +379,18 @@ class MusicAgentService:
             ["ids_canciones"],
             self._tool_actualizar_playlist,
         )
+        add(
+            "renombrar_playlist",
+            "Cambia el nombre de una playlist existente sin tocar sus canciones. Sin playlist_id "
+            "actúa sobre la playlist activa de esta conversación; con playlist_id (de "
+            "listar_playlists) sobre esa, que pasa a ser la activa.",
+            {
+                "nuevo_nombre": types.Schema(type=types.Type.STRING, description="Nombre nuevo"),
+                "playlist_id": types.Schema(type=types.Type.STRING, description="Id de la playlist (opcional)"),
+            },
+            ["nuevo_nombre"],
+            self._tool_renombrar_playlist,
+        )
 
         # Historial de escucha - solo si hay servicio configurado (ListenBrainz hoy, Koito mañana)
         if self.history_service:
@@ -587,8 +654,11 @@ class MusicAgentService:
 
     async def _resolve_playlist(self, playlist_id: Optional[str]) -> Optional[Dict[str, Any]]:
         """{"id", "name"} de la playlist pedida, o de la activa de la conversación si no se indica."""
-        if not playlist_id:
-            return self._current_session.last_playlist if self._current_session else None
+        active = self._current_session.last_playlist if self._current_session else None
+        # Con memoria entre turnos el modelo suele pasar explícitamente el id de la playlist
+        # activa: si es esa, no hace falta pedirle a Navidrome la lista entera
+        if not playlist_id or (active and active["id"] == playlist_id):
+            return active
         for p in await self.navidrome.get_playlists():
             if p["id"] == playlist_id:
                 return {"id": p["id"], "name": p["name"]}
@@ -645,6 +715,22 @@ class MusicAgentService:
             }
         except Exception as e:
             logger.warning(f"actualizar_playlist falló: {e}")
+            return {"error": str(e)}
+
+    async def _tool_renombrar_playlist(self, nuevo_nombre: str, playlist_id: Optional[str] = None) -> Dict[str, Any]:
+        try:
+            target = await self._resolve_playlist(playlist_id)
+            if not target:
+                return {
+                    "error": "No hay ninguna playlist activa en esta conversación y no se indicó "
+                             "ninguna existente. Usa listar_playlists para ver las del usuario."
+                }
+            await self.navidrome.rename_playlist(target["id"], nuevo_nombre)
+            if self._current_session:
+                self._current_session.set_last_playlist(target["id"], nuevo_nombre)
+            return {"success": True, "playlist_id": target["id"], "nombre_anterior": target["name"], "name": nuevo_nombre}
+        except Exception as e:
+            logger.warning(f"renombrar_playlist falló: {e}")
             return {"error": str(e)}
 
     async def _tool_top_artistas(self, periodo: str = "this_month", limite: int = 10) -> Dict[str, Any]:
@@ -798,13 +884,14 @@ class MusicAgentService:
         informational = bool(context and context.get("type") == "informational")
 
         try:
-            answer, tools_used, links = await asyncio.wait_for(
+            answer, tools_used, links, turn_contents = await asyncio.wait_for(
                 self._run_tool_loop(user_question, session, informational),
                 timeout=QUERY_TIMEOUT_SECONDS,
             )
 
             session.add_message("user", user_question)
             session.add_message("assistant", answer)
+            session.add_agent_turn(turn_contents, max_turns=MEMORY_TURNS)
 
             return {
                 "answer": answer,
@@ -840,11 +927,8 @@ class MusicAgentService:
         """
         persona = SystemPrompts.get_companion_prompt(informational=informational)
 
-        # Memoria nativa: turnos reales de Gemini, no un bloque de texto reinyectado
-        contents: List[types.Content] = []
-        for msg in session.message_history:
-            role = "user" if msg["role"] == "user" else "model"
-            contents.append(types.Content(role=role, parts=[types.Part(text=msg["content"])]))
+        contents: List[types.Content] = self._history_contents(session)
+        history_len = len(contents)
         contents.append(types.Content(role="user", parts=[types.Part(text=user_question)]))
 
         tools = [types.Tool(function_declarations=self._tool_declarations)]
@@ -852,6 +936,19 @@ class MusicAgentService:
 
         tools_used: List[Dict[str, Any]] = []
         links: List[str] = []
+        playlist_write_ok = False  # alguna tool de playlist terminó con éxito en este turno
+        nudged = False
+
+        def finish(answer: str, final_content: Optional[types.Content] = None):
+            if _claims_playlist_change(answer) and not playlist_write_ok:
+                # Ya se le dio una oportunidad de corregirse (o no quedan rondas): el
+                # usuario no debe creerse un cambio que no ha pasado en Navidrome
+                logger.warning(f"Respuesta afirma un cambio de playlist sin escritura real: {user_question!r}")
+                answer += _PLAYLIST_CLAIM_WARNING
+            turn = contents[history_len:] + [
+                final_content or types.Content(role="model", parts=[types.Part(text=answer)])
+            ]
+            return answer, tools_used, links[:5], turn
 
         for _ in range(MAX_TOOL_TURNS):
             response = await self.client.aio.models.generate_content(
@@ -859,11 +956,20 @@ class MusicAgentService:
             )
 
             if not response.candidates:
-                return SystemPrompts.get_error_message("api_error"), tools_used, links[:5]
+                return finish(SystemPrompts.get_error_message("api_error"))
 
             calls = response.function_calls or []
             if not calls:
-                return (response.text or "").strip(), tools_used, links[:5]
+                answer = (response.text or "").strip()
+                if not nudged and not playlist_write_ok and _claims_playlist_change(answer):
+                    # Guardarraíl estructural (no solo de prompt): afirma un cambio que no
+                    # ha hecho. Se le devuelve una vez para que lo haga o rectifique.
+                    nudged = True
+                    logger.info(f"Respuesta afirma un cambio de playlist sin tool, se pide corrección: {user_question!r}")
+                    contents.append(response.candidates[0].content)
+                    contents.append(types.Content(role="user", parts=[types.Part(text=_PLAYLIST_CLAIM_NUDGE)]))
+                    continue
+                return finish(answer, response.candidates[0].content)
 
             contents.append(response.candidates[0].content)
 
@@ -877,6 +983,8 @@ class MusicAgentService:
 
             response_parts = []
             for call, result in zip(calls, results):
+                if call.name in PLAYLIST_WRITE_TOOLS and isinstance(result, dict) and result.get("success"):
+                    playlist_write_ok = True
                 self._collect_links(result, links)
                 response_parts.append(types.Part.from_function_response(name=call.name, response={"result": result}))
             contents.append(types.Content(role="user", parts=response_parts))
@@ -894,8 +1002,28 @@ class MusicAgentService:
         response = await self.client.aio.models.generate_content(
             model=MODEL_NAME, contents=contents, config=final_config,
         )
-        answer = (response.text or "").strip() if response.candidates else ""
-        return answer or SystemPrompts.get_error_message("api_error"), tools_used, links[:5]
+        if response.candidates and (response.text or "").strip():
+            return finish(response.text.strip(), response.candidates[0].content)
+        return finish(SystemPrompts.get_error_message("api_error"))
+
+    @staticmethod
+    def _history_contents(session) -> List[types.Content]:
+        """Historial de la conversación como turnos nativos de Gemini.
+
+        Los últimos TOOL_MEMORY_TURNS turnos van completos (llamadas a tools y
+        resultados incluidos); los anteriores, solo la pregunta y la respuesta final.
+        """
+        turns = session.agent_turns
+        contents: List[types.Content] = []
+        for i, turn in enumerate(turns):
+            if i >= len(turns) - TOOL_MEMORY_TURNS:
+                contents.extend(turn)
+                continue
+            question, answer = turn[0], turn[-1]
+            contents.append(question)
+            text = "".join(p.text for p in (answer.parts or []) if p.text and not p.thought)
+            contents.append(types.Content(role="model", parts=[types.Part(text=text)]))
+        return contents
 
     async def _execute_tool(self, call) -> Any:
         """Ejecuta una tool pedida por el modelo; los errores vuelven al modelo como resultado."""
@@ -903,7 +1031,7 @@ class MusicAgentService:
         if impl is None:
             return {"error": f"Herramienta desconocida: {call.name}"}
         try:
-            return await impl(**dict(call.args or {}))
+            return _compact(await impl(**dict(call.args or {})))
         except TypeError as e:
             # Argumento inventado o que falta: se le devuelve al modelo para que corrija la llamada
             return {"error": f"Argumentos no válidos para {call.name}: {e}"}

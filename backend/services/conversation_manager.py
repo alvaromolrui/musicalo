@@ -22,6 +22,10 @@ class ConversationSession:
         self.action_params: Dict = {}  # Parámetros de la última acción
         self.context: Dict = {}  # Contexto general (para MusicBrainz, etc.)
         self.last_playlist: Optional[Dict] = None  # {"id", "name"} de la última playlist creada en esta conversación
+        # Turnos nativos de Gemini del agente (cada uno, lista de types.Content: pregunta,
+        # llamadas a tools, resultados y respuesta final). Opacos para esta clase; los
+        # construye y lee MusicAgentService. Solo en memoria, como el resto de la sesión.
+        self.agent_turns: List[List[Any]] = []
 
     def set_last_playlist(self, playlist_id: str, name: str):
         """Recordar la última playlist creada en esta conversación, para que un
@@ -49,6 +53,12 @@ class ConversationSession:
         
         logger.debug(f"Agregado mensaje de {role} a sesión de usuario {self.user_id}")
     
+    def add_agent_turn(self, contents: List[Any], max_turns: int):
+        """Guardar un turno completo del agente, conservando solo los últimos `max_turns`."""
+        self.agent_turns.append(contents)
+        if len(self.agent_turns) > max_turns:
+            self.agent_turns = self.agent_turns[-max_turns:]
+
     def set_last_recommendations(self, recommendations: List):
         """Guardar últimas recomendaciones para referencias futuras
         
@@ -141,6 +151,7 @@ class ConversationSession:
         self.action_params = {}
         self.context = {}
         self.last_playlist = None
+        self.agent_turns = []
         logger.info(f"Sesión {self.user_id} limpiada completamente")
 
 

@@ -709,6 +709,16 @@ class NavidromeService:
         albums.sort(key=lambda a: a.year or 0)
         return albums
 
+    async def rename_playlist(self, playlist_id: str, name: str) -> None:
+        """Cambiar el nombre de una playlist (updatePlaylist con name).
+
+        Usa _make_request, que comprueba el status de Subsonic: updatePlaylist
+        responde HTTP 200 también cuando falla, así que mirar solo el código HTTP
+        (como hace update_playlist_songs) daría por bueno un error. Propaga la
+        excepción si Navidrome lo rechaza.
+        """
+        await self._make_request("updatePlaylist", {"playlistId": playlist_id, "name": name})
+
     async def get_playlists(self) -> List[Dict[str, Any]]:
         """Playlists del usuario en Navidrome (getPlaylists), sin sus canciones.
 
