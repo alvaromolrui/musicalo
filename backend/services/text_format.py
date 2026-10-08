@@ -79,7 +79,9 @@ def normalize_html(text: str) -> str:
             if name == "a" and not closing:
                 href = _HREF_RE.match(raw)
                 if href:
-                    tokens.append(("open", "a", f'<a href="{html.escape(href.group(1), quote=True)}">'))
+                    # unescape antes de escape: una URL que ya llega con &amp; no debe acabar en &amp;amp;
+                    url = html.escape(html.unescape(href.group(1)), quote=True)
+                    tokens.append(("open", "a", f'<a href="{url}">'))
                 # <a> sin href válido: se descarta la etiqueta, el texto se queda
             else:
                 tokens.append(("close" if closing else "open", name, f"</{name}>" if closing else f"<{name}>"))
