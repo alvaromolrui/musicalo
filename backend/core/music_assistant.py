@@ -18,6 +18,7 @@ from services.setlistfm_service import SetlistfmService
 from services.ai_service import MusicRecommendationService
 from services.playlist_service import PlaylistService
 from services.music_agent_service import MusicAgentService
+from services.text_format import normalize_html
 from services.conversation_manager import ConversationManager
 from services.analytics_system import analytics_system
 
@@ -486,7 +487,9 @@ class MusicAssistant:
                 answer += "\n\n<b>Enlaces relevantes:</b>\n"
                 for link in links[:5]:
                     answer += f"• {link}\n"
-            return AssistantResponse(text=answer)
+            # Telegram rechaza el mensaje entero si el HTML no es válido (Markdown
+            # colado, un "&" suelto en una URL...): ver services/text_format.py
+            return AssistantResponse(text=normalize_html(answer))
         return AssistantResponse.error("No pude procesar tu consulta en este momento.")
 
     def _format_recommendations(

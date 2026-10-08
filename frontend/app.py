@@ -9,6 +9,7 @@ Variables de entorno:
   CHAINLIT_DB_PATH      Ruta al fichero SQLite de historial (default: /app/data/chainlit.db)
 """
 import asyncio
+import html
 import json
 import os
 import re
@@ -208,7 +209,9 @@ def _html_to_md(text: str) -> str:
     text = re.sub(r"<code>(.*?)</code>", r"`\1`", text, flags=re.DOTALL)
     text = re.sub(r'<a href="([^"]+)">([^<]+)</a>', r"[\2](\1)", text)
     text = re.sub(r"<[^>]+>", "", text)
-    return text
+    # El backend escapa &, < y > para Telegram (services/text_format.py); aquí ya
+    # no hay etiquetas, así que se deshace para no mostrar "&amp;" en la web
+    return html.unescape(text)
 
 
 def _build_actions(raw_actions: list) -> list:
