@@ -61,7 +61,7 @@ Musicalo no clasifica tu mensaje en categorías fijas para decidir qué hacer. C
 | `lanzamientos_artista` | Últimos álbumes/EPs de un artista (MusicBrainz) |
 | `now_playing` | Qué se está reproduciendo ahora en Navidrome |
 | `crear_playlist` | Crea la playlist real en Navidrome con las canciones que el propio agente eligió |
-| `listar_playlists` / `ver_playlist` / `actualizar_playlist` | Ver y editar cualquier playlist del usuario, la creada en el chat o una que ya tenía |
+| `listar_playlists` / `ver_playlist` / `actualizar_playlist` / `renombrar_playlist` | Ver, editar y renombrar cualquier playlist del usuario, la creada en el chat o una que ya tenía |
 | `crear_enlace_compartir` | Enlace público de Navidrome para compartir canciones o álbumes |
 | `buscar_setlist_concierto` / `crear_playlist_desde_setlist` | Playlist a partir de un concierto real, buscando por artista/ciudad/fecha o a partir de un enlace de setlist.fm |
 
