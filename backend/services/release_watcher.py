@@ -50,19 +50,16 @@ _EXCLUDED_ARTISTS = {
 _TODOIST_TASK = "Revisar lanzamientos de música"
 
 
-def _todoist_actions() -> str:
-    """Botones de ntfy para apuntar un recordatorio en Todoist (sin token ni
-    servicio intermedio: abren Todoist con la tarea rellenada y solo hay que
-    confirmarla; `date=today` la deja para el día en que se pulsa). Dos botones porque cada cliente de ntfy abre uno distinto:
-    la app de Android abre el deep link `todoist://addtask`, y el cliente web
-    solo sabe abrir la URL https de Todoist. Van en una cabecera HTTP, así que
-    el contenido se codifica con porcentaje (ASCII puro, sin comas ni punto y
-    coma sueltos, que romperían el parseo de `Actions`)."""
+def _todoist_action() -> str:
+    """Botón de ntfy para apuntar un recordatorio en Todoist (sin token ni
+    servicio intermedio: abre Todoist con la tarea rellenada y solo hay que
+    confirmarla; `date=today` la deja para el día en que se pulsa). Usa la URL
+    https de Todoist, que funciona igual en el cliente web de ntfy y en la app
+    de Android (el deep link `todoist://` solo servía en Android). Va en una
+    cabecera HTTP, así que el contenido se codifica con porcentaje (ASCII puro,
+    sin comas ni punto y coma sueltos, que romperían el parseo de `Actions`)."""
     params = f"content={quote(_TODOIST_TASK, safe='')}&date=today"
-    return (
-        f"view, Todoist, todoist://addtask?{params}; "
-        f"view, Todoist (web), https://app.todoist.com/add?{params}"
-    )
+    return f"view, Todoist, https://app.todoist.com/add?{params}"
 
 
 _started = False  # evita arrancar el bucle dos veces si algún día se arranca desde dos sitios
@@ -137,7 +134,7 @@ async def check_once(
         url = new_releases[0].get("url") if len(batch_mbids) == 1 else None
         ok = await notifier.send(
             message=message, url=url, tags="musical_note,new",
-            actions=_todoist_actions(),
+            actions=_todoist_action(),
         )
         if ok:
             notified.update(batch_mbids)
