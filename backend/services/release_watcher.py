@@ -17,6 +17,7 @@ import logging
 import asyncio
 from pathlib import Path
 from typing import Set, Any, Dict, List
+from urllib.parse import quote
 
 from services.navidrome_service import NavidromeService
 from services.musicbrainz_service import MusicBrainzService
@@ -45,6 +46,21 @@ _EXCLUDED_ARTISTS = {
     for name in os.getenv("RELEASES_EXCLUDED_ARTISTS", "Various Artists").split(",")
     if name.strip()
 }
+
+_TODOIST_TASK_MAX_CHARS = 150
+
+
+def _todoist_action(summaries: List[str]) -> str:
+    """Botón de ntfy que abre Todoist con una tarea de recordatorio ya rellenada
+    (deep link `todoist://addtask`, sin token ni servicio intermedio: solo hay
+    que confirmar la tarea en la app). Va en una cabecera HTTP, así que el
+    contenido se codifica con porcentaje (ASCII puro, sin comas ni punto y coma
+    sueltos, que romperían el parseo de `Actions`)."""
+    content = "Mirar lanzamientos en el PC: " + "; ".join(summaries)
+    if len(content) > _TODOIST_TASK_MAX_CHARS:
+        content = content[: _TODOIST_TASK_MAX_CHARS - 1].rstrip() + "…"
+    return f"view, Apuntar en Todoist, todoist://addtask?content={quote(content, safe='')}"
+
 
 _started = False  # evita arrancar el bucle dos veces si algún día se arranca desde dos sitios
 
@@ -106,24 +122,28 @@ async def check_once(
     # (visto en producción: 429 Too Many Requests en cadena).
     sent = 0
     batch_lines: List[str] = []
+    batch_summaries: List[str] = []
     batch_mbids: List[str] = []
     batch_len = 0
 
     async def flush_batch():
-        nonlocal sent, batch_lines, batch_mbids, batch_len
+        nonlocal sent, batch_lines, batch_summaries, batch_mbids, batch_len
         if not batch_lines:
             return
         message = f"🎵 {len(batch_lines)} lanzamiento(s) nuevo(s):\n\n" + "\n".join(batch_lines)
         # Con Click header solo tiene sentido si el lote es un único lanzamiento
         url = new_releases[0].get("url") if len(batch_mbids) == 1 else None
-        ok = await notifier.send(message=message, url=url, tags="musical_note,new")
+        ok = await notifier.send(
+            message=message, url=url, tags="musical_note,new",
+            actions=_todoist_action(batch_summaries),
+        )
         if ok:
             notified.update(batch_mbids)
             sent += len(batch_mbids)
         else:
             # Si falló el envío, no se marca como notificado - se reintenta en la próxima pasada
             logger.warning(f"No se pudo notificar un lote de {len(batch_mbids)} lanzamiento(s)")
-        batch_lines, batch_mbids, batch_len = [], [], 0
+        batch_lines, batch_summaries, batch_mbids, batch_len = [], [], [], 0
 
     for release in new_releases:
         artist = release.get("artist", "?")
@@ -136,6 +156,7 @@ async def check_once(
             await flush_batch()
 
         batch_lines.append(line)
+        batch_summaries.append(f"{artist} - {title}")
         batch_mbids.append(release["mbid"])
         batch_len += len(line) + 1
 

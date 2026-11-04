@@ -33,12 +33,17 @@ class NtfyChannel:
         message: str,
         url: Optional[str] = None,
         tags: Optional[str] = None,
+        actions: Optional[str] = None,
     ) -> bool:
         """Publica una notificación. Devuelve True si ntfy la aceptó.
 
         El título/mensaje va siempre en el body (UTF-8 sin restricciones) en
         vez de en la cabecera `Title`, para no depender de que ntfy/httpx
         acepten bien tildes/emojis en cabeceras HTTP.
+
+        `actions` es el valor de la cabecera `Actions` de ntfy (botones bajo la
+        notificación). Al ir en una cabecera debe ser ASCII: codificar con
+        porcentaje lo que lleve tildes/espacios.
         """
         if not self.configured:
             return False
@@ -47,6 +52,8 @@ class NtfyChannel:
             headers["Click"] = url
         if tags:
             headers["Tags"] = tags
+        if actions:
+            headers["Actions"] = actions
         if self.token:
             headers["Authorization"] = f"Bearer {self.token}"
         try:
@@ -88,10 +95,12 @@ class TelegramChannel:
     def configured(self) -> bool:
         return bool(self.token and self.chat_id)
 
-    async def send(self, message: str, url: Optional[str] = None, tags: Optional[str] = None) -> bool:
+    async def send(self, message: str, url: Optional[str] = None, tags: Optional[str] = None,
+                   actions: Optional[str] = None) -> bool:
+        # `actions` (botones de ntfy) no aplica a Telegram
         if not self.configured:
             return False
-        text = f"{message}\n\n{url}" if url else message
+        text =f"{message}\n\n{url}" if url else message
         try:
             response = await self.client.post(
                 f"https://api.telegram.org/bot{self.token}/sendMessage",
@@ -124,9 +133,13 @@ class NotificationService:
     def configured(self) -> bool:
         return any(c.configured for c in self._channels)
 
-    async def send(self, message: str, url: Optional[str] = None, tags: Optional[str] = None) -> bool:
+    async def send(self, message: str, url: Optional[str] = None, tags: Optional[str] = None,
+                   actions: Optional[str] = None) -> bool:
         """Manda por todos los canales configurados. Devuelve True si al menos uno lo aceptó."""
-        results = [await c.send(message, url=url, tags=tags) for c in self._channels if c.configured]
+        results = [
+            await c.send(message, url=url, tags=tags, actions=actions)
+            for c in self._channels if c.configured
+        ]
         return any(results)
 
     async def close(self):
